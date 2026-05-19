@@ -31,7 +31,8 @@
 
 ## Notes
 
-- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
+- Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`.
 - The spec preserves IPED-native vocabulary (perito, perfil, subitem, carved item, bookmark) without leaking implementation details (no class names, no library names, no module paths).
 - FR-013 and SC-005 enforce that the feature is fully opt-in and reversible via existing configuration, which is consistent with the IPED CLAUDE.md guidance ("prefer adding a task with its Configurable to modifying existing ones").
-- Three [NEEDS CLARIFICATION] candidates were considered and resolved via informed defaults (documented in Assumptions): (1) target of the scan — binary stream of each item, (2) handling of files exceeding size/time budgets — skip + log, (3) feature lifecycle when YARA engine is absent — silent disable + warning. None blocks planning.
+- `/speckit-clarify` Session 2026-05-19 closed 5 open decisions (YARA version & modules, item-scope default, `.yarc` support, match persistence depth, rerun granularity). All recorded in `spec.md` → Clarifications.
+- One residual concern (Outstanding, low-impact): localization of new UI strings (pt-BR/EN). Convention to follow [iped-app/resources/localization/](../../../iped-app/resources/localization/) — can be enforced at `/speckit-plan` time without further clarification.

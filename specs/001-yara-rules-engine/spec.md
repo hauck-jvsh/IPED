@@ -8,6 +8,16 @@
 
 **Input**: User description: "Vamos adicionar ao IPED capacidade de rodar regras YARA nos artefatos por ele analisados."
 
+## Clarifications
+
+### Session 2026-05-19
+
+- Q: Qual versão da linguagem YARA e quais módulos a engine integrada deve suportar? → A: YARA 4.x com os módulos padrão `pe`, `elf`, `math`, `hash`, `magic`, `dotnet`, `time` (módulo `cuckoo` excluído).
+- Q: Quais itens do caso o IPED escaneia por default com YARA? → A: Apenas itens com content stream binário acessível (arquivos, subitens de containers e carved items); itens "puramente metadados" (registry entries, linhas de SQLite, contatos isolados) são pulados por default e podem ser incluídos via override de configuração.
+- Q: A engine deve aceitar regras pré-compiladas (`.yarc`) além de source? → A: Sim — `.yar`, `.yara` e `.yarc` convivem no mesmo diretório de catálogo. Fontes são compiladas em runtime; `.yarc` é carregado direto.
+- Q: O que persistir por match (rule id, tags, bytes, offsets)? → A: Persistir tudo — identificador da regra, tags, strings que casaram (bytes) e offsets — em todos os itens, refletindo no índice e no relatório HTML.
+- Q: Qual a granularidade do "rerun YARA only" sobre um caso já processado? → A: Rerun total apenas — aplica o catálogo atual a todos os itens elegíveis do caso. Rerun sobre subconjunto/bookmark/seleção fica fora de escopo na v1.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Aplicar regras YARA durante o processamento de um caso (Priority: P1)
@@ -73,26 +83,26 @@ Equipes de perícia mantêm catálogos de regras separados por tipo de caso (mal
 
 ### Functional Requirements
 
-- **FR-001**: Sistema MUST permitir ao usuário configurar um ou mais diretórios contendo regras YARA (`.yar`/`.yara`) por perfil e por caso, com a feature inteira podendo ser habilitada/desabilitada via configuração.
-- **FR-002**: Sistema MUST compilar todas as regras encontradas antes de iniciar o processamento e registrar no log quais foram compiladas com sucesso, quais falharam (com o motivo) e o tempo de compilação.
-- **FR-003**: Sistema MUST aplicar as regras YARA compiladas ao conteúdo binário de cada item processado, incluindo subitens (anexos, entradas de containers) e carved items, respeitando o pipeline existente.
-- **FR-004**: Sistema MUST, para cada item que casar com uma ou mais regras, registrar os identificadores das regras (namespace + nome) e suas tags YARA em uma propriedade multi-valorada indexada no item.
+- **FR-001**: Sistema MUST permitir ao usuário configurar um ou mais diretórios contendo regras YARA em formato fonte (`.yar`/`.yara`) e/ou pré-compilado (`.yarc`) — os três coexistem no mesmo catálogo — por perfil e por caso, com a feature inteira podendo ser habilitada/desabilitada via configuração.
+- **FR-002**: Sistema MUST compilar todas as regras fonte (`.yar`/`.yara`) encontradas e carregar todos os rulesets pré-compilados (`.yarc`) encontrados antes de iniciar o processamento, aceitando a sintaxe da linguagem **YARA 4.x** e os módulos padrão `pe`, `elf`, `math`, `hash`, `magic`, `dotnet` e `time`; o módulo `cuckoo` está fora de escopo. Compilações bem-sucedidas, falhas (com motivo) e o tempo total de compilação/carga MUST ser registrados no log. Um `.yarc` com versão incompatível ou corrompido MUST ser tratado como uma falha individual (log warn + descarte), sem abortar o caso.
+- **FR-003**: Sistema MUST aplicar as regras YARA compiladas ao conteúdo binário de cada item que possua content stream acessível, incluindo subitens (anexos, entradas de containers) e carved items. Itens puramente metadados (entradas de registro do Windows, linhas de SQLite, contatos isolados, etc.) são pulados por default e devem poder ser incluídos via opção de configuração ("scan tudo") sem mudanças de código.
+- **FR-004**: Sistema MUST, para cada item que casar com uma ou mais regras, registrar (a) os identificadores das regras (namespace + nome) e (b) as tags YARA herdadas em propriedade multi-valorada indexada no item, e (c) para cada match, os detalhes — identificador da string, offset no stream do item e bytes brutos do trecho casado — em estrutura associada ao item, recuperável via UI e relatório.
 - **FR-005**: Sistema MUST garantir que erro de compilação, erro de runtime ou timeout em uma regra individual não aborta o processamento do caso nem o de outros itens.
 - **FR-006**: Sistema MUST permitir limite de tamanho máximo de arquivo a ser escaneado, configurável por perfil; itens acima do limite são pulados e o motivo é registrado.
 - **FR-007**: Sistema MUST permitir limite de tempo máximo de scan por item (timeout), interrompendo a regra após o limite e registrando o evento sem propagar falha.
 - **FR-008**: Sistema MUST expor as regras YARA casadas como categoria filtrável na interface de análise, com contagem de itens por regra.
 - **FR-009**: Usuários MUST conseguir criar bookmarks/tags a partir do conjunto de itens filtrado por uma regra YARA, usando o fluxo de bookmark já existente.
-- **FR-010**: Sistema MUST incluir os matches YARA na geração de relatório HTML do caso, listados por item.
-- **FR-011**: Sistema MUST permitir reaplicar regras YARA sobre um caso já processado sem necessidade de reprocessar todo o pipeline ("rerun YARA only"), atualizando os matches no índice.
+- **FR-010**: Sistema MUST incluir os matches YARA na geração de relatório HTML do caso, listados por item, exibindo identificador da regra, tags, e — para cada string que casou — o nome da string, o offset e os bytes do trecho (com renderização segura para HTML, sem permitir injeção a partir do conteúdo casado).
+- **FR-011**: Sistema MUST permitir reaplicar o catálogo atual de regras YARA sobre um caso já processado, sem necessidade de reprocessar todo o pipeline ("rerun YARA only"). O modo de rerun aplica-se ao caso inteiro (todos os itens elegíveis); rerun sobre subconjunto (bookmark, filtro, seleção) fica fora de escopo na v1. A operação MUST substituir integralmente os matches anteriores no índice (sem mescla parcial).
 - **FR-012**: Sistema MUST registrar métricas básicas do scan no log de processamento: itens escaneados, itens pulados (por tamanho/timeout/erro), tempo total e quantidade de matches por regra.
 - **FR-013**: Sistema MUST preservar integralmente o comportamento atual do IPED quando a feature está desabilitada: sem custo perceptível de processamento, sem propriedades novas nos itens e sem novas dependências carregadas em runtime.
 - **FR-014**: Sistema MUST funcionar nos sistemas operacionais já suportados pelo IPED (Windows e Linux); a indisponibilidade da engine no SO atual deve apenas desligar a feature com aviso, sem impedir o build ou a execução do restante do IPED.
 
 ### Key Entities *(include if feature involves data)*
 
-- **Conjunto de regras YARA (Ruleset)**: coleção de regras compiladas a partir dos arquivos `.yar`/`.yara` em um ou mais diretórios. Atributos relevantes: diretórios de origem, total de regras compiladas, regras com falha (e motivo), namespace por arquivo de origem.
+- **Conjunto de regras YARA (Ruleset)**: coleção de regras carregadas a partir de fontes (`.yar`/`.yara`, compiladas em runtime) e/ou rulesets pré-compilados (`.yarc`, carregados direto) em um ou mais diretórios. Atributos relevantes: diretórios de origem, total de regras disponíveis, regras com falha de compilação/carga (e motivo), namespace por arquivo de origem.
 - **Regra YARA**: unidade lógica dentro do ruleset. Atributos relevantes para a UI/relatório: identificador (namespace + nome), tags declaradas, metadados (`meta`) declarados na regra (ex.: autor, descrição, severidade).
-- **YARA Match**: resultado da aplicação de uma regra a um item. Atributos: identificador da regra casada, tags herdadas e (opcionalmente, na visualização de detalhe) trechos/offsets dos strings que casaram.
+- **YARA Match**: resultado da aplicação de uma regra a um item. Atributos persistidos para cada item casado: identificador da regra (namespace + nome), tags herdadas, lista das strings que casaram (com identificador da string, offset relativo ao stream do item e bytes brutos do match). Esses atributos são gravados junto ao item — indexados quando aplicável e disponíveis na UI e no relatório HTML.
 - **Item (existente)**: artefato escaneado. Ganha uma propriedade nova multi-valorada com os identificadores das regras casadas; demais propriedades permanecem inalteradas.
 
 ## Success Criteria *(mandatory)*
@@ -109,10 +119,10 @@ Equipes de perícia mantêm catálogos de regras separados por tipo de caso (mal
 ## Assumptions
 
 - Os usuários (peritos) já estão familiarizados com a sintaxe YARA e gerenciam seus próprios catálogos de regras; o IPED não fornece editor de regras nem catálogo público pré-instalado na v1.
-- Existe biblioteca/binding YARA utilizável a partir de Java 11 para Windows e Linux (as plataformas oficialmente suportadas pelo IPED); a escolha concreta da integração é decisão da fase de planejamento.
+- Existe biblioteca/binding YARA 4.x utilizável a partir de Java 11 para Windows e Linux (as plataformas oficialmente suportadas pelo IPED) e que expõe os módulos `pe`, `elf`, `math`, `hash`, `magic`, `dotnet` e `time`; a escolha concreta do binding é decisão da fase de planejamento.
 - A feature opera sobre o conteúdo binário de cada item (stream do `IItem`); escaneamento de texto extraído por parsers/OCR está fora do escopo da v1 e pode ser proposto em iteração futura.
 - O scan é executado como uma task adicional dentro do pipeline existente, no padrão `AbstractTask` + `TaskInstaller.xml`, sem alterar tasks existentes nem renomear propriedades já indexadas.
 - Os limites default (sugestão inicial: tamanho máximo de 250 MB por item e timeout de 30 s por item) são valores de partida e serão validados na fase de plano; usuários podem sobrescrevê-los por perfil.
 - Itens acima do limite ou sem stream acessível (cifrado/corrompido) são contabilizados como "skipped" e não causam falha do caso.
-- A persistência dos matches reaproveita o índice Lucene já existente, expondo a regra como propriedade multi-valorada — sem dependência de novo armazenamento.
+- A persistência dos matches reaproveita o índice Lucene já existente para os atributos indexáveis (identificadores de regra e tags) como propriedade multi-valorada; os detalhes de cada match (string, offset, bytes) ficam associados ao item em estrutura recuperável pela UI e relatório, podendo reutilizar mecanismos de "metadata extra" já existentes no IPED (a forma exata é decisão do plano).
 - Quando a engine YARA estiver indisponível no ambiente (biblioteca nativa ausente), a feature é silenciosamente desligada com warning único, mantendo o restante do IPED funcional.
