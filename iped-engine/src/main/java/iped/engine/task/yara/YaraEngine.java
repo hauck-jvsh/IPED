@@ -229,8 +229,26 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /**
-     * Escaneia um buffer e retorna a lista de matches. A lista de matched-strings
-     * dentro de cada {@link YaraMatch} pode estar vazia nesta v1 (ver classdoc).
+     * Cria um {@link YaraScanner} (uma instância por worker) sobre este ruleset.
+     * O scanner não é thread-safe; {@code YRX_RULES} (compartilhado read-only entre
+     * scanners) é. Veja {@code research.md} §R-04.
+     */
+    public YaraScanner createScanner() {
+        if (rulesPtr == null || !libraryAvailable) {
+            return null;
+        }
+        PointerByReference scannerRef = new PointerByReference();
+        int rc = LibYaraX.INSTANCE.yrx_scanner_create(rulesPtr, scannerRef);
+        if (rc != YRX_SUCCESS) {
+            logger.warn("yrx_scanner_create returned {}: {}", rc, lastError());
+            return null;
+        }
+        return new YaraScanner(scannerRef.getValue());
+    }
+
+    /**
+     * Conveniência para scans one-shot (usado em testes). Para o pipeline real,
+     * use {@link #createScanner()} uma vez por worker e reutilize.
      *
      * @param buffer bytes a escanear
      * @param length bytes válidos no buffer (≤ {@code buffer.length})
@@ -240,29 +258,8 @@ public final class YaraEngine implements AutoCloseable {
         if (rulesPtr == null || buffer == null || length <= 0 || !libraryAvailable) {
             return Collections.emptyList();
         }
-        PointerByReference scannerRef = new PointerByReference();
-        int rc = LibYaraX.INSTANCE.yrx_scanner_create(rulesPtr, scannerRef);
-        if (rc != YRX_SUCCESS) {
-            logger.debug("yrx_scanner_create returned {}: {}", rc, lastError());
-            return Collections.emptyList();
-        }
-        Pointer scanner = scannerRef.getValue();
-        try {
-            if (timeoutSeconds > 0) {
-                LibYaraX.INSTANCE.yrx_scanner_set_timeout(scanner, (long) timeoutSeconds);
-            }
-            MatchCollector collector = new MatchCollector();
-            LibYaraX.INSTANCE.yrx_scanner_on_matching_rule(scanner, collector, Pointer.NULL);
-
-            Memory native_buf = new Memory(length);
-            native_buf.write(0, buffer, 0, length);
-            int scanRc = LibYaraX.INSTANCE.yrx_scanner_scan(scanner, native_buf, (long) length);
-            if (scanRc != YRX_SUCCESS && scanRc != YRX_SCAN_TIMEOUT) {
-                logger.debug("yrx_scanner_scan returned {}", scanRc);
-            }
-            return collector.getMatches();
-        } finally {
-            LibYaraX.INSTANCE.yrx_scanner_destroy(scanner);
+        try (YaraScanner sc = createScanner()) {
+            return (sc == null) ? Collections.emptyList() : sc.scan(buffer, length, timeoutSeconds);
         }
     }
 
@@ -364,7 +361,7 @@ public final class YaraEngine implements AutoCloseable {
     /*                          Internal — JNA binding                         */
     /* ---------------------------------------------------------------------- */
 
-    private interface LibYaraX extends Library {
+    interface LibYaraX extends Library {
         LibYaraX INSTANCE = Native.load("yara_x_capi", LibYaraX.class);
 
         // Compiler lifecycle
@@ -429,57 +426,6 @@ public final class YaraEngine implements AutoCloseable {
     /** Callback nativo para tags: {@code void (*)(const char *tag, void *user_data)}. */
     public interface TagCallback extends Callback {
         void invoke(String tag, Pointer userData);
-    }
-
-    /**
-     * Coleta {@link YaraMatch}es no callback de scan do YARA-X. Para cada
-     * regra que casa, lê identifier + namespace via os getters e popula as tags
-     * via {@code yrx_rule_iter_tags}.
-     */
-    private static final class MatchCollector implements RuleCallback {
-        private final List<YaraMatch> matches = new ArrayList<>();
-
-        @Override
-        public void invoke(Pointer rule, Pointer userData) {
-            if (rule == null) {
-                return;
-            }
-            try {
-                String name = readPointerSlice(rule, true);
-                String ns = readPointerSlice(rule, false);
-                final List<String> tags = new ArrayList<>();
-                LibYaraX.INSTANCE.yrx_rule_iter_tags(rule, (tag, ud) -> {
-                    if (tag != null && !tag.isEmpty()) {
-                        tags.add(tag);
-                    }
-                }, Pointer.NULL);
-                matches.add(new YaraMatch(ns, name, tags, Collections.emptyMap(), Collections.emptyList()));
-            } catch (Throwable t) {
-                logger.debug("MatchCollector failed to read YRX_RULE: {}", t.toString());
-            }
-        }
-
-        List<YaraMatch> getMatches() {
-            return matches;
-        }
-    }
-
-    /**
-     * Lê o identifier (se {@code identifierMode}) ou namespace de uma regra
-     * via {@code yrx_rule_identifier}/{@code yrx_rule_namespace}. Os ponteiros
-     * retornados NÃO são NUL-terminados — o comprimento vem em {@code len}.
-     */
-    private static String readPointerSlice(Pointer rule, boolean identifierMode) {
-        PointerByReference out = new PointerByReference();
-        LongByReference len = new LongByReference();
-        int rc = identifierMode
-                ? LibYaraX.INSTANCE.yrx_rule_identifier(rule, out, len)
-                : LibYaraX.INSTANCE.yrx_rule_namespace(rule, out, len);
-        if (rc != YRX_SUCCESS || out.getValue() == null || len.getValue() <= 0) {
-            return "";
-        }
-        byte[] bytes = out.getValue().getByteArray(0, (int) len.getValue());
-        return new String(bytes, StandardCharsets.UTF_8);
     }
 
     /** Sink simples para reportar erros de compilação individuais (FR-002 + FR-005). */

@@ -11,11 +11,12 @@ for the rationale).
 ```
 tools/yara-x/
 ├── README.md              (this file)
-├── LICENSE                (BSD 3-clause from upstream YARA-X — placeholder until binaries land)
+├── LICENSE                (BSD 3-clause from upstream YARA-X)
 ├── win64/
-│   └── yara_x_capi.dll        (placeholder — upstream prebuilt binary)
+│   ├── yara_x_capi.dll        (21,542,400 bytes — YARA-X 1.16.0, MSVC x86_64)
+│   └── yara_x.h               (39,444 bytes — C header, kept for reference)
 └── linux64/
-    └── libyara_x_capi.so      (placeholder — upstream prebuilt binary)
+    └── (empty — see "Linux build" section below)
 ```
 
 The Java side loads the library via `Native.load("yara_x_capi", LibYaraX.class)`
@@ -28,12 +29,23 @@ normally.
 
 - **YARA-X 1.16.0** (release oficial; congelada por release do IPED — atualize
   esta versão, a constante `YaraEngine.ENGINE_VERSION`, o `YARAX_VERSION` no
-  workflow de CI (`.github/workflows/maven.yml`) e o SHA-256 dos binários
+  workflow de CI (`.github/workflows/maven.yml`) e os SHA-256 abaixo
   sempre que trocar).
 - Módulos `pe`, `elf`, `math`, `hash`, `magic`, `dotnet`, `time` vêm habilitados
   no release oficial. O módulo `cuckoo` é **banido em runtime** pelo
   `YaraEngine` via `yrx_compiler_ban_module(...)`, então rules com
   `import "cuckoo"` falham na compilação com mensagem clara.
+
+### Binários bundled (SHA-256)
+
+| Arquivo | Tamanho | SHA-256 |
+|---|---|---|
+| `win64/yara_x_capi.dll` | 21,542,400 | `0F56AC336EFF5242F4BAB23F9A4419FC466A5DD2696B7A3CF6B11F6758B29121` |
+| `linux64/libyara_x_capi.so` | — | *(ver "Linux build" abaixo — sem prebuilt no release 1.16.0)* |
+
+SHA-256 do zip upstream do qual a DLL foi extraída:
+`D9FFF45807F752333138B8959F16C0E68D6603F08E161F254CF1E95CF725ECC4`
+(`yara-x-capi-v1.16.0-x86_64-pc-windows-msvc.zip`, 19,800,959 bytes).
 
 ## Como atualizar a versão do `libyara-x-capi`
 
@@ -43,15 +55,21 @@ self-contained pré-compilados** para Windows e Linux — sem build manual.
 1. **Identifique a versão alvo** em https://github.com/VirusTotal/yara-x/releases.
    Procure os assets que começam com `libyara-x-capi-vX.Y.Z-...`.
 
-2. **Linux (x86_64)** — baixe e extraia:
+2. **Linux (x86_64)** — **NÃO há prebuilt no release 1.16.0** (o upstream só
+   publica o asset `yara-x-capi-*-msvc.zip` para Windows; o asset Linux
+   `yara-x-v1.16.0-x86_64-unknown-linux-gnu.gz` é o CLI `yara-x`, não a C API).
+   Para gerar `libyara_x_capi.so` é preciso compilar a partir do fonte com a
+   toolchain Rust:
    ```bash
-   YARAX_VERSION="1.16.0"  # ajuste para a versão alvo
-   curl -L -o yara-x-capi-linux.tar.gz \
-     https://github.com/VirusTotal/yara-x/releases/download/v${YARAX_VERSION}/libyara-x-capi-v${YARAX_VERSION}-x86_64-unknown-linux-gnu.tar.gz
-   tar -xzf yara-x-capi-linux.tar.gz
-   # O tarball contém um diretório com lib/, include/, etc.
-   cp <extracted>/lib/libyara_x_capi.so path/to/IPED/tools/yara-x/linux64/
+   git clone https://github.com/VirusTotal/yara-x.git
+   cd yara-x
+   git checkout v1.16.0
+   cargo build -p yara-x-capi --release
+   # A biblioteca sai em target/release/libyara_x_capi.so
+   cp target/release/libyara_x_capi.so path/to/IPED/tools/yara-x/linux64/
    ```
+   Requisitos: Rust 1.75+ (estável), `pkg-config`, `libssl-dev` (para o módulo
+   `hash` linkar contra OpenSSL). Build leva ~3–5 minutos numa máquina típica.
 
 3. **Windows (x64)** — baixe e extraia:
    ```powershell
@@ -88,6 +106,23 @@ ldd tools/yara-x/linux64/libyara_x_capi.so
 # Windows (PowerShell + Dependencies.exe ou similar)
 # Listar dependências dinâmicas e confirmar que são apenas system DLLs
 # (kernel32, ucrtbase, etc.).
+```
+
+Para validar a integração JNA+libyara-x-capi end-to-end:
+
+```powershell
+# Windows
+$env:JAVA_HOME = "<path to Liberica JDK 11 Full>"
+$env:YARA_X_LIB_PATH = "$PWD\tools\yara-x\win64\yara_x_capi.dll"
+mvn -pl iped-engine -Dtest='YaraEngineTest' -DfailIfNoTests=false test
+# Esperado: 5 tests run, 0 failures, 0 skipped.
+```
+
+```bash
+# Linux (após o build from source acima)
+export JAVA_HOME="/path/to/liberica-jdk-11-full"
+export YARA_X_LIB_PATH="$PWD/tools/yara-x/linux64/libyara_x_capi.so"
+mvn -pl iped-engine -Dtest='YaraEngineTest' -DfailIfNoTests=false test
 ```
 
 ## Por que YARA-X e não libyara clássica?

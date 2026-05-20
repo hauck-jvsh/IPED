@@ -50,21 +50,20 @@ jobs:
           cd ..
           sudo apt-get install gsfonts
 
-    - name: Install libyara-x-capi (YARA-X engine)
-      # Consumed in-process by iped.engine.task.yara.YaraScanTask via JNA.
-      # The official YARA-X release publishes prebuilt libyara-x-capi binaries
-      # for Linux x86_64; we download the tarball and extract into /usr/local.
-      # Integration tests gated on assumeTrue(YaraEngine.ensureAvailable(...)) so
-      # any download failure here only skips the YARA tests, not the core build.
+    - name: Install libyara-x-capi (YARA-X engine) — Linux deferred
+      # The YARA-X 1.16.0 upstream release does NOT publish a prebuilt
+      # libyara-x-capi for Linux x86_64 (only Windows MSVC). Building from
+      # source via `cargo build -p yara-x-capi --release` is the documented
+      # path (see tools/yara-x/README.md "Linux (x86_64)" section) but adds
+      # ~3-5 min of Rust toolchain + cargo compile to the CI.
+      #
+      # For now, the Linux job ships without libyara-x-capi. YaraEngineTest
+      # gates on assumeTrue(YaraEngine.ensureAvailable(...)) and skips cleanly
+      # when the library is absent — FR-014 honored without extra logic.
+      # Switch to a cargo build step here when Linux is in scope.
       run: |
-          YARAX_VERSION="1.16.0"
-          set -e
-          curl -fL -o /tmp/yara-x-capi.tar.gz \
-            "https://github.com/VirusTotal/yara-x/releases/download/v${YARAX_VERSION}/libyara-x-capi-v${YARAX_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            || { echo "libyara-x-capi tarball download failed; YARA tests will skip"; exit 0; }
-          sudo tar -xzf /tmp/yara-x-capi.tar.gz -C /usr/local/ --strip-components=1
-          sudo ldconfig
-          ldconfig -p | grep yara_x_capi || echo "libyara-x-capi not on linker path"
+          echo "libyara-x-capi for Linux is currently built manually (see tools/yara-x/README.md)."
+          echo "YARA integration tests will be skipped in this CI job."
 
 
     - name: Build with Maven
@@ -125,21 +124,20 @@ jobs:
           cd ..
           sudo apt-get install gsfonts
 
-    - name: Install libyara-x-capi (YARA-X engine)
-      # Consumed in-process by iped.engine.task.yara.YaraScanTask via JNA.
-      # The official YARA-X release publishes prebuilt libyara-x-capi binaries
-      # for Linux x86_64; we download the tarball and extract into /usr/local.
-      # Integration tests gated on assumeTrue(YaraEngine.ensureAvailable(...)) so
-      # any download failure here only skips the YARA tests, not the core build.
+    - name: Install libyara-x-capi (YARA-X engine) — Linux deferred
+      # The YARA-X 1.16.0 upstream release does NOT publish a prebuilt
+      # libyara-x-capi for Linux x86_64 (only Windows MSVC). Building from
+      # source via `cargo build -p yara-x-capi --release` is the documented
+      # path (see tools/yara-x/README.md "Linux (x86_64)" section) but adds
+      # ~3-5 min of Rust toolchain + cargo compile to the CI.
+      #
+      # For now, the Linux job ships without libyara-x-capi. YaraEngineTest
+      # gates on assumeTrue(YaraEngine.ensureAvailable(...)) and skips cleanly
+      # when the library is absent — FR-014 honored without extra logic.
+      # Switch to a cargo build step here when Linux is in scope.
       run: |
-          YARAX_VERSION="1.16.0"
-          set -e
-          curl -fL -o /tmp/yara-x-capi.tar.gz \
-            "https://github.com/VirusTotal/yara-x/releases/download/v${YARAX_VERSION}/libyara-x-capi-v${YARAX_VERSION}-x86_64-unknown-linux-gnu.tar.gz" \
-            || { echo "libyara-x-capi tarball download failed; YARA tests will skip"; exit 0; }
-          sudo tar -xzf /tmp/yara-x-capi.tar.gz -C /usr/local/ --strip-components=1
-          sudo ldconfig
-          ldconfig -p | grep yara_x_capi || echo "libyara-x-capi not on linker path"
+          echo "libyara-x-capi for Linux is currently built manually (see tools/yara-x/README.md)."
+          echo "YARA integration tests will be skipped in this CI job."
 
     - name: Build with Maven
       run: mvn -B package --file pom.xml
