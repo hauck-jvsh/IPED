@@ -2,7 +2,7 @@
 
 **Audience**: peritos forenses e desenvolvedores integrando a feature em um caso de teste.
 
-**Pré-requisitos**: release do IPED construído contendo `tools/yara/<os>/` (gerado por `mvn clean install`). Ver [iped-app/CLAUDE.md](../../iped-app/CLAUDE.md) para o layout do release.
+**Pré-requisitos**: release do IPED construído contendo `tools/yara-x/<os>/` (gerado por `mvn clean install`). Ver [iped-app/CLAUDE.md](../../iped-app/CLAUDE.md) para o layout do release.
 
 ---
 
@@ -25,7 +25,7 @@ Validar que `resources/config/conf/YaraConfig.txt` existe (criado pelo build). S
 Edite `resources/config/conf/YaraConfig.txt`:
 
 ```properties
-# Onde estão seus .yar / .yara / .yarc
+# Onde estão seus .yar / .yara (YARA-X 1.x — pré-compilados fora de escopo na v1)
 ruleDirectories = ${IPED_HOME}/yara-rules
 
 # Limites operacionais (defaults razoáveis)
@@ -34,11 +34,10 @@ perItemTimeoutMs = 30000
 
 # Comportamento
 scanAllItems = false
-fastMode = true
 matchHexMaxBytes = 256
 ```
 
-Coloque seus arquivos `.yar`/`.yara`/`.yarc` em `${IPED_HOME}/yara-rules/`. Recomendado começar com uma regra sintética simples para validar:
+Coloque seus arquivos `.yar`/`.yara` em `${IPED_HOME}/yara-rules/`. Recomendado começar com uma regra sintética simples para validar:
 
 ```yara
 // arquivo: hello.yar
@@ -72,7 +71,7 @@ Durante o processamento, o log deve conter linhas como:
 
 ```text
 INFO  YaraScanTask - Loaded ruleset: 23 rules from 4 files in 312 ms
-INFO  YaraScanTask - Engine version: yara-4.5.0
+INFO  YaraScanTask - Engine version: yara-x-1.16.0
 INFO  YaraScanTask - Initialized scanner per worker (×8)
 ...
 INFO  YaraScanTask - Scan summary:
@@ -124,20 +123,20 @@ Contrato completo: [contracts/cli-yara-only.contract.md](contracts/cli-yara-only
 
 ---
 
-## 7. Verificação de paridade com a CLI YARA (SC-004)
+## 7. Verificação de paridade com a CLI YARA-X (SC-004)
 
 Para validar a integração contra a referência oficial:
 
 ```bash
-# 1) Rode a CLI oficial sobre uma amostra
-yara -r ./yara-rules ./samples/ > yara-cli.out
+# 1) Rode a CLI oficial yara-x sobre uma amostra
+yara-x scan ./yara-rules ./samples/ > yara-x-cli.out
 
 # 2) Exporte os matches do IPED como CSV (Tools → Export → matches)
 #    OU rode o helper de teste IT-YaraVsCli (em iped-engine/src/test/...)
 mvn -pl iped-engine -Dtest=IT_YaraVsCli verify
 
 # 3) Compare
-diff yara-cli.normalized yara-iped.normalized
+diff yara-x-cli.normalized yara-iped.normalized
 ```
 
 Critério de sucesso: zero diferenças por (`item`, `rule`, `offset`).
@@ -148,12 +147,12 @@ Critério de sucesso: zero diferenças por (`item`, `rule`, `offset`).
 
 | Sintoma | Diagnóstico | Ação |
 |---|---|---|
-| Log: `WARN YaraScanTask - libyara not loadable, task disabled` | Engine nativa ausente/incompatível | Verifique `tools/yara/<os>/`. Em Linux: `ldd tools/yara/linux64/libyara.so.10`. |
+| Log: `WARN YaraScanTask - libyara-x-capi not loadable, task disabled` | Engine nativa ausente/incompatível | Verifique `tools/yara-x/<os>/`. Em Linux: `ldd tools/yara-x/linux64/libyara_x_capi.so`. |
 | Log: `WARN YaraScanTask - ruleDirectories empty, task disabled` | Catálogo vazio | Confira `YaraConfig.ruleDirectories`. |
 | Log: `WARN YaraEngine - rule "<name>" failed to compile: unknown module "cuckoo"` | Regra usa módulo excluído | Esperado (R-09). Regra é descartada; demais continuam. |
 | Item nunca aparece nos matches | Pode ter sido pulado por tamanho/timeout | Consulte o resumo de scan no log final ou aumente `maxFileSizeBytes`. |
 | UI não mostra a seção YARA | Caso processado sem `enableYara=true` | Reabrir caso após processar com a feature ligada ou rode `--yara-only`. |
-| Performance pior que o budget (>15%) | Catálogo muito grande / regras com regex pesado | Reduza catálogo; ative `fastMode=true` (default); reduza `maxFileSizeBytes`. |
+| Performance pior que o budget (>15%) | Catálogo muito grande / regras com regex pesado | Reduza o catálogo, divida regras complexas ou reduza `maxFileSizeBytes`. |
 
 ---
 

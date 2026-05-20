@@ -193,6 +193,26 @@ public class ExtraProperties {
     public static final String SET_PROPERTY = "set";
     public static final String HASHDB_STATUS = HASHDB_PREFIX + STATUS_PROPERTY;
     public static final String HASHDB_SET = HASHDB_PREFIX + SET_PROPERTY;
+
+    /**
+     * Identificador (namespace/nome) de cada regra YARA casada com o item.
+     * Multi-valorado, indexado e armazenado no campo Lucene de mesmo nome.
+     */
+    public static final String YARA_RULE = "yara:rule"; //$NON-NLS-1$
+
+    /**
+     * União das tags YARA herdadas das regras casadas com o item.
+     * Multi-valorado, indexado e armazenado no campo Lucene de mesmo nome.
+     */
+    public static final String YARA_TAGS = "yara:tag"; //$NON-NLS-1$
+
+    /**
+     * Payload JSON (somente armazenado, sem indexação) com o detalhe dos matches:
+     * identificador da string ($s1...), offset relativo ao stream do item e bytes
+     * em hex do trecho casado. Estrutura definida em
+     * specs/001-yara-rules-engine/contracts/lucene-fields.contract.md.
+     */
+    public static final String YARA_MATCH_DETAIL = "yara:matches"; //$NON-NLS-1$
     
     /**
      * Property to be set if the evidence is a animated image (i.e. contain multiple

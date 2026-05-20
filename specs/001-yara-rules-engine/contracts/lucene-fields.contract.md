@@ -59,7 +59,7 @@
 
 ```json
 {
-  "engineVersion": "yara-4.5.0",
+  "engineVersion": "yara-x-1.16.0",
   "scannedBytes": 32768,
   "items": [
     {
@@ -80,7 +80,7 @@
 ```
 
 **Mandatory fields**:
-- `engineVersion` (string, `^yara-\d+\.\d+\.\d+$`)
+- `engineVersion` (string, `^yara-x-\S+$` — formato `yara-x-<version pinned em tools/yara-x/README.md>`)
 - `scannedBytes` (integer, ≥ 0)
 - `items` (array, ≥ 1; ausente/vazio NÃO ocorre — items sem matches não recebem este campo)
 - Cada `items[i]`:

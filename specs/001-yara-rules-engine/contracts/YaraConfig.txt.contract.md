@@ -12,22 +12,21 @@
 
 | Key | Type | Default | Validation | Description |
 |---|---|---|---|---|
-| `ruleDirectories` | path list (`;` separator no Windows, `:` no Linux — mesmo padrão de outros configs) | *(vazio)* | Cada path existe e é diretório legível. | Diretórios varridos recursivamente em busca de `.yar`, `.yara`, `.yarc`. Vazio efetivamente desliga a feature (mesmo com `enabled=true` em `IPEDConfig.txt`). |
+| `ruleDirectories` | path list (`;` separator no Windows, `:` no Linux — mesmo padrão de outros configs) | *(vazio)* | Cada path existe e é diretório legível. | Diretórios varridos recursivamente em busca de `.yar` e `.yara` (regras-fonte). Formatos pré-compilados (`.yarc` do YARA clássico ou serialização própria do YARA-X) **não são aceitos na v1**. Vazio efetivamente desliga a feature (mesmo com `enabled=true` em `IPEDConfig.txt`). |
 | `maxFileSizeBytes` | integer com sufixo (`K`, `M`, `G`) | `250M` | > 0 | Itens com `length` acima são pulados; contabilizados em "skipped". |
 | `perItemTimeoutMs` | integer | `30000` | ≥ 100 | Scan que exceda o timeout é interrompido; item marcado como skipped (sem propagar exception). |
 | `scanAllItems` | boolean (`true`/`false`) | `false` | — | `true` força tentativa em todos os `IItem` (inclusive sem stream binário). `false` mantém default seletivo (R-06). |
-| `fastMode` | boolean | `true` | — | Mapeia para `SCAN_FLAGS_FAST_MODE` do libyara. Em `true`, libyara aborta uma regra ao primeiro match (suficiente para nosso caso). `false` produz **todos** os matches por regra (mais detalhe; ~30% mais lento). |
 | `matchHexMaxBytes` | integer | `256` | > 0; ≤ 65536 | Quantidade máxima de bytes brutos persistidos por matched-string. Excesso é truncado e marcado (`truncated=true`). |
-| `engineLibraryHint` | optional path | *(vazio)* | Path para arquivo `.dll`/`.so` se presente | Caminho explícito para `libyara` quando o autodetect em `tools/yara/<os>/` precisa ser sobrescrito (debug/dev). Em produção fica vazio. |
+| `engineLibraryHint` | optional path | *(vazio)* | Path para arquivo `.dll`/`.so` se presente | Caminho explícito para `libyara-x-capi` quando o autodetect em `tools/yara-x/<os>/` precisa ser sobrescrito (debug/dev). Em produção fica vazio. |
 
 ---
 
 ## Example (`YaraConfig.txt`)
 
 ```properties
-# YARA Rules Engine — IPED
+# YARA Rules Engine — IPED (engine: YARA-X 1.x)
 #
-# Diretórios contendo .yar, .yara e/ou .yarc.
+# Diretórios contendo .yar / .yara (regras-fonte).
 # Aceita vários paths separados por path-separator do SO.
 ruleDirectories = ${IPED_HOME}/yara-rules;${IPED_HOME}/yara-rules-vendor
 
@@ -37,7 +36,6 @@ perItemTimeoutMs = 30000
 
 # Comportamento de scan
 scanAllItems = false
-fastMode = true
 
 # Detalhe do match persistido
 matchHexMaxBytes = 256

@@ -1,0 +1,48 @@
+########################################################################
+# YARA Rules Engine — IPED (engine: YARA-X 1.x via libyara-x-capi)
+#
+# Configuração consumida por iped.engine.task.yara.YaraScanTask (via
+# iped.engine.config.YaraConfig).
+#
+# Para habilitar a feature, defina "enableYara = true" em IPEDConfig.txt
+# (ou no IPEDConfig.txt do perfil).
+#
+# Schema completo deste arquivo:
+#   specs/001-yara-rules-engine/contracts/YaraConfig.txt.contract.md
+########################################################################
+
+# Diretórios contendo regras YARA em formato fonte (.yar, .yara) — o YARA-X
+# compila o catálogo em runtime no startup do caso. Formatos pré-compilados
+# (.yarc do YARA clássico ou serialização própria do YARA-X) NÃO são aceitos
+# na v1; ver specs/001-yara-rules-engine/research.md §R-01.
+# Múltiplos caminhos podem ser separados por ";" (Windows) ou ":" (Linux).
+# Caminhos relativos são interpretados a partir do diretório do release.
+# Quando vazio, a feature fica efetivamente desligada para o caso.
+ruleDirectories =
+
+# Limite máximo de tamanho por item a ser escaneado.
+# Aceita sufixos K, M, G (case-insensitive, base 1024). Itens acima do
+# limite são pulados e o motivo é registrado.
+maxFileSizeBytes = 250M
+
+# Limite máximo de tempo por item, em milissegundos. Scans que excedam
+# o limite são interrompidos sem propagar exceção; o item é contado
+# como "skipped" nas métricas.
+perItemTimeoutMs = 30000
+
+# Quando false (default), apenas itens com content stream binário
+# acessível (arquivos, subitens de containers, carved items) são
+# escaneados. Quando true, força tentativa em todos os itens — útil
+# para auditoria; tem custo de performance maior.
+scanAllItems = false
+
+# Tamanho máximo (em bytes) dos trechos brutos persistidos no JSON de
+# detalhe de match. Excesso é truncado e marcado com "truncated": true.
+# Faixa válida: 1 a 65536.
+matchHexMaxBytes = 256
+
+# Hint opcional de caminho para a biblioteca libyara-x-capi. Em produção
+# deixe vazio — o Bootstrap resolve automaticamente a partir de
+# tools/yara-x/<os>/. Útil em ambientes de desenvolvimento para apontar
+# para uma libyara-x-capi instalada manualmente em /usr/local/lib.
+# engineLibraryHint =

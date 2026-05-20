@@ -25,8 +25,7 @@ Documento das entidades introduzidas pela feature, suas relações com o modelo 
                         ┌──────────────────────────────┐
                         │        Ruleset               │ (1)
                         │  - sourceFiles[]             │
-                        │  - precompiledFiles[]        │
-                        │  - compiledRulesPtr          │   (handle libyara, in-memory)
+                        │  - compiledRulesPtr          │   (YRX_RULES* handle)
                         │  - failedRules[]             │
                         │  - engineVersion             │
                         └──────────────┬───────────────┘
@@ -88,22 +87,23 @@ Configurable instanciado pelo `ConfigurationManager`. Representa o estado config
 
 ### 2. `Ruleset` (em memória — não persistido em disco do caso)
 
-Container do estado compilado da engine YARA para uma execução.
+Container do estado compilado da engine YARA-X para uma execução.
 
 | Campo | Tipo | Validação | Notas |
 |---|---|---|---|
-| `sourceFiles` | List<Path> | extensão `.yar` ou `.yara`; legíveis | Compilados em runtime via `yr_compiler_add_file`. |
-| `precompiledFiles` | List<Path> | extensão `.yarc`; legíveis | Carregados via `yr_rules_load`. Se versão incompatível → falha individual (log warn + descarte). |
-| `compiledRulesPtr` | handle nativo | não-nulo após init | Liberado em `finish()` via `yr_rules_destroy`. |
-| `failedRules` | List<FailedRule> | — | Cada entrada: `{file, line, reason}`. Logado uma vez no init; exposto via métrica `yara.compile.failed`. |
-| `engineVersion` | String | `^yara-\d+\.\d+\.\d+$` | Obtido de `yr_compiler_get_version()`. Persistido em cada match (R-05) para auditoria. |
+| `sourceFiles` | List<Path> | extensão `.yar` ou `.yara`; legíveis em UTF-8 | Adicionados ao compiler via `yrx_compiler_new_namespace` + `yrx_compiler_add_source_with_origin`. |
+| `compiledRulesPtr` | handle nativo (`YRX_RULES*`) | não-nulo após init | Liberado em `finish()` via `yrx_rules_destroy`. |
+| `failedRules` | List<FailedRule> | — | Cada entrada: `{file, line, reason}`. Extraída do JSON retornado por `yrx_compiler_errors_json` após cada `add_source_with_origin` falhar. Logado uma vez no init; exposto via métrica `yara.compile.failed`. |
+| `engineVersion` | String | `^yara-x-\S+$` | Montada a partir da versão pinned em `tools/yara-x/README.md` (o C API do YARA-X não expõe versão programaticamente). Persistido em cada match (R-05) para auditoria. |
 
 **Lifecycle**: singleton por execução do `Manager`. Construído uma única vez no primeiro `init()` por worker (lock estático). Destruído no `finish()` quando o último worker termina.
 
 **Regras de unicidade**:
-- O **namespace** de cada arquivo é o seu basename sem extensão (ex.: `apt28.yar` → `apt28`).
+- O **namespace** de cada arquivo é o seu basename sem extensão (ex.: `apt28.yar` → `apt28`), definido via `yrx_compiler_new_namespace(compiler, "apt28")` antes do `add_source`.
 - Identificador exposto = `namespace/rule_name`. Duas regras com mesmo nome em arquivos diferentes coexistem.
-- Duas regras com mesmo namespace+nome (impossível dentro de um único arquivo YARA — o compilador rejeita; entre `.yar` e `.yarc` do mesmo basename a precedência é: `.yarc` primeiro, `.yar` rejeitado com log warn).
+- Duas regras com mesmo namespace+nome dentro de um único arquivo YARA — o compilador YARA-X rejeita com erro específico; a regra é descartada via fluxo de FR-005.
+
+**Formatos não aceitos na v1**: `.yarc` (formato do YARA clássico) e o formato serializado próprio do YARA-X (`yrx_rules_serialize`). Decisão consciente — ver Clarifications Q3 revisada e research §R-01.
 
 ---
 
@@ -193,5 +193,5 @@ A feature **adiciona** três propriedades ao item; nenhuma propriedade existente
 1. **Por que `yara:tag` separado de `yara:rule`?** Permite ao perito perguntar "todos os itens com regras com tag `apt`" sem precisar enumerar regras. Tag em YARA é uma faceta semântica padronizada — vale expor.
 2. **Por que `meta` só dentro do JSON, não como campo indexado?** Metadata YARA é livre (cada autor inventa chaves). Indexar gera explosão de campos no Lucene. Quem quiser filtrar por `meta.severity=high` pode fazê-lo via busca textual no JSON (suficiente para forense; a query pode ser feita via `yara:matches:*high*` num campo separado se a necessidade aparecer — não na v1).
 3. **Por que `private rules` ficam invisíveis na UI?** A semântica YARA: regras `private` são auxiliares de regras "públicas" — expor todas polui a UI com matches sem valor analítico.
-4. **Por que armazenar `engineVersion` por item?** Auditoria forense: dois casos rodados com versões diferentes de libyara podem divergir em matches sutis (ex.: correções em módulos `pe`). Saber qual versão produziu o match é exigência prática.
+4. **Por que armazenar `engineVersion` por item?** Auditoria forense: dois casos rodados com versões diferentes de YARA-X podem divergir em matches sutis (ex.: correções em módulos `pe` ou no engine de regex). Saber qual versão produziu o match é exigência prática.
 5. **Por que ordenar matches deterministicamente?** Hashes futuros do índice e diffs entre rodadas dependem de ordem estável — Princípio IV.

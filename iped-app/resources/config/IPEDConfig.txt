@@ -15,6 +15,10 @@ enableHashDBLookup = false
 # Enables photoDNA lookup on IPED hash database.
 enablePhotoDNALookup = false
 
+# Enables YARA rule scanning over item content. Requires libyara in tools/yara/<os>/
+# and the rule catalogue configured in conf/YaraConfig.txt.
+enableYara = false
+
 # Enables nudity detection. For each image it creates attributes "nudityScore" (1 to 1000)
 # and "nudityClass" (1 to 5) for ranking and/or filtering.
 enableLedDie = false
