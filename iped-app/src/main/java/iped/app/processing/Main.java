@@ -38,9 +38,11 @@ import iped.app.ui.splash.StartUpControlClient;
 import iped.app.ui.utils.UiScale;
 import iped.engine.Version;
 import iped.engine.config.Configuration;
+import iped.engine.config.ConfigurationManager;
 import iped.engine.core.Manager;
 import iped.engine.localization.Messages;
 import iped.engine.preview.PreviewRepositoryManager;
+import iped.engine.task.yara.YaraRerunRunner;
 import iped.engine.util.UIPropertyListenerProvider;
 import iped.exception.IPEDException;
 import iped.io.URLUtil;
@@ -177,9 +179,19 @@ public class Main {
 
     protected void startManager() {
         try {
-            manager = new Manager(dataSource, output, keywords);
-            cmdLineParams.saveIntoCaseData(manager.getCaseData());
-            manager.process();
+            if (cmdLineParams.isYaraOnly()) {
+                // --yara-only: bypass the full Manager pipeline. The case is already
+                // processed; we just re-apply the current YARA-X catalog to the
+                // existing Lucene index. See specs/001-yara-rules-engine/research.md §R-08.
+                File caseRoot = output.getParentFile();
+                LOGGER.info("Starting --yara-only rerun on case at {}", caseRoot.getAbsolutePath());
+                YaraRerunRunner runner = new YaraRerunRunner(caseRoot, ConfigurationManager.get());
+                runner.run();
+            } else {
+                manager = new Manager(dataSource, output, keywords);
+                cmdLineParams.saveIntoCaseData(manager.getCaseData());
+                manager.process();
+            }
 
             UIPropertyListenerProvider.getInstance().firePropertyChange("mensagem", "", Messages.getString("Main.Finished")); //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             LOGGER.info("{} finished.", Version.APP_EXT); //$NON-NLS-1$

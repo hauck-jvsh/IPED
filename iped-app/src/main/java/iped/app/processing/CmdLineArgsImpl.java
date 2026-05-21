@@ -124,6 +124,9 @@ public class CmdLineArgsImpl implements CmdLineArgs {
 
     @Parameter(names = "--downloadInternetData", description = "download Internet data to enrich evidence data processing. E.g. media files still available in WhatsApp servers and not found in the evidence")
     private boolean downloadInternetData;
+
+    @Parameter(names = "--yara-only", description = "rerun YARA-X over an already processed case (requires -o pointing at the case output dir). Skips DataSourceReader and the rest of the pipeline; only the yara:* fields in the existing Lucene index are updated. Incompatible with -d/-dname/--append/--continue/--restart.")
+    private boolean yaraOnly;
     
     @Parameter(names = { "-splash" }, description = "custom message to be shown in the splash screen")
     private String splashMessage;    
@@ -141,6 +144,11 @@ public class CmdLineArgsImpl implements CmdLineArgs {
     @Override
     public boolean isDownloadInternetData() {
         return downloadInternetData;
+    }
+
+    @Override
+    public boolean isYaraOnly() {
+        return yaraOnly;
     }
 
     @Override
@@ -402,6 +410,42 @@ public class CmdLineArgsImpl implements CmdLineArgs {
     private void handleSpecificArgs() {
 
         Main.getInstance().dataSource = new ArrayList<File>();
+
+        if (yaraOnly) {
+            // --yara-only opera sobre um caso já existente; rejeita combinações que
+            // tentem ingerir nova evidência, fundir, retomar ou recomeçar processamento.
+            // Ver specs/001-yara-rules-engine/contracts/cli-yara-only.contract.md.
+            if (datasources != null && !datasources.isEmpty()) {
+                throw new ParameterException(
+                        "--yara-only does not accept new evidence input (drop -d/-data and -dname).");
+            }
+            if (dname != null && !dname.isEmpty()) {
+                throw new ParameterException("--yara-only is incompatible with -dname.");
+            }
+            if (appendIndex) {
+                throw new ParameterException("--yara-only is incompatible with --append.");
+            }
+            if (isContinue) {
+                throw new ParameterException("--yara-only is incompatible with --continue.");
+            }
+            if (restart) {
+                throw new ParameterException("--yara-only is incompatible with --restart.");
+            }
+            if (evidenceToRemove != null) {
+                throw new ParameterException("--yara-only is incompatible with -remove.");
+            }
+            if (outputDir == null) {
+                throw new ParameterException("--yara-only requires -o/--output pointing at the case directory.");
+            }
+            if (!new File(outputDir, "iped").exists()) {
+                throw new IPEDException(
+                        "--yara-only: the output folder does not contain a processed case (missing 'iped/' subfolder): "
+                                + outputDir.getAbsolutePath());
+            }
+            // Curto-circuita o restante das validações (que dependem de datasources).
+            Main.getInstance().output = new File(outputDir, "iped");
+            return;
+        }
 
         if ((datasources == null || datasources.isEmpty()) && evidenceToRemove == null) {
             throw new ParameterException("parameter '-d' or '-r' required."); //$NON-NLS-1$

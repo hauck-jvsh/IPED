@@ -110,14 +110,16 @@ Gere o relatório (mesmo fluxo de sempre — `enableHtmlReport=true` em `IPEDCon
 Atualize `yara-rules/` com novas regras. Depois:
 
 ```powershell
-.\iped.exe --yara-only -d C:\cases\case-yara-demo
+.\iped.exe --yara-only -o C:\cases\case-yara-demo
 ```
 
 Comportamento (FR-011):
-- Pula `DataSourceReader`.
-- Itera sobre todos os itens já indexados.
-- Substitui os campos `yara:rule`, `yara:tag`, `yara:matches` com o resultado do catálogo **atual** (sem mescla).
-- Log final reporta `yara.rerun.itemsProcessed` etc.
+- Pula `DataSourceReader` e o resto do pipeline (não toca a `YaraScanTask` de processamento normal).
+- Abre o índice Lucene existente em RW e itera por todos os documentos.
+- Para cada item que tinha ou ganhou matches, substitui o documento via `IndexWriter.updateDocument` — os campos `yara:rule`, `yara:tag`, `yara:matches` refletem exclusivamente o catálogo atual (sem mescla com runs anteriores).
+- Log final reporta `itemsScanned`, `itemsWithMatches`, `itemsUpdated`, `itemsSkipped` e `totalSeconds`.
+
+Combinações inválidas (`-d`, `-dname`, `--append`, `--continue`, `--restart`, `-remove`) são rejeitadas com exit code 1.
 
 Contrato completo: [contracts/cli-yara-only.contract.md](contracts/cli-yara-only.contract.md).
 

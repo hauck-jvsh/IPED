@@ -9,7 +9,7 @@
 ## Sintaxe
 
 ```text
-iped --yara-only -d <CASE_OUTPUT_DIR>
+iped --yara-only -o <CASE_OUTPUT_DIR>
 ```
 
 ou (forma longa equivalente):
@@ -18,30 +18,42 @@ ou (forma longa equivalente):
 iped --yara-only --output <CASE_OUTPUT_DIR>
 ```
 
-Combinações com flags de processamento de caso (`-i`, `-dname`, `-profile`) **DEVEM** ser rejeitadas com erro claro: rerun YARA não aceita nova evidência. As únicas flags permitidas em conjunto são:
+> O `-o`/`--output` aponta para o **diretório do caso já processado** (o que contém o subdiretório `iped/`). No fluxo normal de processamento o `-o` define onde o caso será **criado**; em `--yara-only` ele indica o caso a ser **reaplicado**. A validação em `CmdLineArgsImpl` rejeita o flag se `<CASE_OUTPUT_DIR>/iped/` não existir.
+
+Combinações com flags de processamento de caso (`-d`, `-dname`, `--append`, `--continue`, `--restart`, `-remove`) **DEVEM** ser rejeitadas com erro claro: rerun YARA não aceita nova evidência nem retoma processamento. As flags permitidas em conjunto são:
 
 | Flag | Permitida com `--yara-only`? | Notas |
 |---|---|---|
-| `-d` / `--output` | **Obrigatória** | Diretório do caso já processado. |
-| `--profile <name>` | Sim | Pode trocar o perfil (e portanto o catálogo de regras) para a reaplicação. |
+| `-o` / `--output` | **Obrigatória** | Diretório do caso já processado. |
+| `-profile <name>` | Sim | Pode trocar o perfil (e portanto o catálogo de regras) para a reaplicação. |
 | `--Xmx <size>` / `--Xms <size>` | Sim | Mesmas regras de Bootstrap. |
-| `-i` / `-evidence` | **Não** | Erro: "--yara-only does not accept new evidence input". |
-| `-dname` | Não | Erro: "--yara-only does not accept new evidence input". |
-| `--portable` | Sim | Atualiza o caso portátil também. |
-| `--append` | **Não** | Erro: rerun substitui matches, não anexa. |
+| `-d` / `-data` | **Não** | Erro: "--yara-only does not accept new evidence input". |
+| `-dname` | **Não** | Erro: "--yara-only is incompatible with -dname". |
+| `--append` | **Não** | Erro: "--yara-only is incompatible with --append". |
+| `--continue` | **Não** | Erro: "--yara-only is incompatible with --continue". |
+| `--restart` | **Não** | Erro: "--yara-only is incompatible with --restart". |
+| `-remove` | **Não** | Erro: "--yara-only is incompatible with -remove". |
+| `--portable` | Sim | Mantém o flag para o caso portátil. |
+| `--nogui` | Sim | Sem GUI; igual ao processamento normal. |
 
 ---
 
 ## Execution contract
 
-1. `Bootstrap` reconhece a flag, valida combinação, propaga via `CmdLineArgs.setYaraOnlyMode(true)`.
-2. JVM filha (`processing.Main`) recebe a flag; instancia o `Manager` em **modo de reaplicação**:
-   - Pula `DataSourceReader` (não ingere nova evidência).
-   - Abre o índice Lucene existente em **leitura-escrita**.
-   - Itera sobre o índice (em ordem do reader, paralelizada entre workers via `ProcessingQueues` adaptada para queue de doc IDs).
-   - Para cada `IItem` reconstruído (via `IndexItem.getItem(doc)`): executa **apenas** `YaraScanTask.process(item)`.
-   - Atualiza o documento Lucene com `IndexWriter.updateDocument(idTerm, newDoc)`, **substituindo integralmente** os campos `yara:*`.
-3. Métricas adicionais no log final: `yara.rerun.itemsProcessed`, `yara.rerun.itemsSkipped`, `yara.rerun.totalSeconds`.
+1. `Bootstrap` carrega a JVM filha normalmente; `CmdLineArgsImpl` (no processo filho) reconhece `--yara-only` via JCommander e valida combinações em `handleSpecificArgs()`.
+2. `Main.startManager()` detecta `cmdLineParams.isYaraOnly()` e **bypassa o `Manager`** — instancia `iped.engine.task.yara.YaraRerunRunner(caseRoot, ConfigurationManager.get())` diretamente. Princípio II honrado: nenhuma linha de `Manager`/`Worker`/`ProcessingQueues` é alterada.
+3. `YaraRerunRunner.run()`:
+   - Valida `caseRoot/iped/index` existe.
+   - Carrega `YaraConfig`; falha se `enableYara=false` ou catálogo vazio.
+   - Compila o catálogo via `YaraEngine.compileSources()` (mesma engine do flow normal).
+   - Abre `IndexWriter` direto sobre o `caseRoot/iped/index` em `OpenMode.APPEND`.
+   - Constrói uma `IPEDSource(caseRoot, writer)` (writer compartilhado evita conflito de lock).
+   - Itera por `LeafReaderContext` do `DirectoryReader.open(writer)` (Lucene NRT).
+   - Para cada doc vivo: reconstrói o `IItem` via `IndexItem.getItem(doc, source, false)`.
+   - Aplica o pipeline equivalente ao `YaraScanTask.process()` (gate `scanAllItems`, `maxFileSizeBytes`, scan via `YaraScanner`, persiste `yara:*` via `setExtraAttribute`).
+   - Apenas itens que **tinham yara:* no doc antigo** OU **ganharam matches no run atual** chamam `IndexWriter.updateDocument(idTerm, newDoc)`. Itens sem yara antes e sem yara depois ficam intocados — economiza escrita no índice.
+   - O `idTerm` é `new Term(IndexItem.ID, <ID-do-doc>)` — chave única por source. Substituição integral garante limpeza de matches "fantasma" de catálogos antigos.
+4. Métricas no log final via `RerunStats`: `itemsScanned`, `itemsWithMatches`, `itemsUpdated`, `itemsSkipped` (= size + no-stream + error), `totalSeconds`.
 
 ---
 
@@ -50,10 +62,8 @@ Combinações com flags de processamento de caso (`-i`, `-dname`, `-profile`) **
 | Code | Significado |
 |---|---|
 | 0 | Rerun concluído com sucesso (mesmo que zero itens tenham casado). |
-| 1 | Erro de validação de flags (combinação inválida, caso inexistente). |
-| 2 | YARA engine indisponível (libyara ausente) ou catálogo vazio. Log explica. |
-| 3 | Erro fatal de I/O no índice Lucene (e.g., lock contendido). |
-| ≥ 10 | Erros propagados do `Manager`. |
+| 1 | Erro de validação de flags (combinação inválida, caso inexistente, etc.) — `IPEDException` lançado em `CmdLineArgsImpl.handleSpecificArgs()`. |
+| 1 | `IPEDException` propagado pelo `YaraRerunRunner.run()`: engine YARA-X indisponível, catálogo vazio, `enableYara=false`, índice corrompido, lock contendido, etc. *(Main.startManager() captura via o catch existente de `Throwable` e seta `success=false`, resultando em `System.exit(1)`.)* |
 
 ---
 

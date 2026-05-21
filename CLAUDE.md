@@ -71,7 +71,7 @@ Dependências de terceiros completas: [`ThirdParty.txt`](ThirdParty.txt).
 - **Versão**: `4.4.0-SNAPSHOT` no parent; modules herdam.
 - **Branch padrão**: `master` (instável, dev). Releases nas tags.
 - **Locale**: detectado por `LocaleResolver` (lê system property `iped-locale`). Mensagens em PT-BR e EN; arquivos em `iped-app/resources/localization/`.
-- **Javadocs**: muitos em **português brasileiro** (legado). Mantenha o idioma do arquivo ao editar.
+- **Idioma do código**: todo **código novo** (Java, JS, Python, XML, properties) **DEVE** ser comentado e documentado em **inglês** — Javadocs, comentários, mensagens de log, exceções técnicas. Constituição v1.1.0 §"Fluxo de Desenvolvimento" item 2. Javadocs/comentários PT-BR no código legado **podem permanecer**; ao reescrever substancialmente uma região, traduzir o comentário/Javadoc afetado no mesmo PR. Strings visíveis ao usuário final continuam regidas pelo Princípio III (bundles em `iped-app/resources/localization/`, PT-BR + EN).
 - **Codificação**: SEMPRE explicita charset. UTF-8 para texto; ISO-8859-1 para nomes NTFS antigos.
 - **Logging**: SLF4J + Log4j 2 (`Log4j2Configuration*.xml` em `conf/`). Sem `System.out`/`err`.
 - **Threading**: cada `Worker` do engine roda sozinho; tasks têm instância por worker. Swing na EDT; JavaFX em `Platform.runLater`.
@@ -113,7 +113,7 @@ iped-<version>/
 │   └── iped-hashdb.jar              # main: iped.engine.hashdb.HashDBTool
 ├── conf/                             # configurações editáveis
 ├── localization/                     # bundles
-├── tools/                            # ferramentas externas (Sleuthkit, Tesseract, ImageMagick, LibreOffice, ...)
+├── tools/                            # ferramentas externas (Sleuthkit, Tesseract, ImageMagick, LibreOffice, yara-x, ...)
 ├── scripts/                          # tasks JS/Python
 ├── models/                           # modelos AI (DIE, NSFW, Vosk)
 ├── jre/                              # JRE embutido (Windows)
@@ -122,7 +122,7 @@ iped-<version>/
 ```
 
 CLI principais (entry points):
-- `iped.app.bootstrap.Bootstrap` — processamento de caso (CLI).
+- `iped.app.bootstrap.Bootstrap` — processamento de caso (CLI). Flags principais: `-d`/`-data` (datasource), `-o`/`-output` (saída), `-profile` (forensic/pedo/triage/fastmode/blind), `--append`/`--continue`/`--restart`, `--yara-only` (reaplica YARA-X sobre caso pronto sem reprocessar — ver `iped-engine/CLAUDE.md` §22 e `specs/001-yara-rules-engine/contracts/cli-yara-only.contract.md`).
 - `iped.app.bootstrap.BootstrapUI` — UI de busca/análise.
 - `iped.engine.webapi.Main` — Web API.
 - `iped.engine.hashdb.HashDBTool` — ferramenta de base de hashes.
@@ -145,6 +145,8 @@ IItem (lazy IO)  →  SignatureTask  →  HashTask  →  ParsingTask
                             ParsingTask → subitens (zip, email, ...)
                                                        ↓
                                   CarverTask (Aho-Corasick + assinaturas)
+                                                       ↓
+                                  YaraScanTask (regras YARA-X)
                                                        ↓
                             RegexTask / NER / LanguageDetect
                                                        ↓
@@ -186,6 +188,7 @@ Tudo configurável por `conf/IPEDConfig.txt`, `conf/TaskInstaller.xml`, `conf/*.
 | Scripts customizados | `iped-app/resources/scripts/tasks/*.{js,py}` |
 | Hash DB (NSRL/ProjectVic) | `iped-app/resources/config/conf/HashDBLookupConfig.txt` + base externa |
 | Categorias | `CategoriesConfig.json`, `CategoriesToExpand.txt`, `CategoriesToExport.txt` |
+| Regras YARA (catálogo + limites) | `iped-app/resources/config/conf/YaraConfig.txt` (canônico) + `profiles/{forensic,pedo}/conf/YaraConfig.txt` (overrides). Engine nativa em `tools/yara-x/<os>/`. Ver `specs/001-yara-rules-engine/` e `iped-engine/CLAUDE.md` §22. |
 
 ## 10. Onde editar código
 
@@ -198,6 +201,7 @@ Tudo configurável por `conf/IPEDConfig.txt`, `conf/TaskInstaller.xml`, `conf/*.
 | Novo formato a recuperar via carving | `iped-carvers/iped-carvers-impl` + `CarverConfig.xml` |
 | Nova fonte de dados (DataSourceReader) | `iped-engine/.../datasource/` |
 | Nova task no pipeline | `iped-engine/.../task/` + `TaskInstaller.xml` |
+| Lógica de match YARA / engine YARA-X | `iped-engine/.../task/yara/` (subpacote dedicado: `YaraScanTask`, `YaraEngine` JNA, `YaraScanner`, `YaraRulesetLoader`, `YaraReportRenderer`, `YaraRerunRunner`) |
 | Novo Configurable | `iped-engine/.../config/` |
 | Novo endpoint REST | `iped-engine/.../webapi/` |
 | UI principal (gallery, filtros, bookmarks, timeline) | `iped-app` |
@@ -241,6 +245,7 @@ Tudo configurável por `conf/IPEDConfig.txt`, `conf/TaskInstaller.xml`, `conf/*.
 ## 13. Histórico recente (alta-frequência)
 
 Recentes (top `git log`):
+- **`spec 001-yara-rules-engine` (4.4.0)** — adicionada engine de regras YARA-X via `libyara-x-capi` 1.16.0 (JNA, in-process). Nova `YaraScanTask` no pipeline (entre carving e indexação), faceta UI dedicada, integração no HTML report, modo `--yara-only` para reaplicar catálogo sobre caso já processado. Ver `iped-engine/CLAUDE.md` §22 + `specs/001-yara-rules-engine/`.
 - `#2873` — fix python warnings (escapes).
 - `#2874` `#2875` — fix shutdown JavaFX (race condition em `EmbeddedScene/GlassScene`).
 - `#2857` — corrige parsing de chats Telegram; otimiza query; recupera msgs sem chat via tabela `media`.

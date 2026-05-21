@@ -120,22 +120,23 @@ public abstract class AbstractTask {
 | 8 | `PhotoDNATask` / `PhotoDNALookup` | PhotoDNA + consulta NCMEC. |
 | 9 | `ParsingTask` | Extração de texto/metadata via Tika; expande containers. |
 | 10 | `CarverTask` / `KnownMetCarveTask` / `LedCarveTask` | Recupera arquivos por assinatura. |
-| 11 | `SetCategoryTask` | Atribui categorias. |
-| 12 | `LanguageDetectTask` | Detecção de idioma (>70). |
-| 13 | `NamedEntityTask` | NER via Tika + Stanford NLP. |
-| 14 | `RegexTask` | CPF/CNPJ/cartões/bitcoin/... (com validators plugáveis). |
-| 15 | `ImageThumbTask` / `VideoThumbTask` / `DocThumbTask` | Geração de thumbnails. |
-| 16 | `ImageSimilarityTask`, `DIETask`, `RemoteImageClassifierTask` | IA visual. |
-| 17 | `MakePreviewTask` | Previews para repositório (MinIO/FS). |
-| 18 | `AudioTranscriptTask` (Vosk/Whisper/Google/Microsoft) | Transcrição. |
-| 19 | `JumpListTask`, `EmbeddedDiskProcessTask`, `DuplicateTask`, `EntropyTask`, `QRCodeTask` | Análises auxiliares. |
-| 20 | **`IndexTask`** | Cria `Document` Lucene e adiciona ao `IndexWriter`. |
-| 21 | `ElasticSearchIndexTask` | (opcional) indexa em paralelo no OpenSearch/ES. |
-| 22 | `GraphTask` | Constrói grafo Neo4j. |
-| 23 | `HTMLReportTask`, `ExportFileTask`, `ExportCSVTask` | Relatórios finais. |
-| 24 | `ScriptTask`, `PythonTask` | Tarefas customizadas. |
-| 25 | `MinIOTask` | Upload para storage. |
-| 26 | `P2PBookmarker` | Bookmarks automáticos de P2P. |
+| 11 | `YaraScanTask` | Aplica regras YARA-X (via `libyara-x-capi` em `tools/yara-x/`) ao conteúdo binário. Roda **após carving** para ver subitems carved e **antes do `IndexTask`** para que `yara:rule`/`yara:tag`/`yara:matches` entrem no documento Lucene. Ver §22. |
+| 12 | `SetCategoryTask` | Atribui categorias. |
+| 13 | `LanguageDetectTask` | Detecção de idioma (>70). |
+| 14 | `NamedEntityTask` | NER via Tika + Stanford NLP. |
+| 15 | `RegexTask` | CPF/CNPJ/cartões/bitcoin/... (com validators plugáveis). |
+| 16 | `ImageThumbTask` / `VideoThumbTask` / `DocThumbTask` | Geração de thumbnails. |
+| 17 | `ImageSimilarityTask`, `DIETask`, `RemoteImageClassifierTask` | IA visual. |
+| 18 | `MakePreviewTask` | Previews para repositório (MinIO/FS). |
+| 19 | `AudioTranscriptTask` (Vosk/Whisper/Google/Microsoft) | Transcrição. |
+| 20 | `JumpListTask`, `EmbeddedDiskProcessTask`, `DuplicateTask`, `EntropyTask`, `QRCodeTask` | Análises auxiliares. |
+| 21 | **`IndexTask`** | Cria `Document` Lucene e adiciona ao `IndexWriter`. |
+| 22 | `ElasticSearchIndexTask` | (opcional) indexa em paralelo no OpenSearch/ES. |
+| 23 | `GraphTask` | Constrói grafo Neo4j. |
+| 24 | `HTMLReportTask`, `ExportFileTask`, `ExportCSVTask` | Relatórios finais. |
+| 25 | `ScriptTask`, `PythonTask` | Tarefas customizadas. |
+| 26 | `MinIOTask` | Upload para storage. |
+| 27 | `P2PBookmarker` | Bookmarks automáticos de P2P. |
 
 A ordem real vive em `iped-app/resources/config/conf/TaskInstaller.xml` e nos profiles (`profiles/{forensic,pedo,triage,fastmode,blind}/`).
 
@@ -165,7 +166,7 @@ public class MyTaskConfig extends AbstractTaskConfig<String> {
 ### Configurações relevantes (~80 classes em `iped/engine/config/`)
 - **Pipeline/Engine**: `Configuration`, `LocalConfig`, `AnalysisConfig`, `ProcessingPriorityConfig`, `TaskInstallerConfig`, `PluginConfig`.
 - **I/O & Sleuthkit**: `FileSystemConfig` (`numberOfImageReaders`).
-- **Tasks**: `HashTaskConfig`, `IndexTaskConfig`, `ParsingTaskConfig`, `SignatureConfig`, `CategoryConfig`, `CarverTaskConfig`, `OCRConfig`, `RegexConfigurable`, `AudioTranscriptConfig`, `ImageThumbTaskConfig`, `VideoThumbsConfig`, `DocThumbTaskConfig`, `MakePreviewConfig`, `HTMLReportTaskConfig`, `PhotoDNAConfig`, `FaceRecognitionConfig`, `AgeEstimationConfig`, `DIEConfig`, `CSAMDetectorConfig`, `MinIOConfig`, `ElasticSearchTaskConfig`, `HashDBLookupConfig`.
+- **Tasks**: `HashTaskConfig`, `IndexTaskConfig`, `ParsingTaskConfig`, `SignatureConfig`, `CategoryConfig`, `CarverTaskConfig`, `OCRConfig`, `RegexConfigurable`, `AudioTranscriptConfig`, `ImageThumbTaskConfig`, `VideoThumbsConfig`, `DocThumbTaskConfig`, `MakePreviewConfig`, `HTMLReportTaskConfig`, `PhotoDNAConfig`, `FaceRecognitionConfig`, `AgeEstimationConfig`, `DIEConfig`, `CSAMDetectorConfig`, `MinIOConfig`, `ElasticSearchTaskConfig`, `HashDBLookupConfig`, `YaraConfig`.
 - **UI**: `LocaleConfig`, `SplashScreenConfig`.
 - **AI/Graph**: `AIFiltersConfig`, `RemoteImageClassifierConfig`, `NamedEntityRecognitionConfig`.
 
@@ -429,7 +430,73 @@ Registro:
 ❌ Não assuma ordem de tasks — sempre marque dependências em `TaskInstaller.xml`.  
 ❌ Não bloqueie threads de worker em I/O lento sem timeout (regressão de throughput).
 
-## 22. Checklist de PR
+## 22. YARA Rules Engine (subpacote `iped.engine.task.yara`)
+
+Feature adicionada na release 4.4.0 — ver `specs/001-yara-rules-engine/`.
+
+### Componentes
+
+| Classe | Responsabilidade |
+|---|---|
+| `YaraConfig` (em `iped.engine.config`) | `AbstractTaskPropertiesConfig` que lê `conf/YaraConfig.txt`: `ruleDirectories`, `maxFileSizeBytes`, `perItemTimeoutMs`, `scanAllItems`, `matchHexMaxBytes`, `engineLibraryHint`. Enable property: `enableYara` em `IPEDConfig.txt`. |
+| `YaraEngine` | Bindings JNA finos para `libyara-x-capi` (YARA-X 1.16.0). API mínima: `ensureAvailable/compileSources/createScanner/close`. Lib carregada via `Native.load("yara_x_capi", LibYaraX.class)` a partir de `tools/yara-x/<os>/`. |
+| `YaraScanner` | Per-worker wrapper `AutoCloseable` em torno de `YRX_SCANNER*`. Instala callback uma vez na construção, reusa entre `scan()` calls. **Não é thread-safe** (cada worker tem o seu). |
+| `YaraRulesetLoader` | Descoberta recursiva determinística de `.yar`/`.yara` nos `ruleDirectories`. Pré-compilados (`.yarc`) fora de escopo na v1. |
+| `YaraMatch` / `MatchedString` | POJOs imutáveis representando um match (namespace, name, tags, meta, matched-strings). |
+| `YaraMatchSerializer` | Round-trip JSON do conjunto de matches por item. Ordenação determinística; truncamento de hex via `matchHexMaxBytes`. |
+| `YaraScanTask` (em `iped.engine.task.yara`) | `AbstractTask` que: (a) shared-init via `synchronized` sobre `AtomicBoolean` (compila o catálogo uma vez), (b) per-worker `YaraScanner`, (c) `process(IItem)` aplica gate de elegibilidade (R-06), respeita `maxFileSizeBytes`/`perItemTimeoutMs`, persiste `ExtraProperties.YARA_RULE`/`YARA_TAGS`/`YARA_MATCH_DETAIL`. |
+| `YaraReportRenderer` | Renderiza o JSON de `yara:matches` como HTML estruturado e HTML-safe para inclusão pelo `HTMLReportTask` (FR-010). |
+| `YaraRerunRunner` | Caminho de `--yara-only`: reaplica o catálogo atual sobre um caso já processado **bypassando o `Manager`** (sem `ProcessingQueues`/`Worker`); abre `IndexWriter` em `OpenMode.APPEND`, itera por `LeafReaderContext` do `DirectoryReader.open(writer)`, reconstrói `IItem` via `IndexItem.getItem`, e atualiza apenas docs com mudança de estado YARA via `IndexWriter.updateDocument(idTerm, newDoc)`. Single-threaded na v1. |
+
+### Ciclo de vida da engine nativa
+
+1. **Process-wide bootstrap**: `YaraEngine.ensureAvailable(hint)` chama `Native.load(...)` na primeira invocação. Idempotente, sincronizado.
+2. **Por catálogo (shared init)**: `YaraScanTask.init()` em `synchronized(initialized)` chama `YaraRulesetLoader.discover` + `YaraEngine.compileSources` UMA vez. O `YRX_RULES*` resultante é compartilhado read-only entre workers.
+3. **Por worker**: cada instância de `YaraScanTask` cria seu próprio `YaraScanner` via `engine.createScanner()`.
+4. **Por item**: `scanner.scan(buffer, len, timeout)` no hot path. O scanner zera a lista de matches antes do scan e reusa o `YRX_SCANNER*`.
+5. **Shutdown**: `YaraScanTask.finish()` destrói o scanner per-worker; o último worker chama `engine.close()` (libera `YRX_RULES*`).
+
+### Hooks de configuração
+
+- `enableYara = true|false` em `IPEDConfig.txt` ou em profiles (`forensic`/`pedo` default `true`; `triage`/`fastmode`/`blind` default `false`).
+- `conf/YaraConfig.txt` (canônico) + `profiles/<X>/conf/YaraConfig.txt` (overrides).
+- Bin nativo em `tools/yara-x/{win64,linux64}/`. Linux ainda precisa de build from source (`cargo build -p yara-x-capi --release` — ver `tools/yara-x/README.md`).
+- Faceta UI: `ColumnsManager.updateDinamicFields()` agrupa campos com prefixo `yara:` sob a label `ColumnsManager.Yara`.
+
+### `--yara-only` (rerun)
+
+Modo CLI para reaplicar o catálogo atual sobre um caso já processado sem reprocessar o pipeline completo:
+
+```text
+iped --yara-only -o <CASE_OUTPUT_DIR>
+```
+
+- Implementado em `YaraRerunRunner` (não no `Manager`).
+- Combinações rejeitadas: `-d`, `-dname`, `--append`, `--continue`, `--restart`, `-remove`.
+- Métricas: `RerunStats.itemsScanned/itemsWithMatches/itemsUpdated/itemsSkipped*/totalMillis`.
+
+### Testes (`iped-engine/src/test/.../yara/` + `iped-engine/src/test/.../config/YaraConfigTest.java`)
+
+| Classe | Cobertura |
+|---|---|
+| `YaraConfigTest` | 19 testes (parsing K/M/G suffixes, validation, defaults). |
+| `YaraRulesetLoaderTest` | 9 testes (discovery recursiva, case-insensitive, ignora .yarc, etc.). |
+| `YaraMatchSerializerTest` | 10 testes (JSON round-trip, ordering, truncamento, forward-compat). |
+| `YaraEngineTest` | 5 testes integration-gated (`assumeTrue` em `libyara-x-capi`). |
+| `YaraScanTaskIntegrationTest` | 6 testes integration-gated end-to-end do task. |
+| `YaraReportRendererTest` | 10 testes (HTML escape, ordering, ellipse em truncated). |
+| `YaraRerunRunnerTest` | 4 testes (validation paths; E2E full fica como manual). |
+
+Para rodar a suite YARA contra a libyara-x-capi real:
+
+```powershell
+$env:YARA_X_LIB_PATH = "$PWD\tools\yara-x\win64\yara_x_capi.dll"
+mvn -pl iped-engine -Dtest='Yara*' test
+```
+
+Sem a engine nativa, os testes `YaraEngineTest`/`YaraScanTaskIntegrationTest` skipam via `Assume`; os demais (sem dependência nativa) sempre rodam.
+
+## 23. Checklist de PR
 
 - [ ] Nova task tem `Config` correspondente (mesmo que minimal).
 - [ ] `IPEDConfig.txt` documenta a nova flag.
