@@ -77,10 +77,12 @@ import iped.engine.localization.Messages;
 import iped.engine.preview.PreviewConstants;
 import iped.engine.task.index.IndexItem;
 import iped.engine.task.video.VideoThumbTask;
+import iped.engine.task.yara.YaraReportRenderer;
 import iped.engine.util.UIPropertyListenerProvider;
 import iped.engine.util.Util;
 import iped.parsers.util.MetadataUtil;
 import iped.properties.BasicProps;
+import iped.properties.ExtraProperties;
 import iped.utils.ExternalImageConverter;
 import iped.utils.IOUtil;
 import iped.utils.ImageUtil;
@@ -726,11 +728,21 @@ public class HTMLReportTask extends AbstractTask {
             if (selectedProperties.contains(BasicProps.HASH))
                 fillItemProperty(it, item, Messages.getString("HTMLReportTask.ItemHash"), reg.hash);
 
-            // Fill extra properties
+            // Fill extra properties (skip yara:matches — rendered as a structured block below).
             for (String property : selectedProperties) {
-                if (!basicReportProps.contains(property)) { // filter for additional properties selected by the user
+                if (!basicReportProps.contains(property)
+                        && !ExtraProperties.YARA_MATCH_DETAIL.equals(property)) {
                     String propertyValue = ipedCase.getItemProperty(reg.evidenceId, property);
                     fillItemProperty(it, item, property, propertyValue);
+                }
+            }
+
+            // Render YARA matches as a structured (HTML-safe) block if the user selected the property.
+            if (selectedProperties.contains(ExtraProperties.YARA_MATCH_DETAIL)) {
+                String yaraJson = ipedCase.getItemProperty(reg.evidenceId, ExtraProperties.YARA_MATCH_DETAIL);
+                String yaraHtml = YaraReportRenderer.renderHtml(yaraJson);
+                if (yaraHtml != null) {
+                    fillItemProperty(it, item, Messages.getString("HTMLReportTask.YaraMatches"), yaraHtml);
                 }
             }
             if (selectedProperties.contains(IndexItem.ID_IN_SOURCE)) {
@@ -842,6 +854,8 @@ public class HTMLReportTask extends AbstractTask {
             replaceFirst(it, PROP_VALUE_PLACEHOLDER, propertyValue);
         }
     }
+
+    // YARA match rendering moved to iped.engine.task.yara.YaraReportRenderer (testable in isolation).
 
     private String getComments(String bookmark) {
         String comments = labelcomments.get(bookmark);

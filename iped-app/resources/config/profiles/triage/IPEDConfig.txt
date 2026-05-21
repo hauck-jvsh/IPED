@@ -6,6 +6,7 @@ enableHash = false
 enablePhotoDNA = false
 enableHashDBLookup = false
 enablePhotoDNALookup = false
+enableYara = false
 enableLedDie = false
 enableYahooNSFWDetection = false
 ignoreDuplicates = false

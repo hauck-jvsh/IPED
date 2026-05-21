@@ -5,3 +5,4 @@
 enableHashDBLookup = true
 enableAutomaticExportFiles = true
 enableCarving = true
+enableYara = false
