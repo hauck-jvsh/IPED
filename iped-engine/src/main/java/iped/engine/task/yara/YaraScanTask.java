@@ -84,7 +84,12 @@ public class YaraScanTask extends AbstractTask {
 
     @Override
     public List<Configurable<?>> getConfigurables() {
-        return Arrays.asList(ConfigurationManager.get().findObject(YaraConfig.class));
+        // IMPORTANT: this is called during Configuration.loadConfigurables BEFORE
+        // configurables are registered, so ConfigurationManager.findObject(...) would
+        // return null here. Build a fresh instance instead (same pattern as
+        // HashDBLookupTask, HashTask, etc.). The Manager then registers it and
+        // populates its fields; init(cm) below retrieves it via cm.findObject(...).
+        return Arrays.asList(new YaraConfig());
     }
 
     @Override

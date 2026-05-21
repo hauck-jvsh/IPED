@@ -96,10 +96,20 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /**
-     * Ativa a biblioteca nativa {@code libyara-x-capi}, opcionalmente usando
-     * {@code hint} como primeiro caminho a tentar. Idempotente.
+     * Activates the {@code libyara-x-capi} native library, optionally using
+     * {@code hint} as the first path to try. Idempotent.
      *
-     * @return {@code true} se a engine está disponível para uso.
+     * <p>Search order:</p>
+     * <ol>
+     *   <li>If {@code hint} points to an existing file, its parent directory is
+     *       prepended to JNA's search path.</li>
+     *   <li>The bundled {@code tools/yara-x/<os>/} folder inside the IPED release
+     *       is auto-detected from this class's code source location.</li>
+     *   <li>JNA falls back to its built-in paths ({@code jna.library.path},
+     *       classpath {@code <platform>/yara_x_capi.dll}, system library path).</li>
+     * </ol>
+     *
+     * @return {@code true} if the engine is available for use.
      */
     public static synchronized boolean ensureAvailable(String hint) {
         if (libraryAvailable) {
@@ -115,9 +125,14 @@ public final class YaraEngine implements AutoCloseable {
                     NativeLibrary.addSearchPath("yara_x_capi", hintFile.getParentFile().getAbsolutePath());
                 }
             }
-            // Força o link e qualquer falha vira UnsatisfiedLinkError aqui.
+            String autoDetected = detectBundledLibraryDir();
+            if (autoDetected != null) {
+                NativeLibrary.addSearchPath("yara_x_capi", autoDetected);
+                logger.debug("YARA-X: added native search path {}", autoDetected);
+            }
+            // Forces the link; any failure surfaces as UnsatisfiedLinkError here.
             LibYaraX lib = LibYaraX.INSTANCE;
-            // Chama uma função inócua para garantir que o linker resolveu o símbolo.
+            // Calls a harmless function to confirm the linker actually resolved the symbol.
             lib.yrx_last_error();
             libraryAvailable = true;
             logger.info("YARA-X engine loaded (platform: {})", Platform.RESOURCE_PREFIX);
@@ -130,6 +145,55 @@ public final class YaraEngine implements AutoCloseable {
             libraryLoadError = "libyara-x-capi init error: " + t.getMessage();
             logger.warn("YARA-X engine disabled — {}", libraryLoadError);
             return false;
+        }
+    }
+
+    /**
+     * Locates the bundled {@code libyara-x-capi} directory inside the IPED release
+     * tree (e.g. {@code <iped-root>/tools/yara-x/win64/}) by walking up from the
+     * iped-engine JAR location. Returns {@code null} when running outside a
+     * release (IDE / tests / Maven build), in which case the caller should rely
+     * on {@code jna.library.path} or {@code YARA_X_LIB_PATH} env var.
+     */
+    private static String detectBundledLibraryDir() {
+        try {
+            java.net.URL src = YaraEngine.class.getProtectionDomain().getCodeSource().getLocation();
+            if (src == null) {
+                return null;
+            }
+            File jarOrDir = new File(src.toURI());
+            // Release layout: <iped-root>/lib/iped-engine-<version>.jar
+            // Walk up two levels: jar -> lib -> <iped-root>.
+            File ipedRoot;
+            if (jarOrDir.isFile()) {
+                File libDir = jarOrDir.getParentFile();
+                if (libDir == null) {
+                    return null;
+                }
+                ipedRoot = libDir.getParentFile();
+            } else {
+                // Running from target/classes (dev/test); cannot autodetect.
+                return null;
+            }
+            if (ipedRoot == null) {
+                return null;
+            }
+            String subdir;
+            if (Platform.isWindows()) {
+                subdir = "win64";
+            } else if (Platform.isLinux()) {
+                subdir = "linux64";
+            } else {
+                return null;
+            }
+            File nativeDir = new File(ipedRoot, "tools/yara-x/" + subdir);
+            if (nativeDir.isDirectory()) {
+                return nativeDir.getAbsolutePath();
+            }
+            return null;
+        } catch (Throwable t) {
+            logger.debug("YARA-X: failed to autodetect bundled native dir: {}", t.toString());
+            return null;
         }
     }
 
