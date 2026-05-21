@@ -195,6 +195,12 @@ public class ExtraProperties {
     public static final String HASHDB_SET = HASHDB_PREFIX + SET_PROPERTY;
 
     /**
+     * Prefixo de namespace de todos os campos populados pela {@code YaraScanTask}.
+     * Usado pela UI para agrupá-los sob uma faceta dedicada.
+     */
+    public static final String YARA_PREFIX = "yara:"; //$NON-NLS-1$
+
+    /**
      * Identificador (namespace/nome) de cada regra YARA casada com o item.
      * Multi-valorado, indexado e armazenado no campo Lucene de mesmo nome.
      */
