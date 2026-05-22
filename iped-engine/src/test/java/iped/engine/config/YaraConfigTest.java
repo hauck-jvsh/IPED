@@ -154,4 +154,30 @@ public class YaraConfigTest {
     public void parseSizeWithSuffix_rejects_negative() {
         YaraConfig.parseSizeWithSuffix("-1");
     }
+
+    /* ${IPED_HOME} expansion -------------------------------------------- */
+
+    @Test
+    public void resolveRuleDir_without_iped_home_token_passes_through() {
+        // Bare path: no expansion, just wraps in File.
+        java.io.File f = YaraConfig.resolveRuleDir("yara-rules");
+        assertEquals("yara-rules", f.getPath());
+    }
+
+    @Test
+    public void resolveRuleDir_absolute_path_passes_through() {
+        String abs = new java.io.File(tmp.getRoot(), "rules").getAbsolutePath();
+        java.io.File f = YaraConfig.resolveRuleDir(abs);
+        assertEquals(abs, f.getAbsolutePath());
+    }
+
+    @Test
+    public void resolveRuleDir_iped_home_token_left_when_unresolved() {
+        // In a unit-test JVM, YaraInstallPaths.getIpedRoot() returns null
+        // (no release layout). The token should be left as-is so the caller
+        // sees a clear "directory does not exist" warning.
+        java.io.File f = YaraConfig.resolveRuleDir("${IPED_HOME}/yara-rules");
+        assertTrue("path should still contain the token when not running from a release: " + f.getPath(),
+                f.getPath().contains("${IPED_HOME}"));
+    }
 }

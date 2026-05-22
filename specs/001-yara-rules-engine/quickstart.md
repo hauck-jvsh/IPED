@@ -105,21 +105,25 @@ Gere o relatório (mesmo fluxo de sempre — `enableHtmlReport=true` em `IPEDCon
 
 ---
 
-## 6. Re-rodar YARA sobre o caso (sem reprocessar)
+## 6. Re-rodar YARA sobre o caso (sem ingerir nova evidência)
 
 Atualize `yara-rules/` com novas regras. Depois:
 
 ```powershell
-.\iped.exe --yara-only -o C:\cases\case-yara-demo
+.\iped.exe --yara-only -d D:\evidence\image.E01 -o C:\cases\case-yara-demo
 ```
 
 Comportamento (FR-011):
-- Pula `DataSourceReader` e o resto do pipeline (não toca a `YaraScanTask` de processamento normal).
-- Abre o índice Lucene existente em RW e itera por todos os documentos.
-- Para cada item que tinha ou ganhou matches, substitui o documento via `IndexWriter.updateDocument` — os campos `yara:rule`, `yara:tag`, `yara:matches` refletem exclusivamente o catálogo atual (sem mescla com runs anteriores).
-- Log final reporta `itemsScanned`, `itemsWithMatches`, `itemsUpdated`, `itemsSkipped` e `totalSeconds`.
+- `--yara-only` requer **tanto `-d` (datasource original) quanto `-o` (caso já processado)** — IPED precisa re-abrir o stream binário de cada item para a `YaraScanTask` poder escanear.
+- Implica `--continue` automaticamente: `SkipCommitedTask` carrega os `trackID`s já indexados, mas em modo `--yara-only` esses itens **continuam fluindo** pelo pipeline (não são marcados como `toIgnore`).
+- O pipeline completo roda também para itens commitados (necessário para que `IndexItem.Document(...)` gere docs com o mesmo schema da primeira ingestão; veja "histórico da v1" no [contracts/cli-yara-only.contract.md](contracts/cli-yara-only.contract.md)).
+- `IndexTask` detecta itens commitados em modo `--yara-only` e usa `IndexWriter.updateDocuments(Term(trackId), docs)` em vez de `addDocuments(...)` — apaga atomicamente todos os docs com aquele `trackId` (parent + fragmentos) e adiciona o bloco novo.
+- O resultado é que `yara:rule`/`yara:tag`/`yara:matches` refletem exclusivamente o catálogo atual (sem mescla com runs anteriores).
+- Log final é o resumo padrão do `Manager` (itens processados, indexados, etc.) + o `YaraScanTask scan summary:` rodando exatamente como num run normal.
 
-Combinações inválidas (`-d`, `-dname`, `--append`, `--continue`, `--restart`, `-remove`) são rejeitadas com exit code 1.
+**Tasks pesadas que o perito não queira re-rodar** (OCR, NER, transcrição, IA) devem ser desabilitadas em `IPEDConfig.txt` antes do `--yara-only`. Isso é manual: `--yara-only` honra o `enableX = ...` do config atual.
+
+Combinações inválidas (`--append`, `--restart`, `-remove`, ou `--continue` explícito) são rejeitadas com exit code 1.
 
 Contrato completo: [contracts/cli-yara-only.contract.md](contracts/cli-yara-only.contract.md).
 

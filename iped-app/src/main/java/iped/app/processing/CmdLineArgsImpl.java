@@ -125,7 +125,7 @@ public class CmdLineArgsImpl implements CmdLineArgs {
     @Parameter(names = "--downloadInternetData", description = "download Internet data to enrich evidence data processing. E.g. media files still available in WhatsApp servers and not found in the evidence")
     private boolean downloadInternetData;
 
-    @Parameter(names = "--yara-only", description = "rerun YARA-X over an already processed case (requires -o pointing at the case output dir). Skips DataSourceReader and the rest of the pipeline; only the yara:* fields in the existing Lucene index are updated. Incompatible with -d/-dname/--append/--continue/--restart.")
+    @Parameter(names = "--yara-only", description = "rerun the pipeline over an already processed case to refresh YARA-X matches in the existing Lucene index. Requires -d (the original datasource(s) so item content can be re-read) and -o (the case output dir). Implies --continue: committed items keep flowing through the pipeline so their full doc is rebuilt, and IndexTask updates them in place. Incompatible with --append/--restart/-remove/explicit --continue.")
     private boolean yaraOnly;
     
     @Parameter(names = { "-splash" }, description = "custom message to be shown in the splash screen")
@@ -223,7 +223,9 @@ public class CmdLineArgsImpl implements CmdLineArgs {
 
     @Override
     public boolean isContinue() {
-        return isContinue;
+        // --yara-only mode reuses the --continue infrastructure (SkipCommitedTask must
+        // load the committed trackIDs so IndexTask can decide between add and update).
+        return isContinue || yaraOnly;
     }
 
     @Override
@@ -412,21 +414,18 @@ public class CmdLineArgsImpl implements CmdLineArgs {
         Main.getInstance().dataSource = new ArrayList<File>();
 
         if (yaraOnly) {
-            // --yara-only opera sobre um caso já existente; rejeita combinações que
-            // tentem ingerir nova evidência, fundir, retomar ou recomeçar processamento.
-            // Ver specs/001-yara-rules-engine/contracts/cli-yara-only.contract.md.
-            if (datasources != null && !datasources.isEmpty()) {
+            // --yara-only refreshes YARA matches over an already processed case by
+            // re-feeding the original datasource(s) through the normal pipeline; the
+            // IndexTask then updates the existing documents in place. The flag implies
+            // --continue (SkipCommitedTask must load committed trackIDs so IndexTask
+            // knows which docs to update vs add) and rejects flags that conflict with
+            // that semantics. See specs/001-yara-rules-engine/contracts/cli-yara-only.contract.md.
+            if (datasources == null || datasources.isEmpty()) {
                 throw new ParameterException(
-                        "--yara-only does not accept new evidence input (drop -d/-data and -dname).");
-            }
-            if (dname != null && !dname.isEmpty()) {
-                throw new ParameterException("--yara-only is incompatible with -dname.");
+                        "--yara-only requires -d/-data pointing at the original datasource(s) so item content can be re-read.");
             }
             if (appendIndex) {
                 throw new ParameterException("--yara-only is incompatible with --append.");
-            }
-            if (isContinue) {
-                throw new ParameterException("--yara-only is incompatible with --continue.");
             }
             if (restart) {
                 throw new ParameterException("--yara-only is incompatible with --restart.");
@@ -434,17 +433,22 @@ public class CmdLineArgsImpl implements CmdLineArgs {
             if (evidenceToRemove != null) {
                 throw new ParameterException("--yara-only is incompatible with -remove.");
             }
+            if (isContinue) {
+                throw new ParameterException(
+                        "--yara-only already implies --continue; do not pass --continue explicitly.");
+            }
             if (outputDir == null) {
-                throw new ParameterException("--yara-only requires -o/--output pointing at the case directory.");
+                throw new ParameterException(
+                        "--yara-only requires -o/--output pointing at the existing case directory.");
             }
             if (!new File(outputDir, "iped").exists()) {
                 throw new IPEDException(
                         "--yara-only: the output folder does not contain a processed case (missing 'iped/' subfolder): "
                                 + outputDir.getAbsolutePath());
             }
-            // Curto-circuita o restante das validações (que dependem de datasources).
-            Main.getInstance().output = new File(outputDir, "iped");
-            return;
+            // Fall through to the standard -d handling — yara-only is processed as a
+            // normal continue run with the same -d, and IndexTask switches to update
+            // mode for items whose trackID is already committed.
         }
 
         if ((datasources == null || datasources.isEmpty()) && evidenceToRemove == null) {

@@ -15,9 +15,18 @@
 # compila o catálogo em runtime no startup do caso. Formatos pré-compilados
 # (.yarc do YARA clássico ou serialização própria do YARA-X) NÃO são aceitos
 # na v1; ver specs/001-yara-rules-engine/research.md §R-01.
+#
 # Múltiplos caminhos podem ser separados por ";" (Windows) ou ":" (Linux).
-# Caminhos relativos são interpretados a partir do diretório do release.
 # Quando vazio, a feature fica efetivamente desligada para o caso.
+#
+# Formas suportadas:
+#   - Caminho absoluto:     C:\rules\yara          ou  /opt/iped/rules
+#   - ${IPED_HOME} token:   ${IPED_HOME}/yara-rules   (recomendado — expande
+#                           para a raiz da instalação do IPED em runtime)
+#   - Caminho relativo:     yara-rules            (resolvido a partir do diretório
+#                           de trabalho do JVM; FUNCIONA quando o IPED é iniciado
+#                           pela sua pasta de instalação, frágil em outros casos
+#                           — prefira ${IPED_HOME}/...)
 ruleDirectories =
 
 # Limite máximo de tamanho por item a ser escaneado.

@@ -6,9 +6,3 @@ enableHashDBLookup = true
 enableQRCode = true
 enableCarving = true
 enableImageSimilarity = true
-
-# YARA-X scan. Drop your .yar/.yara rule files into the directory pointed by
-# conf/YaraConfig.txt (profile-local override at profiles/forensic/conf/YaraConfig.txt
-# overrides the canonical conf/YaraConfig.txt). When ruleDirectories is empty
-# the task disables itself with a WARN; no error.
-enableYara = true

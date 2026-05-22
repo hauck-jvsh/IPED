@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import iped.engine.task.yara.YaraInstallPaths;
 import iped.utils.UTF8Properties;
 
 /**
@@ -62,7 +63,7 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
             for (String entry : dirs.split("[;" + java.io.File.pathSeparator + "]")) {
                 String trimmed = entry.trim();
                 if (!trimmed.isEmpty()) {
-                    ruleDirectories.add(new File(trimmed));
+                    ruleDirectories.add(resolveRuleDir(trimmed));
                 }
             }
         }
@@ -107,6 +108,35 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
 
         String hint = properties.getProperty("engineLibraryHint");
         engineLibraryHint = (hint == null) ? "" : hint.trim();
+    }
+
+    /**
+     * Resolves a {@code ruleDirectories} entry to an absolute {@link File}:
+     * <ul>
+     *   <li>If the entry contains the literal {@code ${IPED_HOME}} token, replaces
+     *       it with the running IPED installation root (the directory that
+     *       contains {@code iped.jar}, {@code lib/}, {@code tools/}). When the
+     *       root cannot be detected (dev/test, IDE), the token is left as-is and
+     *       the path will likely fail discovery — caller gets a clear WARN.</li>
+     *   <li>Otherwise, the value is passed straight to {@code new File(...)}.
+     *       Bare relative paths (e.g. {@code "yara-rules"}) resolve against the
+     *       JVM working directory — works when IPED is started from its install
+     *       dir, fragile otherwise. Prefer {@code ${IPED_HOME}/...} or an
+     *       absolute path.</li>
+     * </ul>
+     */
+    static File resolveRuleDir(String raw) {
+        String resolved = raw;
+        if (resolved.contains("${IPED_HOME}")) {
+            File root = YaraInstallPaths.getIpedRoot();
+            if (root != null) {
+                resolved = resolved.replace("${IPED_HOME}", root.getAbsolutePath());
+            }
+            // If the root could not be detected, leave the placeholder in place;
+            // YaraRulesetLoader.discover will then log a clear "directory does
+            // not exist" warning citing the unexpanded path.
+        }
+        return new File(resolved);
     }
 
     /**

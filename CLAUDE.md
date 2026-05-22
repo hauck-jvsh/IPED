@@ -122,7 +122,7 @@ iped-<version>/
 ```
 
 CLI principais (entry points):
-- `iped.app.bootstrap.Bootstrap` — processamento de caso (CLI). Flags principais: `-d`/`-data` (datasource), `-o`/`-output` (saída), `-profile` (forensic/pedo/triage/fastmode/blind), `--append`/`--continue`/`--restart`, `--yara-only` (reaplica YARA-X sobre caso pronto sem reprocessar — ver `iped-engine/CLAUDE.md` §22 e `specs/001-yara-rules-engine/contracts/cli-yara-only.contract.md`).
+- `iped.app.bootstrap.Bootstrap` — processamento de caso (CLI). Flags principais: `-d`/`-data` (datasource), `-o`/`-output` (saída), `-profile` (forensic/pedo/triage/fastmode/blind), `--append`/`--continue`/`--restart`, `--yara-only` (refresca `yara:*` sobre um caso pronto; requer `-d`+`-o`, implica `--continue`; `SkipCommitedTask` deixa itens commitados fluindo e `IndexTask` os atualiza via `updateDocuments`. Ver `iped-engine/CLAUDE.md` §22 + `specs/001-yara-rules-engine/contracts/cli-yara-only.contract.md`).
 - `iped.app.bootstrap.BootstrapUI` — UI de busca/análise.
 - `iped.engine.webapi.Main` — Web API.
 - `iped.engine.hashdb.HashDBTool` — ferramenta de base de hashes.
@@ -201,7 +201,7 @@ Tudo configurável por `conf/IPEDConfig.txt`, `conf/TaskInstaller.xml`, `conf/*.
 | Novo formato a recuperar via carving | `iped-carvers/iped-carvers-impl` + `CarverConfig.xml` |
 | Nova fonte de dados (DataSourceReader) | `iped-engine/.../datasource/` |
 | Nova task no pipeline | `iped-engine/.../task/` + `TaskInstaller.xml` |
-| Lógica de match YARA / engine YARA-X | `iped-engine/.../task/yara/` (subpacote dedicado: `YaraScanTask`, `YaraEngine` JNA, `YaraScanner`, `YaraRulesetLoader`, `YaraReportRenderer`, `YaraRerunRunner`) |
+| Lógica de match YARA / engine YARA-X | `iped-engine/.../task/yara/` (subpacote dedicado: `YaraScanTask`, `YaraEngine` JNA, `YaraScanner`, `YaraRulesetLoader`, `YaraReportRenderer`, `YaraInstallPaths`). O modo `--yara-only` é orquestrado pelo `Manager` normal — branches específicas vivem em `SkipCommitedTask` + `IndexTask`. |
 | Novo Configurable | `iped-engine/.../config/` |
 | Novo endpoint REST | `iped-engine/.../webapi/` |
 | UI principal (gallery, filtros, bookmarks, timeline) | `iped-app` |

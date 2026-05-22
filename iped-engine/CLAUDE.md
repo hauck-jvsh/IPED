@@ -446,7 +446,7 @@ Feature adicionada na release 4.4.0 — ver `specs/001-yara-rules-engine/`.
 | `YaraMatchSerializer` | Round-trip JSON do conjunto de matches por item. Ordenação determinística; truncamento de hex via `matchHexMaxBytes`. |
 | `YaraScanTask` (em `iped.engine.task.yara`) | `AbstractTask` que: (a) shared-init via `synchronized` sobre `AtomicBoolean` (compila o catálogo uma vez), (b) per-worker `YaraScanner`, (c) `process(IItem)` aplica gate de elegibilidade (R-06), respeita `maxFileSizeBytes`/`perItemTimeoutMs`, persiste `ExtraProperties.YARA_RULE`/`YARA_TAGS`/`YARA_MATCH_DETAIL`. |
 | `YaraReportRenderer` | Renderiza o JSON de `yara:matches` como HTML estruturado e HTML-safe para inclusão pelo `HTMLReportTask` (FR-010). |
-| `YaraRerunRunner` | Caminho de `--yara-only`: reaplica o catálogo atual sobre um caso já processado **bypassando o `Manager`** (sem `ProcessingQueues`/`Worker`); abre `IndexWriter` em `OpenMode.APPEND`, itera por `LeafReaderContext` do `DirectoryReader.open(writer)`, reconstrói `IItem` via `IndexItem.getItem`, e atualiza apenas docs com mudança de estado YARA via `IndexWriter.updateDocument(idTerm, newDoc)`. Single-threaded na v1. |
+| _`--yara-only` rerun (via `SkipCommitedTask` + `IndexTask`)_ | Caminho de re-aplicação do catálogo sobre um caso já processado: passa pelo `Manager` normal (FR-011 redesenhado). `SkipCommitedTask` em modo `yara-only` marca itens commitados com `IS_COMMITTED=true` mas **NÃO** chama `setToIgnore(true)` — os itens seguem o pipeline. `IndexTask`, ao final, detecta `isAlreadyCommited && cmdArgs.isYaraOnly()` e usa `worker.writer.updateDocuments(new Term(IndexItem.TRACK_ID, Util.getTrackID(item)), docs)` em vez de `addDocuments`. A classe standalone `YaraRerunRunner` da v1 foi removida porque o ciclo `Document → IItem → Document` não é round-trip-safe (NPE em `setName` de docs-fragmento, conflito `SORTED` vs `SORTED_SET` em metadados multi-valor). |
 
 ### Ciclo de vida da engine nativa
 
@@ -465,15 +465,20 @@ Feature adicionada na release 4.4.0 — ver `specs/001-yara-rules-engine/`.
 
 ### `--yara-only` (rerun)
 
-Modo CLI para reaplicar o catálogo atual sobre um caso já processado sem reprocessar o pipeline completo:
+Modo CLI para refrescar `yara:*` num caso já processado, mantendo os demais campos do índice consistentes.
 
 ```text
-iped --yara-only -o <CASE_OUTPUT_DIR>
+iped --yara-only -d <DATASOURCE> -o <CASE_OUTPUT_DIR>
 ```
 
-- Implementado em `YaraRerunRunner` (não no `Manager`).
-- Combinações rejeitadas: `-d`, `-dname`, `--append`, `--continue`, `--restart`, `-remove`.
-- Métricas: `RerunStats.itemsScanned/itemsWithMatches/itemsUpdated/itemsSkipped*/totalMillis`.
+- **Requer `-d` e `-o`**: o datasource original é necessário porque a `YaraScanTask` escaneia bytes; sem ele, não há fluxo de conteúdo.
+- Implica `--continue` automaticamente (`CmdLineArgsImpl.isContinue()` retorna `true` quando `yaraOnly`).
+- Pipeline completo roda também para itens commitados — alteração mínima em duas tasks:
+  - `SkipCommitedTask.process(IItem)`: em modo `yara-only`, marca `IS_COMMITTED=true` mas pula `setToIgnore(true)`.
+  - `IndexTask.process(IItem)`: detecta `isAlreadyCommited && cmdArgs.isYaraOnly()` e usa `updateDocuments(new Term(TRACK_ID, ...), docs)` no lugar de `addDocuments(...)`.
+- Combinações rejeitadas: `--append`, `--restart`, `-remove`, `--continue` explícito.
+- Pre-check: `Main.startManager()` falha rápido se `enableYara=false` (evitaria `updateDocuments` apagar `yara:*` sem reescrever).
+- Histórico: a v1 standalone (`YaraRerunRunner`) foi removida — o round-trip `Document → IItem → Document` quebrou em produção (NPE/schema conflict).
 
 ### Testes (`iped-engine/src/test/.../yara/` + `iped-engine/src/test/.../config/YaraConfigTest.java`)
 
@@ -485,7 +490,7 @@ iped --yara-only -o <CASE_OUTPUT_DIR>
 | `YaraEngineTest` | 5 testes integration-gated (`assumeTrue` em `libyara-x-capi`). |
 | `YaraScanTaskIntegrationTest` | 6 testes integration-gated end-to-end do task. |
 | `YaraReportRendererTest` | 10 testes (HTML escape, ordering, ellipse em truncated). |
-| `YaraRerunRunnerTest` | 4 testes (validation paths; E2E full fica como manual). |
+| _(removido)_ | A v1 `YaraRerunRunnerTest` foi deletada junto com o `YaraRerunRunner`; o caminho atual `--yara-only` (via Manager + `SkipCommitedTask` + `IndexTask`) é validado por execução manual ([specs/001-yara-rules-engine/quickstart.md §6](../specs/001-yara-rules-engine/quickstart.md)). |
 
 Para rodar a suite YARA contra a libyara-x-capi real:
 

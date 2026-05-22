@@ -14,9 +14,3 @@ enableImageSimilarity = true
 enableFaceRecognition = true
 enableAgeEstimation = true
 enableRemoteImageClassifier = true
-
-# YARA-X scan. Drop CSAM-focused IOC rule files (.yar/.yara) into the directory
-# pointed by conf/YaraConfig.txt (profile-local override at
-# profiles/pedo/conf/YaraConfig.txt). When ruleDirectories is empty the task
-# disables itself with a WARN; no error.
-enableYara = true
