@@ -53,7 +53,7 @@ Adicionar uma engine de regras YARA integrada ao pipeline do IPED, permitindo qu
 - Charset sempre explícito UTF-8 (Princípio IV).
 - `Configurable` para tudo que o perito ajusta (Princípio III).
 - Threading: uma instância de task por worker, estado global em `caseData.objectMap`, cleanup em `finish()` (Princípio V).
-- Não tocar `Manager`, `Worker`, `ProcessingQueues`, `IndexWriter`, `AppAnalyzer` (Princípio I/II) além do necessário para reconhecer o modo `--yara-only` (extensão minimalista do CLI parser).
+- Não tocar `Manager`, `Worker`, `ProcessingQueues`, `IndexWriter`, `AppAnalyzer` (Princípio I/II). O modo `--yara-only` toca **apenas** o CLI parser (`CmdLineArgsImpl`) + uma branch mínima em `SkipCommitedTask.process` (não chamar `setToIgnore` quando yaraOnly) + uma branch mínima em `IndexTask.process` (usar `updateDocuments` em vez de `addDocuments` quando o item é commitado em yaraOnly). Ver Complexity Tracking.
 - Toda string visível ao usuário em `iped-app/resources/localization/` PT-BR + EN (Princípio III).
 - Native libs em `tools/yara-x/<os>/` — não no `PATH` do sistema (constituição: "Restrições de Build").
 
@@ -71,7 +71,7 @@ Cada princípio da constituição (`.specify/memory/constitution.md` v1.0.0) é 
 | # | Princípio | Status | Evidência no design |
 |---|---|---|---|
 | I | Estabilidade da API Pública (NÃO-NEGOCIÁVEL) | **PASS** | `iped-api` recebe apenas **adições** em `ExtraProperties` (constantes novas `YARA_RULE`, `YARA_TAGS`, `YARA_MATCH_DETAIL`). Nenhuma chave Lucene existente é renomeada. `BasicProps`, `IndexItem`, `AppAnalyzer`, `iped-ahocorasick` **não são tocados**. |
-| II | Extensão Modular em vez de Modificação | **PASS** | Feature entregue como **nova `AbstractTask`** (`YaraScanTask`) + entrada em `TaskInstaller.xml`. Nenhuma task existente é alterada. Não há ramificação condicional em `Manager`/`Worker` — só o reconhecimento de uma nova flag CLI `--yara-only` em `Bootstrap` (única exceção, justificada na seção "Complexity Tracking"). |
+| II | Extensão Modular em vez de Modificação | **PASS (com 2 desvios)** | Feature entregue como **nova `AbstractTask`** (`YaraScanTask`) + entrada em `TaskInstaller.xml`. Nenhuma task existente é alterada **no fluxo normal**. Não há ramificação condicional em `Manager`/`Worker`. As únicas exceções: (a) `CmdLineArgsImpl` reconhece a nova flag CLI `--yara-only`; (b) `SkipCommitedTask` ganha uma branch que pula `setToIgnore` quando `yaraOnly`; (c) `IndexTask` ganha uma branch que troca `addDocuments` por `updateDocuments` quando o item é commitado em modo `yaraOnly`. Ambas as branches (b)/(c) foram introduzidas no rev-2 do `--yara-only` (2026-05-22) após a v1 standalone falhar — ver Complexity Tracking + research.md §R-08. |
 | III | Configuração antes de Código | **PASS** | Tudo ajustável vive em `YaraConfig.txt` (novo `Configurable<UTF8Properties>`) e em `IPEDConfig.txt` (flag `enableYara`). Sem hardcode. Strings UI em `iped-app/resources/localization/{messages*.properties}`. |
 | IV | Integridade Forense e Determinismo | **PASS** | Charset explícito UTF-8 em toda leitura/escrita de regras e matches. Logging via SLF4J. Datas via `java.time` com `ZoneOffset.UTC`. Ordenação de matches por `(namespace, rule, string_id, offset)` — determinística para o mesmo input. Erros isolados não abortam o caso (FR-005). |
 | V | Disciplina de Concorrência e Isolamento de Processo | **PASS** | Uma instância de `YaraScanTask` por worker; `YaraScanner` (estado por thread) como campo de instância; rulesets compilados **uma vez** no `init()` estático e compartilhados read-only (libyara é thread-safe para scan após compile). Subitens criados via `IItem.createChildItem()` (mas a task **não cria subitens** — só anota matches no item recebido). UI threading: nova facet usa o painel de metadata existente, então segue automaticamente o contrato Swing EDT/JavaFX `Platform.runLater`. Engine nativa roda **in-process** via JNA — risco de crash documentado e mitigado (ver Complexity Tracking). |
@@ -86,9 +86,13 @@ Após produzir `research.md`, `data-model.md`, `contracts/*` e `quickstart.md`, 
 - **II**: A árvore de arquivos prevista mantém todas as adições isoladas em `iped.engine.task.yara.*` e `iped.engine.config.YaraConfig`. A única modificação a `task`-existente seria no `TaskInstaller.xml` (lista de tasks), que é o ponto de extensão canônico.
 - **III**: O contrato `YaraConfig.txt.contract.md` cobre todos os ajustes; `IPEDConfig.keys.contract.md` cobre a flag de enable. Localização documentada em R-13.
 - **IV**: `data-model.md` fixa ordenação determinística dos matches; `lucene-fields.contract.md` carrega `engineVersion` por item para auditoria; charset UTF-8 reafirmado em `YaraConfig.txt.contract.md`.
-- **V**: R-04 detalha o lifecycle compile (singleton) + `yrx_scanner_create` por worker + `yrx_scanner_destroy`/`yrx_rules_destroy` em `finish()`, com lock estático single-shot na compilação. Nenhum acesso a `Manager`/`Worker`/`ProcessingQueues` muda — só `Bootstrap`/`processing.Main` recebem a flag `--yara-only`, mudança já registrada em Complexity Tracking.
+- **V**: R-04 detalha o lifecycle compile (singleton) + `yrx_scanner_create` por worker + `yrx_scanner_destroy`/`yrx_rules_destroy` em `finish()`, com lock estático single-shot na compilação. Nenhum acesso a `Manager`/`Worker`/`ProcessingQueues` muda.
 
-**Conclusão**: nenhuma nova entrada em Complexity Tracking é necessária após Phase 1. Pronto para `/speckit-tasks`.
+**Conclusão (Phase 1)**: nenhuma nova entrada em Complexity Tracking é necessária após Phase 1.
+
+### Pós-implementação (2026-05-22) — adição de desvio do Princípio II
+
+Durante a validação manual da User Story 3 (`--yara-only`) a primeira implementação (caminho standalone via `YaraRerunRunner`) falhou em produção. O round-trip `Document → IItem → Document` não é safe (ver research.md §R-08 "História/v1 rejeitada"). A v1 foi removida e substituída por duas branches mínimas em `SkipCommitedTask` + `IndexTask` (rev-2). Isso é um **desvio adicional do Princípio II** — duas tasks existentes foram tocadas — e foi adicionado à tabela em Complexity Tracking abaixo.
 
 ## Project Structure
 
@@ -119,41 +123,45 @@ iped-api/
     └── ExtraProperties.java                                   # MODIFICA (apenas adiciona constantes)
 
 iped-engine/
-├── pom.xml                                                    # MODIFICA se JNA ainda não estiver declarada
+├── pom.xml                                                    # MODIFICA (adiciona dependência JNA 5.7.0)
 └── src/main/java/iped/engine/
     ├── config/
-    │   └── YaraConfig.java                                    # NOVO Configurable
+    │   └── YaraConfig.java                                    # NOVO Configurable (com ${IPED_HOME} expansion)
     └── task/
+        ├── SkipCommitedTask.java                              # MODIFICA mínimo (branch yara-only: skip setToIgnore)
+        ├── index/
+        │   └── IndexTask.java                                 # MODIFICA mínimo (branch yara-only: updateDocuments)
         └── yara/
             ├── YaraScanTask.java                              # NOVA AbstractTask
             ├── YaraEngine.java                                # bindings JNA (libyara-x-capi)
-            ├── YaraRulesetLoader.java                         # discovery e compile de .yar/.yara/.yarc
+            ├── YaraInstallPaths.java                          # helper de detecção da raiz IPED (auto-detect DLL)
+            ├── YaraRulesetLoader.java                         # discovery e compile de .yar/.yara
             ├── YaraMatch.java                                 # POJO do match (rule, namespace, tags, strings)
+            ├── MatchedString.java                             # POJO de matched-string (offset + bytes)
             ├── YaraScanner.java                               # per-worker thread-bound scanner
-            └── YaraMatchSerializer.java                       # serialização JSON do match detail
-└── src/test/java/iped/engine/task/yara/
-    ├── YaraConfigTest.java
-    ├── YaraEngineTest.java
-    ├── YaraRulesetLoaderTest.java
-    ├── YaraScanTaskTest.java
-    └── fixtures/                                              # .yar de teste e amostras binárias
+            ├── YaraMatchSerializer.java                       # serialização JSON do match detail
+            └── YaraReportRenderer.java                        # render HTML-safe do JSON p/ HTMLReportTask
+└── src/test/java/iped/engine/
+    ├── config/
+    │   └── YaraConfigTest.java
+    └── task/yara/
+        ├── YaraEngineTest.java                                # integration-gated (assumeTrue libyara-x-capi)
+        ├── YaraMatchSerializerTest.java
+        ├── YaraReportRendererTest.java
+        ├── YaraRulesetLoaderTest.java
+        └── YaraScanTaskIntegrationTest.java                   # integration-gated
 
 iped-app/
+├── pom.xml                                                    # MODIFICA (execução copy-yara-x: tools/yara-x → release)
 ├── resources/config/
-│   ├── IPEDConfig.txt                                         # MODIFICA (adiciona enableYara=false)
+│   ├── IPEDConfig.txt                                         # MODIFICA (adiciona enableYara=false com aviso [BETA])
 │   ├── conf/
 │   │   ├── TaskInstaller.xml                                  # MODIFICA (adiciona <task class=".../YaraScanTask"/>)
 │   │   └── YaraConfig.txt                                     # NOVO
-│   └── profiles/
-│       ├── forensic/IPEDConfig.txt                            # MODIFICA (enableYara opcional por profile)
-│       └── ...                                                # idem para demais profiles, conforme política
-├── resources/localization/
-│   ├── messages.properties                                    # MODIFICA (chaves yara.*)
-│   └── messages_pt_BR.properties                              # MODIFICA (chaves yara.*)
-├── src/main/java/iped/app/bootstrap/
-│   └── Bootstrap.java                                         # MODIFICA mínimo (reconhece flag --yara-only)
+│   └── profiles/                                              # NÃO modificado — feature é opt-in só no root IPEDConfig.txt
 └── src/main/java/iped/app/processing/
-    └── Main.java                                              # MODIFICA mínimo (rota --yara-only para Manager)
+    ├── CmdLineArgsImpl.java                                   # MODIFICA mínimo (flag --yara-only, requer -d, implica --continue)
+    └── Main.java                                              # MODIFICA mínimo (pre-check enableYara em modo yara-only)
 
 tools/yara-x/                                                  # NOVO diretório de runtime (no release)
 ├── win64/
@@ -177,4 +185,5 @@ licenses/                                                      # MODIFICA (adici
 | Violation / desvio | Why Needed | Simpler Alternative Rejected Because |
 |---|---|---|
 | **`libyara-x-capi` carregada in-process via JNA** (Princípio V valoriza isolamento out-of-process para componentes propensos a crash). | (a) SC-001 exige ≤15% overhead em 1M itens — fork/exec por item ou comunicação IPC por item tornam isso inviável. (b) YARA-X é uma biblioteca **leitora** de patterns escrita em Rust (memory-safe por construção); superfície de ataque é menor ainda que a libyara C clássica, que já era considerada segura por VirusTotal/ClamAV/Velociraptor. (c) O upstream do YARA-X publica binários self-contained pré-compilados — não há toolchain extra para o release do IPED gerenciar. | **Out-of-process via CLI `yara-x`**: cogitado e descartado por overhead inaceitável de IPC por item. **Batch CLI**: inviável porque o IPED lê via Sleuthkit out-of-process — não há caminho no FS para carved items, subitens e itens em containers. **Mitigação**: (1) timeout configurável por item via `yrx_scanner_set_timeout` (FR-007); (2) erros nativos são capturados por `Throwable` no laço de scan e marcam o item como "skipped"; (3) tamanho máx default 250 MB evita patológicos; (4) PR explicitará em "impacto em concorrência" (Princípio V, §4) que o failure mode é "este item entra em skipped", **nunca** "caso aborta". |
-| **`Bootstrap.java` / `processing/Main.java` recebem reconhecimento de `--yara-only`** (Princípio II prefere extensão modular sem tocar core). | FR-011 exige rerun YARA-only sobre caso pronto. Sem flag de modo, o `Manager` rodaria todas as tasks habilitadas novamente. A alternativa é um Configurable booleano "rerun mode" — porém isso obriga o perito a editar config antes de rodar e desfaz após, o que é fonte de erro em ambiente forense. Uma flag CLI é a interface idiomática para "modo de execução". | **Configurable booleano `yaraOnlyRerun`**: descartado porque é frágil em fluxo de uso forense (esquecer de desligar leva a rodar só YARA quando se quer pipeline completo). **Profile dedicado `yara-only`**: descartado por duplicar a definição do pipeline e ficar desatualizado quando o perfil base muda. **Mitigação**: a alteração em `Bootstrap` é uma única condição (passar a flag a `processing.Main`), sem mudar lógica de fila/worker. Em PR, dedicar seção a "impacto em pipeline" justificando o desvio. |
+| **`CmdLineArgsImpl.java` reconhece flag `--yara-only`** (Princípio II prefere extensão modular sem tocar core). | FR-011 exige rerun YARA-only sobre caso pronto. Sem flag de modo, o `Manager` rodaria todas as tasks habilitadas novamente. A alternativa é um Configurable booleano "rerun mode" — porém isso obriga o perito a editar config antes de rodar e desfaz após, o que é fonte de erro em ambiente forense. Uma flag CLI é a interface idiomática para "modo de execução". | **Configurable booleano `yaraOnlyRerun`**: descartado porque é frágil em fluxo de uso forense (esquecer de desligar leva a rodar só YARA quando se quer pipeline completo). **Profile dedicado `yara-only`**: descartado por duplicar a definição do pipeline e ficar desatualizado quando o perfil base muda. **Mitigação**: a alteração em `CmdLineArgsImpl` é restrita a parsing/validação + um getter `isContinue()` que retorna `true` quando `yaraOnly`; sem mudar lógica de fila/worker. |
+| **Rev-2 (2026-05-22): `SkipCommitedTask.process` + `IndexTask.process` ganham branch yara-only** (Princípio II prefere não tocar tasks existentes). | A v1 implementou `--yara-only` via classe standalone `YaraRerunRunner` que bypassava o `Manager` (honrando o Princípio II ao máximo). Na validação manual com o caso `F:\yara-test` (438k itens), a v1 falhou catastroficamente: (a) NPE em `Item.setName(null)` para docs fragmento sem `BasicProps.NAME`; (b) `IllegalArgumentException: cannot change field "language:all_detected" doc values type=SORTED_SET to SORTED` — o ciclo `Document → IItem → Document` via `IndexItem.getItem` colapsa metadados multi-valor, gerando schema conflict no `updateDocument`. Conclusão: o round-trip não é safe para os campos atuais. O design correto **precisa** reusar o pipeline normal de geração de `Document` (que vem de um `IItem` fresco do `DataSourceReader`), o que exige tocar `SkipCommitedTask` (deixar item commitado fluir) e `IndexTask` (decidir add vs update por `trackId`). | **Manter `YaraRerunRunner` standalone com manipulação manual de `Document`** (copiar fields originais + sobrescrever só `yara:*`): rejeitado — `IndexReader.document(docId)` retorna só fields STORED; doc values e fields indexed-but-not-stored seriam perdidos no `updateDocument`, causando perda de dados destrutiva. **Lucene partial field update via `updateBinaryDocValue`/`updateSortedDocValue`**: rejeitado — `yara:rule` precisa ser indexed (não só docvalue) para virar faceta UI. **Mitigação**: ambas as branches são pequenas (≤10 linhas cada); não mexem em concorrência nem em estado compartilhado das tasks; preservam comportamento original quando `!yaraOnly`. `YaraRerunRunner.java` (~370 LOC) e `YaraRerunRunnerTest.java` foram **removidos**. Documentação: research.md §R-08 (rev-2). |

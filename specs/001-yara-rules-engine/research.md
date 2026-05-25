@@ -181,20 +181,58 @@ Este documento consolida as decisões técnicas que destravam o Plan e elimina t
 
 ## R-08 — Modo "rerun YARA-only"
 
-**Decision**: nova flag CLI `--yara-only` em `Bootstrap`. Quando presente, `Bootstrap` propaga para `processing.Main` que ajusta `CmdLineArgs` indicando ao `Manager` para:
-1. Abrir o caso existente (`-d <case-output>` torna-se obrigatório).
-2. Pular `DataSourceReader` (não há nova evidência a ingerir).
-3. Iterar sobre os documentos do índice Lucene reabrindo o `IItem` via `IndexItem.getItem(doc)`.
-4. Executar apenas a `YaraScanTask` para cada item.
-5. Atualizar (sobrescrever) os campos `yara:rule`, `yara:tag`, `yara:matches` do documento Lucene via `IndexWriter.updateDocument(...)` — substituição integral (FR-011).
+**Decision (rev-2, 2026-05-22)**: nova flag CLI `--yara-only`. **Requer `-d <DATASOURCE>` e `-o <CASE>`**. Implica `--continue` automaticamente. Passa pelo `Manager` normal; o caminho rerun é implementado por **duas alterações pontuais** em tasks existentes:
+
+1. `iped.engine.task.SkipCommitedTask.process(IItem)`: em modo `--yara-only`, marca `IS_COMMITTED=true` mas **não** chama `setToIgnore(true)`. Itens commitados seguem o pipeline (vs. comportamento normal de `--continue` que os ignora).
+2. `iped.engine.task.index.IndexTask.process(IItem)`: detecta `SkipCommitedTask.isAlreadyCommited(evidence) && cmdArgs.isYaraOnly()` e usa `worker.writer.updateDocuments(new Term(IndexItem.TRACK_ID, Util.getTrackID(evidence)), docs)` em vez de `addDocuments(docs)`. O `updateDocuments(Term, Iterable<Documents>)` apaga atomicamente todos os docs com aquele `trackId` (parent + fragmentos) e adiciona o novo bloco.
+
+`iped.app.processing.Main.startManager()` faz um pre-check fail-fast antes de criar o `Manager`: se `YaraConfig.isEnabled() == false`, aborta com `IPEDException` clara — evita o cenário destrutivo onde `updateDocuments` apagaria `yara:*` ao reindexar com `YaraScanTask` desligada.
 
 **Rationale**:
-- Idiomático: outras ferramentas forenses expõem rerun como modo, não como config.
-- Substituição integral evita matches "fantasma" de catálogos antigos.
+- Preserva schema do índice Lucene: o `Document` é gerado pela mesma rota da primeira ingestão (`IndexItem.Document(item, moduleDir)` a partir de um `IItem` fresco vindo do `DataSourceReader` + Parsing), evitando conflito `SORTED` vs `SORTED_SET` de metadados multi-valor que afetaria qualquer round-trip `Document → IItem → Document`.
+- Substituição atômica via `updateDocuments` evita matches "fantasma" de catálogos antigos.
+- Princípio II é mantido em essência: o `Manager` continua intocado; só duas branches mínimas em tasks já existentes (`SkipCommitedTask` + `IndexTask`).
 
-**Alternatives considered**:
-- Configurable `yaraOnlyRerun` — rejeitado por fragilidade operacional (Complexity Tracking).
-- Nova subcommand (estilo `iped yara-rescan`) — possível evolução, mas exige refator maior do `Bootstrap`; v1 fica na flag.
+**Trade-off documentado**: o pipeline completo roda também para itens commitados — mais lento que uma abordagem standalone, mas é o único caminho que preserva schema do índice. Tasks pesadas (OCR, NER, transcrição, IA) que o perito não queira re-rodar devem ser desabilitadas em `IPEDConfig.txt` antes do `--yara-only`.
+
+**História (v1 rejeitada)**: a primeira implementação criou uma classe standalone `YaraRerunRunner` (~370 LOC) que bypassava o `Manager`, abria o `IndexWriter` em `OpenMode.APPEND` e iterava o índice Lucene reconstruindo `IItem` via `IndexItem.getItem(doc, source, false)`. Esse caminho falhou em produção (caso `F:\yara-test`, 438k itens):
+- `NPE` em `Item.setName(null)` para docs sem campo `BasicProps.NAME` (fragmentos de itens grandes, gerados por `FragmentingReader`).
+- `IllegalArgumentException: cannot change field "language:all_detected" from doc values type=SORTED_SET to inconsistent doc values type=SORTED` — o ciclo `Document → IItem → Document` colapsa metadados multi-valor para single-valor no `IItem` reconstruído, e o `IndexItem.Document` subsequente grava com tipo conflitante.
+
+Conclusão: o round-trip via `IndexItem.getItem` **não é safe** para os campos atuais. A v1 foi removida (`YaraRerunRunner.java` + `YaraRerunRunnerTest.java`) e substituída pelo design rev-2 acima.
+
+**Alternatives considered (rev-2)**:
+- **Standalone com manipulação direta de `org.apache.lucene.document.Document`** (copia fields originais + sobrescreve só `yara:*`): rejeitado porque `IndexReader.document(docId)` só retorna fields STORED; doc values e fields indexed-but-not-stored seriam perdidos no `updateDocument`. Igualmente destrutivo.
+- **Lucene partial field update** (`updateBinaryDocValue`/`updateSortedDocValue`): rejeitado porque `yara:rule` precisa ser indexado para virar faceta — só docvalue não basta.
+- **Configurable `yaraOnlyRerun`**: rejeitado anteriormente por fragilidade operacional (Complexity Tracking).
+- **Nova subcommand** (`iped yara-rescan`): possível evolução, mas v1 fica na flag.
+
+---
+
+## R-08-B — Robustez: o que acontece se a engine YARA quebra durante o run?
+
+**Decision (2026-05-22)**: o pipeline tolera todas as falhas comuns de carga/compilação/scan sem abortar o caso. A única exposição residual é crash nativo (`SIGSEGV` dentro de `libyara-x-capi`) — aceitável dado o perfil de risco de YARA-X (Rust, memory-safe).
+
+**Failure modes mapeados** (verificados no código atual; ver [iped-engine/src/main/java/iped/engine/task/yara/YaraEngine.java](../../iped-engine/src/main/java/iped/engine/task/yara/YaraEngine.java) e [YaraScanTask.java](../../iped-engine/src/main/java/iped/engine/task/yara/YaraScanTask.java)):
+
+| Falha | Mecanismo | IPED quebra? |
+|---|---|---|
+| DLL ausente / não-carregável | `YaraEngine.ensureAvailable()` captura `UnsatisfiedLinkError` e `Throwable`, retorna `false`, `taskEnabled = false`, IPED continua sem YARA. | Não |
+| Erro de sintaxe em regra individual | `yrx_compiler_add_source_with_origin` retorna RC ≠ 0; `reportCompilerErrors` extrai via `yrx_compiler_errors_json`; regra descartada, demais continuam. Mesmo mecanismo lida com `import "cuckoo"` banido (ver R-09). | Não |
+| Catálogo inteiro sem regra compilável | `compileSources` retorna `null`; `doSharedInit` retorna `false`; `taskEnabled = false`. | Não |
+| Falha na criação do scanner per-worker | `engine.createScanner()` retorna `null`; aquele worker fica sem YARA, os demais continuam. | Não |
+| Timeout em item individual | `yrx_scanner_set_timeout` + `YRX_SCAN_TIMEOUT` propagado como exception capturada em `YaraScanTask.process` via `catch (Throwable)`; item conta como `itemsSkippedError`, próximo item segue. (FR-005, FR-007). | Não |
+| Falha em serializar JSON do detalhe | `persistMatches` mantém `yara:rule` + `yara:tag` no IItem; só perde `yara:matches` JSON; log DEBUG. | Não |
+| **SIGSEGV / corrupção de memória em `libyara-x-capi`** | A JVM morre. Não há `try/catch` em Java que pegue isso. | **Sim** |
+
+**Rationale para aceitar o risco residual**:
+- YARA-X é Rust com segurança de memória forte; CVEs de buffer overflow da libyara C clássica foram resolvidas estruturalmente na reescrita.
+- Out-of-process (padrão Sleuthkit) inviabilizaria o throughput (SC-001: ≤15% overhead). IPC por item com buffers de até 250 MB tornaria a feature impraticável.
+- O binário é versionado (`ENGINE_VERSION = "yara-x-1.16.0"` fixo no código + `tools/yara-x/<os>/`), reduzindo o risco de incompatibilidade.
+
+**Mitigação para o residual**: se aparecer crash em produção, considerar mover `YaraScanner` para um helper subprocess no padrão `SleuthkitClient`/`SleuthkitServer`. Não preventivamente — só reativamente.
+
+**Validado**: caso `F:\yara-test` (438.708 itens) rodou sem nenhum `itemsSkippedError`, demonstrando que o caminho de tratamento de exception por item está exercitado.
 
 ---
 

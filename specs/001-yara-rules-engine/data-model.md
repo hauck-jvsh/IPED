@@ -164,7 +164,7 @@ A feature **adiciona** três propriedades ao item; nenhuma propriedade existente
 
 **Mutações suportadas**:
 - **Insert**: durante `YaraScanTask.process(item)` no fluxo normal. Conteúdo escrito uma única vez por item, logo antes da `IndexTask`.
-- **Replace**: no modo `--yara-only` (FR-011). `IndexWriter.updateDocument(...)` substitui o documento inteiro do item; os três campos `yara:*` são repopulados com base no catálogo atual; demais campos do item preservados pelo `IndexItem`-roundtrip.
+- **Replace**: no modo `--yara-only` (FR-011, rev-2). O pipeline normal é re-executado sobre o `-d` original; ao chegar no `IndexTask`, itens cujo `trackId` já está commitado são detectados (`SkipCommitedTask.isAlreadyCommited(...)`) e a escrita usa `IndexWriter.updateDocuments(new Term(IndexItem.TRACK_ID, trackId), iterable)` em vez de `addDocuments(...)`. Isso apaga atomicamente **todos** os docs com aquele `trackId` (parent + fragmentos de conteúdo) e adiciona o bloco novo — os campos `yara:*` refletem o catálogo atual; demais campos são repopulados do mesmo IItem fresco que veio do `DataSourceReader` + Parsing, garantindo schema-consistency com a primeira ingestão. Detalhe arquitetural: [research.md §R-08](research.md) (a v1 standalone via `YaraRerunRunner` reconstruía `IItem` a partir do índice e foi rejeitada por incompatibilidade de schema).
 
 **Invariantes**:
 - Se a feature está desabilitada (`enabled=false`), nenhum dos três campos é gravado (FR-013).
