@@ -43,7 +43,7 @@ public class YaraRulesetLoaderTest {
         List<File> found = YaraRulesetLoader.discover(Arrays.asList(dir));
 
         assertEquals(2, found.size());
-        // Ordem determinística por caminho absoluto.
+        // Deterministic order by absolute path.
         assertEquals("a.yar", found.get(0).getName());
         assertEquals("b.yara", found.get(1).getName());
     }
@@ -83,7 +83,7 @@ public class YaraRulesetLoaderTest {
         for (File f : found) {
             names.add(f.getName());
         }
-        // Pelo path absoluto: deep < middle < top (vendor/apt/deep, vendor/middle, top).
+        // By absolute path: deep < middle < top (vendor/apt/deep, vendor/middle, top).
         assertTrue("expected deep.yara to appear: " + names, names.contains("deep.yara"));
         assertTrue("expected middle.yar to appear: " + names, names.contains("middle.yar"));
         assertTrue("expected top.yar to appear: " + names, names.contains("top.yar"));

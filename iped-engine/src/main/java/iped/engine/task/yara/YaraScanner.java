@@ -14,22 +14,22 @@ import com.sun.jna.ptr.LongByReference;
 import com.sun.jna.ptr.PointerByReference;
 
 /**
- * Per-worker scanner wrapper. Cada {@code YaraScanner} é dono de um
- * {@code YRX_SCANNER*} criado a partir do {@link YaraEngine} compartilhado.
+ * Per-worker scanner wrapper. Each {@code YaraScanner} owns a
+ * {@code YRX_SCANNER*} created from the shared {@link YaraEngine}.
  *
- * <p>O scanner do YARA-X <b>não é thread-safe</b>: cada thread/worker que
- * scaneia precisa do seu próprio. O {@code YRX_RULES} subjacente (compartilhado
- * via {@link YaraEngine}) é seguro para uso concorrente read-only.</p>
+ * <p>The YARA-X scanner is <b>not thread-safe</b>: every thread/worker that
+ * scans needs its own instance. The underlying {@code YRX_RULES} (shared
+ * via {@link YaraEngine}) is safe for concurrent read-only access.</p>
  *
- * <p>A instância instala uma única vez o callback de match via
- * {@code yrx_scanner_on_matching_rule}; a cada chamada de {@link #scan} a lista
- * acumulada é zerada antes do scan e o scanner é reusado.</p>
+ * <p>The match callback is installed once at construction via
+ * {@code yrx_scanner_on_matching_rule}; on each {@link #scan} call the
+ * accumulated list is cleared before scanning and the scanner is reused.</p>
  *
- * <p>Para cada regra que casa, o collector itera os patterns ({@code yrx_rule_iter_patterns})
- * e dentro de cada pattern itera os matches ({@code yrx_pattern_iter_matches})
- * recortando os bytes do buffer atual do scan e codificando em hex lowercase
- * (cap configurável em {@code matchHexMaxBytes}). Esses bytes alimentam tanto o
- * JSON {@code yara:matches} quanto o highlight de texto na UI (FR-008a).</p>
+ * <p>For each matching rule the collector iterates patterns ({@code yrx_rule_iter_patterns})
+ * and within each pattern iterates matches ({@code yrx_pattern_iter_matches}),
+ * slicing bytes from the current scan buffer and encoding them as lowercase hex
+ * (cap configurable via {@code matchHexMaxBytes}). These bytes feed both the
+ * {@code yara:matches} JSON and the text-viewer highlight in the UI (FR-008a).</p>
  */
 public final class YaraScanner implements AutoCloseable {
 
@@ -46,17 +46,17 @@ public final class YaraScanner implements AutoCloseable {
         this.scannerPtr = scannerPtr;
         this.matchHexMaxBytes = Math.max(1, matchHexMaxBytes);
         this.collector = new MatchCollector(this.matchHexMaxBytes);
-        // O callback é instalado uma única vez na vida do scanner — o estado
-        // (lista de matches + buffer corrente) é zerado/configurado antes de cada scan().
+        // The callback is installed exactly once for the lifetime of the scanner — state
+        // (match list + current buffer) is reset/set before each scan().
         YaraEngine.LibYaraX.INSTANCE.yrx_scanner_on_matching_rule(scannerPtr, collector, Pointer.NULL);
     }
 
     /**
-     * Escaneia um buffer e retorna a lista de matches da chamada atual.
+     * Scans a buffer and returns the list of matches for the current call.
      *
-     * @param buffer bytes a escanear
-     * @param length bytes válidos no buffer (≤ {@code buffer.length})
-     * @param timeoutSeconds {@code 0} = sem timeout; {@code > 0} = limite em segundos
+     * @param buffer bytes to scan
+     * @param length valid bytes in the buffer (≤ {@code buffer.length})
+     * @param timeoutSeconds {@code 0} = no timeout; {@code > 0} = limit in seconds
      */
     public List<YaraMatch> scan(byte[] buffer, int length, int timeoutSeconds) {
         if (closed || scannerPtr == null || buffer == null || length <= 0) {
@@ -75,8 +75,8 @@ public final class YaraScanner implements AutoCloseable {
             }
             return collector.takeMatches();
         } finally {
-            // Libera a referência ao buffer Java; o callback nativo NÃO mantém
-            // ponteiros após o retorno de yrx_scanner_scan.
+            // Release the reference to the Java buffer; the native callback does NOT
+            // retain pointers after yrx_scanner_scan returns.
             collector.clearBuffer();
         }
     }
@@ -94,10 +94,10 @@ public final class YaraScanner implements AutoCloseable {
     }
 
     /**
-     * Lê o identifier ou namespace de uma regra via
-     * {@code yrx_rule_identifier}/{@code yrx_rule_namespace}. Os ponteiros
-     * retornados pela libyara-x-capi <b>não são NUL-terminados</b> — o
-     * comprimento vem em {@code len}.
+     * Reads the identifier or namespace of a rule via
+     * {@code yrx_rule_identifier}/{@code yrx_rule_namespace}. The pointers
+     * returned by libyara-x-capi are <b>not NUL-terminated</b> — the
+     * length comes in {@code len}.
      */
     private static String readPointerSlice(Pointer rule, boolean identifierMode) {
         PointerByReference out = new PointerByReference();
@@ -112,7 +112,7 @@ public final class YaraScanner implements AutoCloseable {
         return new String(bytes, StandardCharsets.UTF_8);
     }
 
-    /** Mesmo padrão do {@link #readPointerSlice} para o pattern identifier ({@code $name}). */
+    /** Same pattern as {@link #readPointerSlice} but for the pattern identifier ({@code $name}). */
     private static String readPatternIdentifier(Pointer pattern) {
         PointerByReference out = new PointerByReference();
         LongByReference len = new LongByReference();
@@ -125,13 +125,13 @@ public final class YaraScanner implements AutoCloseable {
     }
 
     /**
-     * Coleta {@link YaraMatch}es no callback de scan do YARA-X. A lista interna
-     * é zerada a cada {@link YaraScanner#scan} para evitar acumular matches
-     * de scans anteriores.
+     * Collects {@link YaraMatch}es inside the YARA-X scan callback. The internal
+     * list is cleared on each {@link YaraScanner#scan} call to avoid accumulating
+     * matches from previous scans.
      *
-     * <p>Mantém uma referência ao buffer Java do scan corrente para que os
-     * callbacks de pattern/match consigam recortar os bytes que casaram. A
-     * referência é limpa após {@code yrx_scanner_scan} retornar.</p>
+     * <p>Holds a reference to the current scan's Java buffer so that
+     * pattern/match callbacks can slice the matched bytes. The reference is
+     * cleared after {@code yrx_scanner_scan} returns.</p>
      */
     private static final class MatchCollector implements YaraEngine.RuleCallback {
         private final List<YaraMatch> matches = new ArrayList<>();
@@ -181,9 +181,9 @@ public final class YaraScanner implements AutoCloseable {
         }
 
         /**
-         * Itera os patterns da regra que casaram (apenas patterns com pelo menos
-         * um match são entregues pelo {@code yrx_rule_iter_patterns}) e, para
-         * cada pattern, itera os matches recortando os bytes do buffer corrente.
+         * Iterates the patterns of the matched rule (only patterns with at least
+         * one match are delivered by {@code yrx_rule_iter_patterns}) and, for
+         * each pattern, iterates matches slicing bytes from the current buffer.
          */
         private List<MatchedString> collectMatchedStrings(Pointer rule) {
             final List<MatchedString> out = new ArrayList<>();
@@ -225,10 +225,10 @@ public final class YaraScanner implements AutoCloseable {
         }
 
         /**
-         * Recorta {@code length} bytes do buffer corrente a partir de {@code offset}
-         * e codifica em hex lowercase. Clampa em {@link #matchHexMaxBytes} para
-         * proteger contra patterns gigantes; o caller marca
-         * {@link MatchedString#isTruncated()} quando isso ocorre.
+         * Slices {@code length} bytes from the current buffer starting at {@code offset}
+         * and encodes them as lowercase hex. Clamped to {@link #matchHexMaxBytes} to
+         * guard against huge patterns; the caller sets
+         * {@link MatchedString#isTruncated()} when truncation occurs.
          */
         private String extractHex(long offset, long length) {
             if (currentBuffer == null || currentLength <= 0) {

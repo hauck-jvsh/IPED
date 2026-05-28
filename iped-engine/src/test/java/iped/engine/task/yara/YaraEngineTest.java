@@ -22,16 +22,16 @@ import org.junit.rules.TemporaryFolder;
 /**
  * Integration-gated tests for {@link YaraEngine} (engine: YARA-X 1.x).
  *
- * <p>Estes testes só rodam se uma {@code libyara-x-capi} estiver carregável no
- * ambiente (via {@code jna.library.path}, variável de ambiente
- * {@code YARA_X_LIB_PATH} ou presença em path padrão do sistema). Caso
- * contrário, são pulados via {@link org.junit.Assume}.</p>
+ * <p>These tests only run if a {@code libyara-x-capi} is loadable in the
+ * environment (via {@code jna.library.path}, the environment variable
+ * {@code YARA_X_LIB_PATH}, or its presence on the system library path).
+ * Otherwise they are skipped via {@link org.junit.Assume}.</p>
  *
- * <p>Para forçar a execução localmente:</p>
+ * <p>To force local execution:</p>
  * <pre>
  *   # Linux:
- *   # baixar o tarball oficial de https://github.com/VirusTotal/yara-x/releases
- *   # extrair em /usr/local/ (lib/libyara_x_capi.so) e:
+ *   # download the official tarball from https://github.com/VirusTotal/yara-x/releases
+ *   # extract to /usr/local/ (lib/libyara_x_capi.so) and run:
  *   mvn -pl iped-engine -Dtest=YaraEngineTest test
  *
  *   # Windows:
@@ -39,9 +39,9 @@ import org.junit.rules.TemporaryFolder;
  *   mvn -pl iped-engine -Dtest=YaraEngineTest test
  * </pre>
  *
- * <p>Os testes de {@code .yarc} (load + corrompido) que existiam na variante
- * libyara clássica foram removidos com a migração para YARA-X — pré-compilados
- * ficam fora de escopo na v1 (ver Clarifications Q3 revisada na spec).</p>
+ * <p>The {@code .yarc} tests (load + corrupt) that existed in the classic libyara
+ * variant were removed when migrating to YARA-X — pre-compiled rulesets are out
+ * of scope in v1 (see revised Clarifications Q3 in the spec).</p>
  */
 public class YaraEngineTest {
 
@@ -104,14 +104,14 @@ public class YaraEngineTest {
         sources.add(bad);
         CapturingSink sink = new CapturingSink();
         try (YaraEngine engine = YaraEngine.compileSources(sources, sink)) {
-            // Engine pode existir (boa regra compilou) ou ser null se a libyara-x abortou tudo;
-            // o importante é que o erro tenha sido reportado.
+            // The engine may exist (the good rule compiled) or be null if libyara-x aborted everything;
+            // the important thing is that the error was reported via the sink.
             assertFalse("compile error should have been reported via sink", sink.errors.isEmpty());
 
             if (engine != null) {
                 byte[] buffer = "abc".getBytes(StandardCharsets.UTF_8);
                 List<YaraMatch> matches = engine.scan(buffer, buffer.length, 5);
-                // a "good_rule" deve casar
+                // "good_rule" must match
                 assertEquals(1, matches.size());
                 assertEquals("good_rule", matches.get(0).getName());
             }
@@ -129,7 +129,7 @@ public class YaraEngineTest {
         sources.add(cuckoo);
         CapturingSink sink = new CapturingSink();
         YaraEngine engine = YaraEngine.compileSources(sources, sink);
-        // Como cuckoo é banido em runtime via yrx_compiler_ban_module, esperamos erro.
+        // Since cuckoo is banned at runtime via yrx_compiler_ban_module, a compile error is expected.
         assertFalse("import \"cuckoo\" should have produced a compile error", sink.errors.isEmpty());
         if (engine != null) {
             engine.close();

@@ -9,11 +9,11 @@ import iped.engine.task.yara.YaraInstallPaths;
 import iped.utils.UTF8Properties;
 
 /**
- * Configurable da {@code YaraScanTask}. Lê o arquivo {@code conf/YaraConfig.txt}
- * e expõe os parâmetros operacionais (diretórios de regras, limites de tamanho/timeout,
- * comportamento de scan).
+ * Configurable for {@code YaraScanTask}. Reads {@code conf/YaraConfig.txt}
+ * and exposes operational parameters (rule directories, size/timeout limits,
+ * scan behaviour).
  *
- * <p>Schema completo do arquivo está documentado em
+ * <p>The full file schema is documented in
  * {@code specs/001-yara-rules-engine/contracts/YaraConfig.txt.contract.md}.</p>
  *
  * @see iped.engine.config.AbstractTaskPropertiesConfig
@@ -25,16 +25,16 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
     public static final String ENABLE_PARAM = "enableYara";
     public static final String CONFIG_FILE = "YaraConfig.txt";
 
-    /** Default de tamanho máximo a escanear: 250 MiB (262144000 bytes). */
+    /** Maximum file size to scan (default): 250 MiB (262 144 000 bytes). */
     public static final long DEFAULT_MAX_FILE_SIZE_BYTES = 250L * 1024L * 1024L;
 
-    /** Default de timeout por item: 30 segundos. */
+    /** Per-item scan timeout (default): 30 seconds. */
     public static final int DEFAULT_PER_ITEM_TIMEOUT_MS = 30_000;
 
-    /** Default de bytes brutos por matched-string persistidos no JSON. */
+    /** Maximum raw bytes per matched-string stored in the facet (default). */
     public static final int DEFAULT_MATCH_HEX_MAX_BYTES = 256;
 
-    /** Limite superior absoluto de bytes por matched-string (proteção contra config maliciosa). */
+    /** Hard upper limit on bytes per matched-string (guards against malicious config). */
     public static final int ABSOLUTE_MAX_HEX_MAX_BYTES = 65_536;
 
     private final List<File> ruleDirectories = new ArrayList<>();
@@ -73,7 +73,7 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
             try {
                 maxFileSizeBytes = parseSizeWithSuffix(maxSize.trim());
             } catch (IllegalArgumentException e) {
-                // Mantém default; o erro é registrado pelo loader.
+                // Keep default; the error is logged by the caller.
             }
         }
 
@@ -85,7 +85,7 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
                     perItemTimeoutMs = parsed;
                 }
             } catch (NumberFormatException e) {
-                // mantém default
+                // keep default
             }
         }
 
@@ -102,7 +102,7 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
                     matchHexMaxBytes = parsed;
                 }
             } catch (NumberFormatException e) {
-                // mantém default
+                // keep default
             }
         }
 
@@ -140,8 +140,8 @@ public class YaraConfig extends AbstractTaskPropertiesConfig {
     }
 
     /**
-     * Aceita números puros ou com sufixo {@code K}/{@code M}/{@code G} (case-insensitive,
-     * base 1024). Exemplos: {@code "250M"} → {@code 262144000}; {@code "1G"} →
+     * Accepts plain numbers or a {@code K}/{@code M}/{@code G} suffix (case-insensitive,
+     * base 1024). Examples: {@code "250M"} → {@code 262144000}; {@code "1G"} →
      * {@code 1073741824}; {@code "65536"} → {@code 65536}.
      */
     static long parseSizeWithSuffix(String value) {

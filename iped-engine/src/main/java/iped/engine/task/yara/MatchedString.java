@@ -3,13 +3,13 @@ package iped.engine.task.yara;
 import java.util.Objects;
 
 /**
- * Trecho de bytes que casou uma string específica dentro de uma regra YARA.
+ * Byte slice that matched a specific string inside a YARA rule.
  *
- * <p>{@code id} é o identificador da string como declarado na regra (ex.: {@code $s1},
- * {@code $re1_3}). {@code offset} é em bytes, relativo ao início do stream do item.
- * {@code hex} é a representação dos bytes brutos do trecho em lowercase, sem espaços;
- * pode estar truncado conforme {@link YaraConfig#getMatchHexMaxBytes()}, com
- * {@code truncated == true} sinalizando o corte.</p>
+ * <p>{@code id} is the string identifier as declared in the rule (e.g. {@code $s1},
+ * {@code $re1_3}). {@code offset} is in bytes, relative to the start of the item stream.
+ * {@code hex} is the lowercase hex representation of the raw bytes without spaces;
+ * it may be truncated according to {@link YaraConfig#getMatchHexMaxBytes()}, with
+ * {@code truncated == true} signalling the cut.</p>
  */
 public final class MatchedString {
 

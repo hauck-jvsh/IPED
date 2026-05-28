@@ -4,7 +4,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -16,7 +15,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.jna.Callback;
 import com.sun.jna.Library;
-import com.sun.jna.Memory;
 import com.sun.jna.Native;
 import com.sun.jna.NativeLibrary;
 import com.sun.jna.Platform;
@@ -26,33 +24,33 @@ import com.sun.jna.ptr.LongByReference;
 import com.sun.jna.ptr.PointerByReference;
 
 /**
- * Bindings JNA finos para a engine YARA-X via {@code libyara-x-capi}.
+ * Thin JNA bindings for the YARA-X engine via {@code libyara-x-capi}.
  *
- * <p>YARA-X é a reescrita oficial em Rust do YARA por Victor M. Alvarez (mesmo
- * autor do YARA clássico). IPED migrou de libyara 4.x clássica para YARA-X
- * em 2026-05-19 — ver {@code specs/001-yara-rules-engine/research.md} §R-01.</p>
+ * <p>YARA-X is the official Rust rewrite of YARA by Victor M. Alvarez (same
+ * author as classic YARA). IPED migrated from classic libyara 4.x to YARA-X
+ * on 2026-05-19 — see {@code specs/001-yara-rules-engine/research.md} §R-01.</p>
  *
- * <p>Superfície intencionalmente mínima (ver
+ * <p>Intentionally minimal surface (see
  * {@code specs/001-yara-rules-engine/research.md} → R-02):</p>
  * <ul>
  *   <li>{@code yrx_compiler_create/destroy/ban_module/new_namespace/add_source_with_origin/errors_json/build}
- *       — compilação do catálogo;</li>
- *   <li>{@code yrx_rules_destroy} — cleanup do ruleset;</li>
- *   <li>{@code yrx_scanner_create/destroy/set_timeout/on_matching_rule/scan} — scan por item;</li>
- *   <li>{@code yrx_rule_identifier/namespace/iter_tags} — leitura no callback;</li>
- *   <li>{@code yrx_buffer_destroy}, {@code yrx_last_error} — utilidades.</li>
+ *       — catalog compilation;</li>
+ *   <li>{@code yrx_rules_destroy} — ruleset cleanup;</li>
+ *   <li>{@code yrx_scanner_create/destroy/set_timeout/on_matching_rule/scan} — per-item scan;</li>
+ *   <li>{@code yrx_rule_identifier/namespace/iter_tags} — reading inside the callback;</li>
+ *   <li>{@code yrx_buffer_destroy}, {@code yrx_last_error} — utilities.</li>
  * </ul>
  *
- * <p>O módulo {@code cuckoo} é banido em runtime via {@code yrx_compiler_ban_module}.
- * Regras com {@code import "cuckoo"} produzem erro de compilação isolado e a regra
- * é descartada; as demais continuam (FR-002 + FR-005 + R-09).</p>
+ * <p>The {@code cuckoo} module is banned at runtime via {@code yrx_compiler_ban_module}.
+ * Rules with {@code import "cuckoo"} produce an isolated compile error and are
+ * discarded; the remaining rules continue (FR-002 + FR-005 + R-09).</p>
  *
- * <p>A extração detalhada de matched-strings (pattern ID + offset + bytes) é
- * feita via {@code yrx_rule_iter_patterns} → {@code yrx_pattern_iter_matches}
- * em {@link YaraScanner}. Os bytes são recortados do buffer do scan atual e
- * codificados em hex lowercase, truncados em {@code YaraConfig.matchHexMaxBytes}
- * — alimenta tanto o JSON {@code yara:matches} quanto o highlight do viewer
- * de texto (FR-008a, ver {@code research.md} §R-05 e §R-02).</p>
+ * <p>Detailed matched-string extraction (pattern ID + offset + bytes) is
+ * done via {@code yrx_rule_iter_patterns} → {@code yrx_pattern_iter_matches}
+ * in {@link YaraScanner}. Bytes are sliced from the current scan buffer and
+ * encoded as lowercase hex, truncated at {@code YaraConfig.matchHexMaxBytes}
+ * — feeds both the {@code yara:matches} JSON and the text-viewer highlight
+ * (FR-008a, see {@code research.md} §R-05 and §R-02).</p>
  */
 public final class YaraEngine implements AutoCloseable {
 
@@ -61,7 +59,7 @@ public final class YaraEngine implements AutoCloseable {
     /** Flags do compilador (yara-x: {@code YRX_RELAXED_RE_SYNTAX}). */
     public static final int YRX_RELAXED_RE_SYNTAX = 2;
 
-    /** Códigos de YRX_RESULT em ordem do header upstream. */
+    /** YRX_RESULT codes in order from the upstream header. */
     public static final int YRX_SUCCESS = 0;
     public static final int YRX_SYNTAX_ERROR = 1;
     public static final int YRX_VARIABLE_ERROR = 2;
@@ -75,12 +73,12 @@ public final class YaraEngine implements AutoCloseable {
     public static final int YRX_NOT_SUPPORTED = 10;
 
     /**
-     * Identifier reportado em {@code yara:matches.engineVersion}.
+     * Identifier reported in {@code yara:matches.engineVersion}.
      *
-     * <p>O C API do YARA-X não expõe a versão programaticamente, então é fixada
-     * aqui para casar exatamente com o binário {@code libyara-x-capi} bundled
-     * em {@code tools/yara-x/<os>/}. Ao atualizar o binário, atualizar esta
-     * constante, o {@code YARAX_VERSION} no workflow de CI e o
+     * <p>The YARA-X C API does not expose the version programmatically, so it is
+     * hardcoded here to match exactly the {@code libyara-x-capi} binary bundled
+     * in {@code tools/yara-x/<os>/}. When updating the binary, update this
+     * constant, the {@code YARAX_VERSION} in the CI workflow, and
      * {@code tools/yara-x/README.md}.</p>
      */
     public static final String ENGINE_VERSION = "yara-x-1.16.0";
@@ -157,7 +155,7 @@ public final class YaraEngine implements AutoCloseable {
         return (dir == null) ? null : dir.getAbsolutePath();
     }
 
-    /** Shutdown idempotente (no-op para o YARA-X — a libyara clássica precisava de {@code yr_finalize}). */
+    /** Idempotent shutdown (no-op for YARA-X — classic libyara required {@code yr_finalize}). */
     public static synchronized void shutdown() {
         libraryAvailable = false;
     }
@@ -167,22 +165,22 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /**
-     * Versão da engine no formato {@code yara-x-<MAJOR.MINOR.PATCH>}. Fixada em
-     * {@link #ENGINE_VERSION} — ver a constante para política de atualização.
+     * Engine version in the format {@code yara-x-<MAJOR.MINOR.PATCH>}. Hardcoded in
+     * {@link #ENGINE_VERSION} — see that constant for the update policy.
      */
     public static String getEngineVersion() {
         return libraryAvailable ? ENGINE_VERSION : "yara-x-unavailable";
     }
 
     /**
-     * Compila um catálogo de regras fonte. Para cada arquivo {@code .yar}/{@code .yara}:
-     * (1) define um namespace = basename sem extensão; (2) faz
-     * {@code yrx_compiler_add_source_with_origin}; (3) em caso de falha, extrai
-     * erros via {@code yrx_compiler_errors_json} e reporta no {@code errorSink}.
-     * Ao final, chama {@code yrx_compiler_build}. O módulo {@code cuckoo} é banido
-     * antes da compilação.
+     * Compiles a catalog of source rule files. For each {@code .yar}/{@code .yara} file:
+     * (1) sets a namespace = basename without extension; (2) calls
+     * {@code yrx_compiler_add_source_with_origin}; (3) on failure, extracts
+     * errors via {@code yrx_compiler_errors_json} and reports them to {@code errorSink}.
+     * Finally calls {@code yrx_compiler_build}. The {@code cuckoo} module is banned
+     * before compilation.
      *
-     * @return ruleset compilado, ou {@code null} se nenhuma regra compilou.
+     * @return compiled ruleset, or {@code null} if no rule compiled successfully.
      */
     public static YaraEngine compileSources(List<File> sourceFiles, CompileErrorSink errorSink) {
         if (!ensureAvailable(null) || sourceFiles == null || sourceFiles.isEmpty()) {
@@ -196,7 +194,7 @@ public final class YaraEngine implements AutoCloseable {
         }
         Pointer compiler = compilerRef.getValue();
         try {
-            // Bane o módulo cuckoo para que regras importando-o falhem com mensagem clara.
+            // Ban the cuckoo module so that rules importing it fail with a clear message.
             int banRc = LibYaraX.INSTANCE.yrx_compiler_ban_module(compiler,
                     "cuckoo",
                     "Cuckoo module unsupported",
@@ -233,7 +231,7 @@ public final class YaraEngine implements AutoCloseable {
                 int addRc = LibYaraX.INSTANCE.yrx_compiler_add_source_with_origin(compiler, src, f.getAbsolutePath());
                 if (addRc != YRX_SUCCESS) {
                     reportCompilerErrors(compiler, f, errorSink);
-                    // Continua mesmo com erro — outras regras do catálogo podem ter compilado.
+                    // Continue even on error — other rules in the catalog may have compiled.
                     continue;
                 }
                 sourcesAdded++;
@@ -252,27 +250,27 @@ public final class YaraEngine implements AutoCloseable {
         }
     }
 
-    /** Default cap usado por {@link #createScanner()} e {@link #scan} (em sync com {@code YaraConfig} default). */
+    /** Default cap used by {@link #createScanner()} and {@link #scan} (in sync with {@code YaraConfig} default). */
     public static final int DEFAULT_MATCH_HEX_MAX_BYTES = 256;
 
     /**
-     * Cria um {@link YaraScanner} (uma instância por worker) sobre este ruleset
-     * usando o cap default de hex por match.
+     * Creates a {@link YaraScanner} (one instance per worker) over this ruleset
+     * using the default hex-per-match cap.
      *
-     * <p>O scanner não é thread-safe; {@code YRX_RULES} (compartilhado read-only
-     * entre scanners) é. Veja {@code research.md} §R-04.</p>
+     * <p>The scanner is not thread-safe; {@code YRX_RULES} (shared read-only
+     * across scanners) is. See {@code research.md} §R-04.</p>
      */
     public YaraScanner createScanner() {
         return createScanner(DEFAULT_MATCH_HEX_MAX_BYTES);
     }
 
     /**
-     * Cria um {@link YaraScanner} com cap explícito de bytes por matched-string —
-     * usado pelo {@code YaraScanTask} que repassa {@code YaraConfig.matchHexMaxBytes}.
+     * Creates a {@link YaraScanner} with an explicit bytes-per-matched-string cap —
+     * used by {@code YaraScanTask}, which passes {@code YaraConfig.matchHexMaxBytes}.
      *
-     * @param matchHexMaxBytes número máximo de bytes a recortar do buffer de scan
-     *                         por match individual (acima disso o hex é truncado e
-     *                         {@link MatchedString#isTruncated()} fica {@code true})
+     * @param matchHexMaxBytes maximum number of bytes to slice from the scan buffer
+     *                         per individual match (above this the hex is truncated and
+     *                         {@link MatchedString#isTruncated()} returns {@code true})
      */
     public YaraScanner createScanner(int matchHexMaxBytes) {
         if (rulesPtr == null || !libraryAvailable) {
@@ -288,12 +286,12 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /**
-     * Conveniência para scans one-shot (usado em testes). Para o pipeline real,
-     * use {@link #createScanner(int)} uma vez por worker e reutilize.
+     * Convenience method for one-shot scans (used in tests). For the real pipeline,
+     * call {@link #createScanner(int)} once per worker and reuse it.
      *
-     * @param buffer bytes a escanear
-     * @param length bytes válidos no buffer (≤ {@code buffer.length})
-     * @param timeoutSeconds {@code 0} = sem timeout; {@code > 0} = limite em segundos
+     * @param buffer bytes to scan
+     * @param length valid bytes in the buffer (≤ {@code buffer.length})
+     * @param timeoutSeconds {@code 0} = no timeout; {@code > 0} = limit in seconds
      */
     public List<YaraMatch> scan(byte[] buffer, int length, int timeoutSeconds) {
         if (rulesPtr == null || buffer == null || length <= 0 || !libraryAvailable) {
@@ -316,7 +314,7 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /* ---------------------------------------------------------------------- */
-    /*                    Helpers de erro / introspecção                       */
+    /*                      Error helpers / introspection                      */
     /* ---------------------------------------------------------------------- */
 
     private static String lastError() {
@@ -329,8 +327,8 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /**
-     * Extrai os erros acumulados do compilador via {@code yrx_compiler_errors_json}
-     * e os reporta ao sink um a um.
+     * Extracts accumulated compiler errors via {@code yrx_compiler_errors_json}
+     * and reports them to the sink one by one.
      */
     private static void reportCompilerErrors(Pointer compiler, File source, CompileErrorSink sink) {
         if (sink == null) {
@@ -363,12 +361,12 @@ public final class YaraEngine implements AutoCloseable {
     private static void parseErrorsJson(String json, File source, CompileErrorSink sink) {
         try {
             JsonNode root = new ObjectMapper().readTree(json);
-            // O JSON do yara-x é uma lista de objetos com campos como
+            // The yara-x JSON is a list of objects with fields such as
             // {"code","title","origin":{"file","line",...},"text",...}.
-            // Aceitamos tanto array-raiz quanto objeto com "errors":[...].
+            // Accept both a root array and an object with an "errors":[...] key.
             JsonNode errors = root.isArray() ? root : root.path("errors");
             if (errors == null || !errors.isArray() || errors.size() == 0) {
-                // Sem erros estruturados — reporta o JSON cru como fallback.
+                // No structured errors — fall back to reporting the raw JSON.
                 sink.report(source, -1, json.length() > 500 ? json.substring(0, 500) : json);
                 return;
             }
@@ -455,7 +453,7 @@ public final class YaraEngine implements AutoCloseable {
         String yrx_last_error();
     }
 
-    /** Layout do {@code YRX_BUFFER} ({@code uint8_t *data; size_t length;}). */
+    /** Layout of {@code YRX_BUFFER} ({@code uint8_t *data; size_t length;}). */
     public static class YRX_BUFFER extends Structure {
         public Pointer data;
         public long length;
@@ -467,10 +465,10 @@ public final class YaraEngine implements AutoCloseable {
     }
 
     /**
-     * Layout do {@code YRX_MATCH} ({@code size_t offset; size_t length;}). Os
-     * campos {@code size_t} são modelados como {@code long} — válido em Win64
-     * e Linux64 (ambos têm {@code size_t} de 8 bytes), que são os SOs que o
-     * IPED suporta hoje (ver {@code root CLAUDE.md} §3).
+     * Layout of {@code YRX_MATCH} ({@code size_t offset; size_t length;}).
+     * The {@code size_t} fields are modelled as {@code long} — valid on Win64
+     * and Linux64 (both have an 8-byte {@code size_t}), the OSes IPED supports
+     * today (see {@code root CLAUDE.md} §3).
      */
     public static class YRX_MATCH extends Structure {
         public long offset;
@@ -498,34 +496,34 @@ public final class YaraEngine implements AutoCloseable {
         }
     }
 
-    /** Callback nativo para matches: {@code void (*)(const YRX_RULE *rule, void *user_data)}. */
+    /** Native callback for rule matches: {@code void (*)(const YRX_RULE *rule, void *user_data)}. */
     public interface RuleCallback extends Callback {
         void invoke(Pointer rule, Pointer userData);
     }
 
-    /** Callback nativo para tags: {@code void (*)(const char *tag, void *user_data)}. */
+    /** Native callback for tags: {@code void (*)(const char *tag, void *user_data)}. */
     public interface TagCallback extends Callback {
         void invoke(String tag, Pointer userData);
     }
 
-    /** Callback nativo para patterns: {@code void (*)(const YRX_PATTERN *pattern, void *user_data)}. */
+    /** Native callback for patterns: {@code void (*)(const YRX_PATTERN *pattern, void *user_data)}. */
     public interface PatternCallback extends Callback {
         void invoke(Pointer pattern, Pointer userData);
     }
 
     /**
-     * Callback nativo para matches dentro de um pattern:
+     * Native callback for matches inside a pattern:
      * {@code void (*)(const YRX_MATCH *match, void *user_data)}.
      *
-     * <p>O ponteiro é válido apenas durante a execução do callback (a libyara-x-capi
-     * libera o objeto no retorno) — leia {@code offset}/{@code length} ANTES de
-     * retornar.</p>
+     * <p>The pointer is only valid during callback execution (libyara-x-capi
+     * frees the object on return) — read {@code offset}/{@code length} BEFORE
+     * returning.</p>
      */
     public interface MatchCallback extends Callback {
         void invoke(YRX_MATCH.ByReference match, Pointer userData);
     }
 
-    /** Sink simples para reportar erros de compilação individuais (FR-002 + FR-005). */
+    /** Simple sink for reporting individual compile errors (FR-002 + FR-005). */
     public interface CompileErrorSink {
         void report(File source, int lineNumber, String message);
     }

@@ -1,57 +1,56 @@
 ########################################################################
 # YARA Rules Engine — IPED (engine: YARA-X 1.x via libyara-x-capi)
 #
-# Configuração consumida por iped.engine.task.yara.YaraScanTask (via
+# Configuration consumed by iped.engine.task.yara.YaraScanTask (via
 # iped.engine.config.YaraConfig).
 #
-# Para habilitar a feature, defina "enableYara = true" em IPEDConfig.txt
-# (ou no IPEDConfig.txt do perfil).
+# To enable the feature, set "enableYara = true" in IPEDConfig.txt
+# (or in the profile's IPEDConfig.txt).
 #
-# Schema completo deste arquivo:
+# Full schema for this file:
 #   specs/001-yara-rules-engine/contracts/YaraConfig.txt.contract.md
 ########################################################################
 
-# Diretórios contendo regras YARA em formato fonte (.yar, .yara) — o YARA-X
-# compila o catálogo em runtime no startup do caso. Formatos pré-compilados
-# (.yarc do YARA clássico ou serialização própria do YARA-X) NÃO são aceitos
-# na v1; ver specs/001-yara-rules-engine/research.md §R-01.
+# Directories containing YARA rules in source format (.yar, .yara) — YARA-X
+# compiles the catalog at runtime during case startup. Pre-compiled formats
+# (.yarc from classic YARA or YARA-X's own serialization) are NOT accepted
+# in v1; see specs/001-yara-rules-engine/research.md §R-01.
 #
-# Múltiplos caminhos podem ser separados por ";" (Windows) ou ":" (Linux).
-# Quando vazio, a feature fica efetivamente desligada para o caso.
+# Multiple paths can be separated by ";" (Windows) or ":" (Linux).
+# When empty, the feature is effectively disabled for the case.
 #
-# Formas suportadas:
-#   - Caminho absoluto:     C:\rules\yara          ou  /opt/iped/rules
-#   - ${IPED_HOME} token:   ${IPED_HOME}/yara-rules   (recomendado — expande
-#                           para a raiz da instalação do IPED em runtime)
-#   - Caminho relativo:     yara-rules            (resolvido a partir do diretório
-#                           de trabalho do JVM; FUNCIONA quando o IPED é iniciado
-#                           pela sua pasta de instalação, frágil em outros casos
-#                           — prefira ${IPED_HOME}/...)
+# Supported forms:
+#   - Absolute path:    C:\rules\yara          or  /opt/iped/rules
+#   - ${IPED_HOME} token: ${IPED_HOME}/yara-rules (recommended — expands
+#                         to the IPED installation root at runtime)
+#   - Relative path:    yara-rules            (resolved from the JVM working
+#                         directory; WORKS when IPED is started from its
+#                         install folder, fragile otherwise
+#                         — prefer ${IPED_HOME}/...)
 ruleDirectories =
 
-# Limite máximo de tamanho por item a ser escaneado.
-# Aceita sufixos K, M, G (case-insensitive, base 1024). Itens acima do
-# limite são pulados e o motivo é registrado.
+# Maximum item size to scan.
+# Accepts K, M, G suffixes (case-insensitive, base 1024). Items above the
+# limit are skipped and the reason is logged.
 maxFileSizeBytes = 250M
 
-# Limite máximo de tempo por item, em milissegundos. Scans que excedam
-# o limite são interrompidos sem propagar exceção; o item é contado
-# como "skipped" nas métricas.
+# Maximum time per item, in milliseconds. Scans that exceed the limit are
+# interrupted without propagating an exception; the item is counted as
+# "skipped" in the metrics.
 perItemTimeoutMs = 30000
 
-# Quando false (default), apenas itens com content stream binário
-# acessível (arquivos, subitens de containers, carved items) são
-# escaneados. Quando true, força tentativa em todos os itens — útil
-# para auditoria; tem custo de performance maior.
+# When false (default), only items with accessible binary content streams
+# (files, container sub-items, carved items) are scanned. When true, forces
+# an attempt on all items — useful for auditing; has a higher performance cost.
 scanAllItems = false
 
-# Tamanho máximo (em bytes) dos trechos brutos persistidos no JSON de
-# detalhe de match. Excesso é truncado e marcado com "truncated": true.
-# Faixa válida: 1 a 65536.
+# Maximum size (in bytes) of the raw bytes slices stored in the match detail
+# facet. Excess is truncated and flagged with "truncated": true.
+# Valid range: 1 to 65536.
 matchHexMaxBytes = 256
 
-# Hint opcional de caminho para a biblioteca libyara-x-capi. Em produção
-# deixe vazio — o Bootstrap resolve automaticamente a partir de
-# tools/yara-x/<os>/. Útil em ambientes de desenvolvimento para apontar
-# para uma libyara-x-capi instalada manualmente em /usr/local/lib.
+# Optional path hint for the libyara-x-capi library. In production leave
+# empty — Bootstrap resolves it automatically from tools/yara-x/<os>/.
+# Useful in development environments to point to a manually installed
+# libyara-x-capi in /usr/local/lib.
 # engineLibraryHint =

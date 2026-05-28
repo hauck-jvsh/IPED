@@ -8,12 +8,12 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Resultado da aplicação de uma única regra YARA a um item.
+ * Result of applying a single YARA rule to an item.
  *
- * <p>Imutável após construção; coleções são defensivamente copiadas. Veja
- * {@code specs/001-yara-rules-engine/data-model.md} para o modelo completo e
- * {@code specs/001-yara-rules-engine/contracts/lucene-fields.contract.md} para o
- * formato JSON usado na persistência.</p>
+ * <p>Immutable after construction; collections are defensively copied. See
+ * {@code specs/001-yara-rules-engine/data-model.md} for the full data model and
+ * {@code specs/001-yara-rules-engine/contracts/lucene-fields.contract.md} for the
+ * JSON format used during persistence.</p>
  */
 public final class YaraMatch {
 
@@ -35,17 +35,17 @@ public final class YaraMatch {
                 : Collections.unmodifiableList(new ArrayList<>(strings));
     }
 
-    /** Identificador de origem da regra (basename do arquivo .yar/.yara/.yarc sem extensão). */
+    /** Origin identifier of the rule (basename of the .yar/.yara/.yarc file without extension). */
     public String getNamespace() {
         return namespace;
     }
 
-    /** Nome da regra (parte após {@code rule} na declaração). */
+    /** Rule name (the identifier after the {@code rule} keyword in the declaration). */
     public String getName() {
         return name;
     }
 
-    /** Identificador completo {@code "namespace/name"}, usado como chave no campo Lucene {@code yara:rule}. */
+    /** Full identifier {@code "namespace/name"}, used as the key in the Lucene {@code yara:rule} field. */
     public String getIdentifier() {
         return namespace + "/" + name;
     }

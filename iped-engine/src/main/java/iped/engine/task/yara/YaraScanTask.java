@@ -65,12 +65,12 @@ public class YaraScanTask extends AbstractTask {
     private static final AtomicBoolean initialized = new AtomicBoolean(false);
     private static final AtomicBoolean finished = new AtomicBoolean(false);
 
-    /** Compartilhado entre todos os workers (read-only após {@code yrx_compiler_build}). */
+    /** Shared across all workers (read-only after {@code yrx_compiler_build}). */
     private static volatile YaraEngine sharedEngine = null;
-    /** {@code true} se a feature está globalmente habilitada para este caso. */
+    /** {@code true} if the feature is globally enabled for this case. */
     private static volatile boolean taskEnabled = false;
 
-    /** Métricas globais agregadas por todos os workers. */
+    /** Global metrics aggregated across all workers. */
     private static final AtomicLong itemsScanned = new AtomicLong();
     private static final AtomicLong itemsSkippedSize = new AtomicLong();
     private static final AtomicLong itemsSkippedNoStream = new AtomicLong();
@@ -99,9 +99,9 @@ public class YaraScanTask extends AbstractTask {
     }
 
     /**
-     * Caminho de init testável que bypassa o {@code ConfigurationManager} —
-     * package-private para uso em {@code YaraScanTaskIntegrationTest}. Em
-     * produção sempre entra via {@link #init(ConfigurationManager)}.
+     * Testable init path that bypasses {@code ConfigurationManager} —
+     * package-private for use in {@code YaraScanTaskIntegrationTest}. In
+     * production this is always entered via {@link #init(ConfigurationManager)}.
      */
     void initWithConfig(YaraConfig config) {
         this.config = config;
@@ -125,8 +125,8 @@ public class YaraScanTask extends AbstractTask {
     }
 
     /**
-     * Roda uma única vez (sincronizado). Carrega o catálogo, banê o módulo
-     * cuckoo (via {@link YaraEngine#compileSources}), e popula {@link #sharedEngine}.
+     * Runs exactly once (synchronized). Loads the catalog, bans the cuckoo module
+     * (via {@link YaraEngine#compileSources}), and populates {@link #sharedEngine}.
      */
     private static boolean doSharedInit(YaraConfig config) {
         if (config == null || !config.isEnabled()) {
@@ -195,8 +195,8 @@ public class YaraScanTask extends AbstractTask {
         try {
             matches = scanner.scan(buffer, buffer.length, timeoutSeconds);
         } catch (Throwable t) {
-            // Falha nativa em um item é capturada e contabilizada como skipped/error;
-            // não propaga para não abortar o caso (FR-005).
+            // Native failure on a single item is caught and counted as skipped/error;
+            // it does not propagate to avoid aborting the case (FR-005).
             itemsSkippedError.incrementAndGet();
             logger.debug("YaraScanTask: scan threw {} on item {}: {}",
                     t.getClass().getSimpleName(), evidence.getId(), t.getMessage());
@@ -213,8 +213,8 @@ public class YaraScanTask extends AbstractTask {
     }
 
     /**
-     * Default seletivo (R-06): item precisa ter conteúdo binário acessível.
-     * Override {@code scanAllItems=true} pula a verificação de elegibilidade.
+     * Selective default (R-06): the item must have accessible binary content.
+     * Setting {@code scanAllItems=true} bypasses the eligibility check.
      */
     private boolean isItemEligible(IItem evidence) {
         if (config.isScanAllItems()) {
@@ -224,23 +224,23 @@ public class YaraScanTask extends AbstractTask {
         if (len == null || len <= 0) {
             return false;
         }
-        // Não temos um meio barato de testar "tem stream" sem abrir — o open
-        // acontece em readItemContent() e itens sem stream cairão em
-        // itemsSkippedNoStream lá.
+        // There is no cheap way to test "has stream" without opening it — the open
+        // happens in readItemContent() and items without a stream will fall into
+        // itemsSkippedNoStream there.
         return evidence.getMediaType() != null;
     }
 
     /**
-     * Lê todo o conteúdo do item até {@code length}. Retorna {@code null} se o
-     * stream não pôde ser aberto ou se houve falha de I/O.
+     * Reads the full item content up to {@code length} bytes. Returns {@code null} if
+     * the stream could not be opened or an I/O failure occurred.
      */
     private byte[] readItemContent(IItem evidence, int length) {
         try (InputStream in = evidence.getBufferedInputStream()) {
             if (in == null) {
                 return null;
             }
-            // O length informado pelo caller já passou pelo check de maxFileSizeBytes,
-            // então readAllBytes é seguro aqui.
+            // The length supplied by the caller has already passed the maxFileSizeBytes check,
+            // so readAllBytes is safe here.
             byte[] bytes;
             if (in instanceof BufferedInputStream) {
                 bytes = in.readAllBytes();

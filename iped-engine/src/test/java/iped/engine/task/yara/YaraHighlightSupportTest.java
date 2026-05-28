@@ -6,15 +6,15 @@ import static org.junit.Assert.assertNull;
 import org.junit.Test;
 
 /**
- * Cobre {@link YaraHighlightSupport#decodeHexForFacet} e o helper interno
- * {@link YaraHighlightSupport#decodePrintable}. Esses são os dois pontos onde a
- * representação hex de uma {@link MatchedString} vira (a) valor do campo
- * {@code yara:match:<rule_id>} para a faceta UI e (b) termo de highlight para
- * o viewer de texto.
+ * Covers {@link YaraHighlightSupport#decodeHexForFacet} and the internal helper
+ * {@link YaraHighlightSupport#decodePrintable}. These are the two points where the
+ * hex representation of a {@link MatchedString} becomes (a) a value for the
+ * {@code yara:match:<rule_id>} UI facet field and (b) a highlight term for
+ * the text viewer.
  */
 public class YaraHighlightSupportTest {
 
-    /* decodeHexForFacet — usado por YaraScanTask.persistMatches() ----------- */
+    /* decodeHexForFacet — used by YaraScanTask.persistMatches() -------------- */
 
     @Test
     public void facet_returnsDecodedTextForPrintableAscii() {
