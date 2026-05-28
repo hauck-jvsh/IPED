@@ -125,6 +125,8 @@ Comportamento (FR-011):
 
 Combinações inválidas (`--append`, `--restart`, `-remove`, ou `--continue` explícito) são rejeitadas com exit code 1.
 
+> ⚠️ **Feche o SearchApp (`iped` UI / `IPED-SearchApp.exe`) antes de rodar `--yara-only` no mesmo caso.** O pipeline grava no `<caso>/iped/storage/storage-*.db` (SQLite) via `ExportFileTask`. Se a UI estiver aberta, ela mantém conexões SHARED de leitura nesses arquivos. O `con.commit()` final do `ExportFileTask.finish()` precisa de lock EXCLUSIVE e fica em busy-wait nativo (`NativeDB.step` RUNNABLE) até a UI fechar — pode parecer hang indefinido. Diagnóstico: `jps -v` mostra um `AppMain ... -Dlog4j.configurationFile=file:/<caso>/iped/conf/...` rodando junto com o `Main` do `--yara-only`; thread dump (`jcmd <pid> Thread.print`) mostra Worker-0 em `ExportFileTask.finish:888 → SQLiteConnection.commit → NativeDB.step`. Resolução: fechar a janela do SearchApp libera os locks; o commit conclui em segundos e o `--yara-only` finaliza limpo (sem reprocessar nada). Pre-check automático fica como melhoria futura.
+
 Contrato completo: [contracts/cli-yara-only.contract.md](contracts/cli-yara-only.contract.md).
 
 ---

@@ -7,8 +7,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -24,34 +26,36 @@ import iped.engine.task.AbstractTask;
 import iped.properties.ExtraProperties;
 
 /**
- * Tarefa de pipeline que aplica regras YARA-X ao conteúdo binário de cada item
- * elegível e persiste os matches em três propriedades:
+ * Pipeline task that applies YARA-X rules to each eligible item's binary
+ * content and persists matches as multi-valued Lucene fields modeled after the
+ * {@code RegexTask} {@code Regex:<category>} pattern:
  *
  * <ul>
- *   <li>{@link ExtraProperties#YARA_RULE} — multi-valorado, indexado: identificadores
- *       de regra ({@code namespace/name}) que casaram com o item.</li>
- *   <li>{@link ExtraProperties#YARA_TAGS} — multi-valorado, indexado: união das tags
- *       declaradas nas regras que casaram.</li>
- *   <li>{@link ExtraProperties#YARA_MATCH_DETAIL} — armazenado (stored, não indexado):
- *       JSON com o detalhe completo dos matches (engine version, scanned bytes,
- *       rule/namespace/tags/strings).</li>
+ *   <li>{@link ExtraProperties#YARA_MATCH_PREFIX}{@code <namespace>/<name>} —
+ *       one multi-valued field per matched rule, each value being a distinct
+ *       matched string (decoded to printable ASCII when possible, lowercase
+ *       hex otherwise). Drives the per-rule facet in {@code MetadataPanel} and
+ *       feeds {@code getHighlightTerms()} through the literal-value branch.</li>
+ *   <li>{@link ExtraProperties#YARA_TAGS} — multi-valued: union of tags
+ *       declared on matched rules. Useful for cross-rule grouping (e.g.
+ *       "show all items tagged {@code apt}").</li>
  * </ul>
  *
- * <p>Lifecycle (segue o padrão de {@code HashDBLookupTask}):</p>
+ * <p>Lifecycle (mirrors {@code HashDBLookupTask}):</p>
  * <ul>
- *   <li>{@link #init} — sincronizado em um lock estático: o primeiro worker
- *       carrega config, compila o catálogo (uma vez) e popula
- *       {@link #sharedEngine}. Cada worker (incluindo o primeiro) então cria seu
- *       próprio {@link YaraScanner} (não thread-safe) e {@link YaraMatchSerializer}.</li>
- *   <li>{@link #process} — escaneia o item se elegível e respeita os limites de
- *       tamanho/timeout do {@link YaraConfig}.</li>
- *   <li>{@link #finish} — cada worker destrói seu scanner; o último worker
- *       destrói o engine compartilhado e imprime um resumo das métricas.</li>
+ *   <li>{@link #init} — synchronized on a static lock: the first worker loads
+ *       the config, compiles the catalog once and populates
+ *       {@link #sharedEngine}. Every worker (including the first) then creates
+ *       its own {@link YaraScanner} (not thread-safe).</li>
+ *   <li>{@link #process} — scans the item if eligible and respects the
+ *       size/timeout caps in {@link YaraConfig}.</li>
+ *   <li>{@link #finish} — each worker destroys its scanner; the last worker
+ *       destroys the shared engine and prints a metrics summary.</li>
  * </ul>
  *
- * <p>Quando a feature está desabilitada (via {@code enableYara=false} ou
- * catálogo vazio, ou engine nativa indisponível), {@link #isEnabled} retorna
- * {@code false} e {@link #process} é no-op — FR-013 / FR-014.</p>
+ * <p>When the feature is disabled ({@code enableYara=false}, empty catalog, or
+ * the native engine is unavailable), {@link #isEnabled} returns {@code false}
+ * and {@link #process} is a no-op (FR-013 / FR-014).</p>
  */
 public class YaraScanTask extends AbstractTask {
 
@@ -65,8 +69,6 @@ public class YaraScanTask extends AbstractTask {
     private static volatile YaraEngine sharedEngine = null;
     /** {@code true} se a feature está globalmente habilitada para este caso. */
     private static volatile boolean taskEnabled = false;
-    /** Versão da engine reportada — copiada uma vez para evitar consultas repetidas. */
-    private static volatile String engineVersionAtInit = YaraEngine.ENGINE_VERSION;
 
     /** Métricas globais agregadas por todos os workers. */
     private static final AtomicLong itemsScanned = new AtomicLong();
@@ -79,7 +81,6 @@ public class YaraScanTask extends AbstractTask {
     /* Per-worker state (one instance per worker). */
     private YaraConfig config;
     private YaraScanner scanner;
-    private YaraMatchSerializer serializer;
     private int timeoutSeconds;
 
     @Override
@@ -112,14 +113,13 @@ public class YaraScanTask extends AbstractTask {
         }
         // Per-worker setup runs only when the shared init succeeded.
         if (taskEnabled && sharedEngine != null) {
-            scanner = sharedEngine.createScanner();
+            scanner = sharedEngine.createScanner(config.getMatchHexMaxBytes());
             if (scanner == null) {
                 // Engine reported available at shared init but scanner creation failed
                 // for this worker — degrade locally without taking the whole task down.
                 logger.warn("YaraScanTask: failed to create per-worker scanner — task disabled for this worker");
                 return;
             }
-            serializer = new YaraMatchSerializer(config.getMatchHexMaxBytes());
             timeoutSeconds = Math.max(0, config.getPerItemTimeoutMs() / 1000);
         }
     }
@@ -161,9 +161,8 @@ public class YaraScanTask extends AbstractTask {
             logger.warn("YaraScanTask: no YARA-X rules compiled successfully — task disabled.");
             return false;
         }
-        engineVersionAtInit = YaraEngine.getEngineVersion();
         logger.info("YaraScanTask: catalog compiled in {} ms from {} source files (engine {}).",
-                compileMs, sources.size(), engineVersionAtInit);
+                compileMs, sources.size(), YaraEngine.getEngineVersion());
         return true;
     }
 
@@ -256,31 +255,57 @@ public class YaraScanTask extends AbstractTask {
     }
 
     /**
-     * Popula os três campos {@code yara:*} no item. Ordenação determinística
-     * (Princípio IV): regras lexicográficas por identificador; tags em
-     * {@link LinkedHashSet} preservando ordem de inserção do conjunto unificado.
+     * Populates the YARA fields on the item. Deterministic ordering
+     * (Constitution Principle IV): tags in a {@link LinkedHashSet} that
+     * preserves union insertion order; per-rule match values collected in a
+     * {@link LinkedHashSet} (dedup while preserving encounter order) then
+     * written sorted lexicographically so the {@link iped.engine.task.index.IndexItem}
+     * {@code SortedSetDocValues} facet is stable across runs.
+     *
+     * <p>Field layout (rev-5):</p>
+     * <ul>
+     *   <li>{@code yara:tag} — multi-valued: union of tags declared on matched
+     *       rules. Cross-rule grouping facet (e.g. "all items tagged {@code apt}").</li>
+     *   <li>{@code yara:match:<namespace>/<name>} — multi-valued, one field per
+     *       matched rule; each value is a distinct matched string (decoded to
+     *       printable ASCII when possible, else lowercase hex). Mirrors the
+     *       {@code Regex:<category>} pattern from {@code RegexTask} — drilling
+     *       a value filters the gallery and the same selection becomes a
+     *       text-viewer highlight term via {@code MetadataPanel.getHighlightTerms()}.</li>
+     * </ul>
+     *
+     * <p>The aggregated {@code yara:rule} list and the {@code yara:matches} JSON
+     * audit blob were removed in rev-5 as redundant with the per-rule fields.
+     * The {@code scannedBytes} parameter is kept for future per-item metrics but
+     * is currently unused.</p>
      */
     private void persistMatches(IItem evidence, List<YaraMatch> matches, int scannedBytes) {
-        List<String> ruleIds = new ArrayList<>(matches.size());
         Set<String> tagSet = new LinkedHashSet<>();
+        // Merge values across multiple YaraMatch instances that share the same
+        // namespace/name (rare but possible — defensive).
+        Map<String, Set<String>> perRuleValues = new LinkedHashMap<>();
         for (YaraMatch m : matches) {
-            ruleIds.add(m.getIdentifier());
             tagSet.addAll(m.getTags());
+            Set<String> values = perRuleValues.computeIfAbsent(m.getIdentifier(),
+                    k -> new LinkedHashSet<>());
+            for (MatchedString s : m.getStrings()) {
+                String value = YaraHighlightSupport.decodeHexForFacet(s.getHex());
+                if (!value.isEmpty()) {
+                    values.add(value);
+                }
+            }
         }
-        Collections.sort(ruleIds);
-        evidence.setExtraAttribute(ExtraProperties.YARA_RULE, ruleIds);
         if (!tagSet.isEmpty()) {
             evidence.setExtraAttribute(ExtraProperties.YARA_TAGS, new ArrayList<>(tagSet));
         }
-        try {
-            String json = serializer.toJson(matches, engineVersionAtInit, scannedBytes);
-            if (json != null) {
-                evidence.setExtraAttribute(ExtraProperties.YARA_MATCH_DETAIL, json);
+        for (Map.Entry<String, Set<String>> entry : perRuleValues.entrySet()) {
+            Set<String> values = entry.getValue();
+            if (values.isEmpty()) {
+                continue;
             }
-        } catch (IOException e) {
-            // Não bloqueia o item — temos os IDs/tags persistidos, só perdemos o detalhe.
-            logger.debug("YaraScanTask: failed to serialize match detail for item {}: {}",
-                    evidence.getId(), e.getMessage());
+            List<String> ordered = new ArrayList<>(values);
+            Collections.sort(ordered);
+            evidence.setExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + entry.getKey(), ordered);
         }
     }
 

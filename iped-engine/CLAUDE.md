@@ -120,7 +120,7 @@ public abstract class AbstractTask {
 | 8 | `PhotoDNATask` / `PhotoDNALookup` | PhotoDNA + consulta NCMEC. |
 | 9 | `ParsingTask` | Extração de texto/metadata via Tika; expande containers. |
 | 10 | `CarverTask` / `KnownMetCarveTask` / `LedCarveTask` | Recupera arquivos por assinatura. |
-| 11 | `YaraScanTask` | Aplica regras YARA-X (via `libyara-x-capi` em `tools/yara-x/`) ao conteúdo binário. Roda **após carving** para ver subitems carved e **antes do `IndexTask`** para que `yara:rule`/`yara:tag`/`yara:matches` entrem no documento Lucene. Ver §22. |
+| 11 | `YaraScanTask` | Aplica regras YARA-X (via `libyara-x-capi` em `tools/yara-x/`) ao conteúdo binário. Roda **após carving** para ver subitems carved e **antes do `IndexTask`** para que `yara:tag` e `yara:match:<rule_id>` entrem no documento Lucene. Ver §22. |
 | 12 | `SetCategoryTask` | Atribui categorias. |
 | 13 | `LanguageDetectTask` | Detecção de idioma (>70). |
 | 14 | `NamedEntityTask` | NER via Tika + Stanford NLP. |
@@ -439,13 +439,12 @@ Feature adicionada na release 4.4.0 — ver `specs/001-yara-rules-engine/`.
 | Classe | Responsabilidade |
 |---|---|
 | `YaraConfig` (em `iped.engine.config`) | `AbstractTaskPropertiesConfig` que lê `conf/YaraConfig.txt`: `ruleDirectories`, `maxFileSizeBytes`, `perItemTimeoutMs`, `scanAllItems`, `matchHexMaxBytes`, `engineLibraryHint`. Enable property: `enableYara` em `IPEDConfig.txt`. |
-| `YaraEngine` | Bindings JNA finos para `libyara-x-capi` (YARA-X 1.16.0). API mínima: `ensureAvailable/compileSources/createScanner/close`. Lib carregada via `Native.load("yara_x_capi", LibYaraX.class)` a partir de `tools/yara-x/<os>/`. |
-| `YaraScanner` | Per-worker wrapper `AutoCloseable` em torno de `YRX_SCANNER*`. Instala callback uma vez na construção, reusa entre `scan()` calls. **Não é thread-safe** (cada worker tem o seu). |
+| `YaraEngine` | Bindings JNA finos para `libyara-x-capi` (YARA-X 1.16.0). API: `ensureAvailable/compileSources/createScanner(matchHexMaxBytes)/close`. Bindings incluem introspecção de regras (`yrx_rule_identifier`/`namespace`/`iter_tags`/`iter_patterns`) e de patterns/matches (`yrx_pattern_identifier`/`yrx_pattern_iter_matches`) + struct `YRX_MATCH{offset, length}`. Lib carregada via `Native.load("yara_x_capi", LibYaraX.class)` a partir de `tools/yara-x/<os>/`. |
+| `YaraScanner` | Per-worker wrapper `AutoCloseable` em torno de `YRX_SCANNER*`. Instala callback uma vez na construção, reusa entre `scan()` calls. **Não é thread-safe** (cada worker tem o seu). No callback de rule: itera patterns (`yrx_rule_iter_patterns`) → matches (`yrx_pattern_iter_matches`), recorta os bytes do buffer Java mantido pelo `MatchCollector` durante o scan e codifica em hex lowercase (cap em `matchHexMaxBytes` do `YaraConfig`). Produz `MatchedString{id="$name", offset, hex, truncated}`. |
 | `YaraRulesetLoader` | Descoberta recursiva determinística de `.yar`/`.yara` nos `ruleDirectories`. Pré-compilados (`.yarc`) fora de escopo na v1. |
-| `YaraMatch` / `MatchedString` | POJOs imutáveis representando um match (namespace, name, tags, meta, matched-strings). |
-| `YaraMatchSerializer` | Round-trip JSON do conjunto de matches por item. Ordenação determinística; truncamento de hex via `matchHexMaxBytes`. |
-| `YaraScanTask` (em `iped.engine.task.yara`) | `AbstractTask` que: (a) shared-init via `synchronized` sobre `AtomicBoolean` (compila o catálogo uma vez), (b) per-worker `YaraScanner`, (c) `process(IItem)` aplica gate de elegibilidade (R-06), respeita `maxFileSizeBytes`/`perItemTimeoutMs`, persiste `ExtraProperties.YARA_RULE`/`YARA_TAGS`/`YARA_MATCH_DETAIL`. |
-| `YaraReportRenderer` | Renderiza o JSON de `yara:matches` como HTML estruturado e HTML-safe para inclusão pelo `HTMLReportTask` (FR-010). |
+| `YaraMatch` / `MatchedString` | POJOs imutáveis representando um match (namespace, name, tags, meta, matched-strings). Existem apenas em memória durante o scan — `YaraScanTask` consome via `YaraScanner.scan()` e denormaliza no formato `yara:match:<id>` antes do IndexTask. |
+| `YaraScanTask` (em `iped.engine.task.yara`) | `AbstractTask` que: (a) shared-init via `synchronized` sobre `AtomicBoolean` (compila o catálogo uma vez), (b) per-worker `YaraScanner`, (c) `process(IItem)` aplica gate de elegibilidade (R-06), respeita `maxFileSizeBytes`/`perItemTimeoutMs`, persiste `ExtraProperties.YARA_TAGS` (união de tags cross-rule) e um campo `ExtraProperties.YARA_MATCH_PREFIX + namespace/name` por regra que casou, multi-valorado, com cada valor sendo um matched-string distinto decodificado (texto ASCII imprimível ou hex lowercase, via `YaraHighlightSupport.decodeHexForFacet`). Mirror do `Regex:CPF`/`Regex:EMAIL` faz a faceta do `MetadataPanel` funcionar idêntica à do `RegexTask` (drill-down + highlight automático no viewer de texto via o branch literal de `getHighlightTerms`). Os campos agregados `yara:rule` e `yara:matches` (JSON de auditoria) da v1 foram removidos na rev-5. |
+| `YaraHighlightSupport` | Utilitário stateless. `decodeHexForFacet(hex)` converte o `hex` de uma `MatchedString` em texto ASCII imprimível trimmed (preferência) ou no hex lowercase original (fallback p/ binário) — consumido por `YaraScanTask.persistMatches()` para gerar os valores dos campos `yara:match:<rule_id>`. `decodePrintable(hex)` (package-private) é o caminho estrito que retorna `null` para qualquer byte fora de printable-ASCII + tab/LF/CR. Coberto por `YaraHighlightSupportTest` (13 testes). |
 | _`--yara-only` rerun (via `SkipCommitedTask` + `IndexTask`)_ | Caminho de re-aplicação do catálogo sobre um caso já processado: passa pelo `Manager` normal (FR-011 redesenhado). `SkipCommitedTask` em modo `yara-only` marca itens commitados com `IS_COMMITTED=true` mas **NÃO** chama `setToIgnore(true)` — os itens seguem o pipeline. `IndexTask`, ao final, detecta `isAlreadyCommited && cmdArgs.isYaraOnly()` e usa `worker.writer.updateDocuments(new Term(IndexItem.TRACK_ID, Util.getTrackID(item)), docs)` em vez de `addDocuments`. A classe standalone `YaraRerunRunner` da v1 foi removida porque o ciclo `Document → IItem → Document` não é round-trip-safe (NPE em `setName` de docs-fragmento, conflito `SORTED` vs `SORTED_SET` em metadados multi-valor). |
 
 ### Ciclo de vida da engine nativa
@@ -480,17 +479,19 @@ iped --yara-only -d <DATASOURCE> -o <CASE_OUTPUT_DIR>
 - Pre-check: `Main.startManager()` falha rápido se `enableYara=false` (evitaria `updateDocuments` apagar `yara:*` sem reescrever).
 - Histórico: a v1 standalone (`YaraRerunRunner`) foi removida — o round-trip `Document → IItem → Document` quebrou em produção (NPE/schema conflict).
 
+> ⚠️ **Feche a UI do `iped`/`IPED-SearchApp.exe` apontando para o mesmo caso antes de rodar `--yara-only`.** A UI mantém conexões SHARED de leitura nos `<caso>/iped/storage/storage-*.db` (SQLite); o commit final do `ExportFileTask` precisa de lock EXCLUSIVE e fica em busy-wait nativo (`NativeDB.step` RUNNABLE) indefinidamente até a UI fechar. Sintoma: ProgressFrame mostra "Todos os Workers ociosos"; `jcmd <pid> Thread.print` mostra Worker-0 em `ExportFileTask.finish:888`. Solução: fechar a janela do SearchApp libera os locks e o commit conclui em segundos. Pre-check automático fica como melhoria futura ([feedback memory entry](../../../C:/Users/joaopaulo_jpva/.claude/projects/h--java-workspaces-workspace-iped-IPED/memory/feedback_iped_yara_only_appmain_lock.md)).
+
 ### Testes (`iped-engine/src/test/.../yara/` + `iped-engine/src/test/.../config/YaraConfigTest.java`)
 
 | Classe | Cobertura |
 |---|---|
 | `YaraConfigTest` | 19 testes (parsing K/M/G suffixes, validation, defaults). |
 | `YaraRulesetLoaderTest` | 9 testes (discovery recursiva, case-insensitive, ignora .yarc, etc.). |
-| `YaraMatchSerializerTest` | 10 testes (JSON round-trip, ordering, truncamento, forward-compat). |
 | `YaraEngineTest` | 5 testes integration-gated (`assumeTrue` em `libyara-x-capi`). |
-| `YaraScanTaskIntegrationTest` | 6 testes integration-gated end-to-end do task. |
-| `YaraReportRendererTest` | 10 testes (HTML escape, ordering, ellipse em truncated). |
-| _(removido)_ | A v1 `YaraRerunRunnerTest` foi deletada junto com o `YaraRerunRunner`; o caminho atual `--yara-only` (via Manager + `SkipCommitedTask` + `IndexTask`) é validado por execução manual ([specs/001-yara-rules-engine/quickstart.md §6](../specs/001-yara-rules-engine/quickstart.md)). |
+| `YaraScanTaskIntegrationTest` | 7 testes integration-gated end-to-end do task. Cobre: matched-item → yara:tag + per-rule field; non-matching item → zero campos yara:*; size cap; isolation de regras inválidas; múltiplas regras casando (uma per-rule field cada); per-rule values decoded ASCII; disabled config no-op. |
+| `YaraHighlightSupportTest` | 13 testes (`decodeHexForFacet` retorna texto se imprimível ou hex como fallback; `decodePrintable` strict path; edge cases de trim/whitespace/odd-length). |
+| _(removidos na rev-5)_ | `YaraMatchSerializerTest` (10 testes) e `YaraReportRendererTest` (10 testes) foram deletados junto com `YaraMatchSerializer` e `YaraReportRenderer` — JSON `yara:matches` e o bloco estruturado do HTML report não existem mais. |
+| _(removido na rev-2)_ | A v1 `YaraRerunRunnerTest` foi deletada junto com o `YaraRerunRunner`; o caminho atual `--yara-only` (via Manager + `SkipCommitedTask` + `IndexTask`) é validado por execução manual ([specs/001-yara-rules-engine/quickstart.md §6](../specs/001-yara-rules-engine/quickstart.md)). |
 
 Para rodar a suite YARA contra a libyara-x-capi real:
 

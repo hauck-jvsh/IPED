@@ -49,6 +49,7 @@ Após processar o caso, o perito abre a interface de análise e quer rapidamente
 1. **Given** um caso processado com matches YARA, **When** o perito abre o painel de filtros/categorias, **Then** existe uma seção dedicada a regras YARA listando cada regra casada e a contagem de itens correspondentes.
 2. **Given** o perito clica em uma regra na seção YARA, **When** o filtro é aplicado, **Then** a tabela/galeria mostra apenas os itens que casaram com aquela regra.
 3. **Given** o perito tem uma seleção de itens filtrados por uma regra YARA, **When** ele cria um bookmark a partir da seleção, **Then** o bookmark é criado normalmente e pode ser exportado/incluído no relatório.
+4. **Given** o perito faceta `yara:rule` ou `yara:tag` no painel de metadados/filtros e abre um item correspondente, **When** o conteúdo é renderizado pelo viewer de texto, **Then** os bytes que casaram a regra/tag selecionada são destacados — mesmo comportamento já oferecido para `Regex:*` e `NER:*`. Fragmentos não-imprimíveis (binários puros) são pulados pelo highlight e permanecem inspecionáveis via `yara:matches` JSON / viewer dedicado.
 
 ---
 
@@ -91,6 +92,7 @@ Equipes de perícia mantêm catálogos de regras separados por tipo de caso (mal
 - **FR-006**: Sistema MUST permitir limite de tamanho máximo de arquivo a ser escaneado, configurável por perfil; itens acima do limite são pulados e o motivo é registrado.
 - **FR-007**: Sistema MUST permitir limite de tempo máximo de scan por item (timeout), interrompendo a regra após o limite e registrando o evento sem propagar falha.
 - **FR-008**: Sistema MUST expor as regras YARA casadas como categoria filtrável na interface de análise, com contagem de itens por regra.
+- **FR-008a**: Quando o usuário faceta `yara:rule` ou `yara:tag` no painel de metadados/filtros, o sistema MUST injetar os bytes que casaram (decodificados para texto imprimível a partir do `yara:matches` JSON) no conjunto de termos de highlight consumido pelos viewers de texto, equivalendo ao comportamento existente para `Regex:*` e `NER:*`. Bytes não-imprimíveis MUST ser descartados silenciosamente — o detalhe completo permanece no `yara:matches` e no viewer dedicado (futuro T030).
 - **FR-009**: Usuários MUST conseguir criar bookmarks/tags a partir do conjunto de itens filtrado por uma regra YARA, usando o fluxo de bookmark já existente.
 - **FR-010**: Sistema MUST incluir os matches YARA na geração de relatório HTML do caso, listados por item, exibindo identificador da regra, tags, e — para cada string que casou — o nome da string, o offset e os bytes do trecho (com renderização segura para HTML, sem permitir injeção a partir do conteúdo casado).
 - **FR-011**: Sistema MUST permitir reaplicar o catálogo atual de regras YARA sobre um caso já processado, sem necessidade de reprocessar todo o pipeline ("rerun YARA only"). O modo de rerun aplica-se ao caso inteiro (todos os itens elegíveis); rerun sobre subconjunto (bookmark, filtro, seleção) fica fora de escopo na v1. A operação MUST substituir integralmente os matches anteriores no índice (sem mescla parcial).

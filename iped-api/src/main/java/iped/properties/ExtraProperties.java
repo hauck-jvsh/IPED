@@ -201,24 +201,31 @@ public class ExtraProperties {
     public static final String YARA_PREFIX = "yara:"; //$NON-NLS-1$
 
     /**
-     * Identificador (namespace/nome) de cada regra YARA casada com o item.
-     * Multi-valorado, indexado e armazenado no campo Lucene de mesmo nome.
-     */
-    public static final String YARA_RULE = "yara:rule"; //$NON-NLS-1$
-
-    /**
-     * União das tags YARA herdadas das regras casadas com o item.
-     * Multi-valorado, indexado e armazenado no campo Lucene de mesmo nome.
+     * Union of YARA tags declared on rules that matched the item.
+     * Multi-valued, indexed and stored in the Lucene field of the same name.
+     * Aggregated complement to the per-rule {@link #YARA_MATCH_PREFIX} fields —
+     * useful for cross-rule grouping (e.g. "show all items tagged {@code malware}").
      */
     public static final String YARA_TAGS = "yara:tag"; //$NON-NLS-1$
 
     /**
-     * Payload JSON (somente armazenado, sem indexação) com o detalhe dos matches:
-     * identificador da string ($s1...), offset relativo ao stream do item e bytes
-     * em hex do trecho casado. Estrutura definida em
-     * specs/001-yara-rules-engine/contracts/lucene-fields.contract.md.
+     * Prefix of per-rule match-content fields produced by {@code YaraScanTask}.
+     * For each matched rule, a multi-valued field {@code yara:match:<namespace>/<name>}
+     * is written, containing one value per distinct matched string (decoded to
+     * printable ASCII when possible, else the lowercase hex). Mirrors the
+     * {@code Regex:<category>} pattern from {@code RegexTask}: each value is a
+     * concrete hit, drilling-down filters the gallery, and selecting values in
+     * the metadata facet panel injects them as text-viewer highlight terms via
+     * the existing {@code MetadataPanel.getHighlightTerms()} literal path.
+     *
+     * <p>This per-rule layout is the only YARA match surface in the index since
+     * rev-5: the previous aggregated {@code yara:rule} list and the
+     * {@code yara:matches} audit JSON were removed because they were redundant
+     * with the per-rule fields (the JSON also degraded the HTMLReportTask's
+     * structured block, but the spec accepts that loss in exchange for a clean
+     * metadata facet dropdown — see {@code research.md} R-05).</p>
      */
-    public static final String YARA_MATCH_DETAIL = "yara:matches"; //$NON-NLS-1$
+    public static final String YARA_MATCH_PREFIX = "yara:match:"; //$NON-NLS-1$
     
     /**
      * Property to be set if the evidence is a animated image (i.e. contain multiple

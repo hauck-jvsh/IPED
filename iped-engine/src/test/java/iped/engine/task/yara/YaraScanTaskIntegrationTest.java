@@ -81,7 +81,7 @@ public class YaraScanTaskIntegrationTest {
      * ----------------------------------------------------------------- */
 
     @Test
-    public void matched_item_receives_yara_rule_yara_tag_and_yara_matches() throws Exception {
+    public void matched_item_receives_yara_tag_and_per_rule_match_field() throws Exception {
         File ruleDir = tmp.newFolder("rules-match");
         writeRule(ruleDir, "hello.yar",
                 "rule hello_world : demo malware { strings: $s = \"hello world\" condition: $s }");
@@ -95,21 +95,17 @@ public class YaraScanTaskIntegrationTest {
         task.process(item);
 
         @SuppressWarnings("unchecked")
-        List<String> rules = (List<String>) item.getExtraAttribute(ExtraProperties.YARA_RULE);
-        assertNotNull("yara:rule must be set on matched item", rules);
-        assertEquals(Arrays.asList("hello/hello_world"), rules);
-
-        @SuppressWarnings("unchecked")
         List<String> tags = (List<String>) item.getExtraAttribute(ExtraProperties.YARA_TAGS);
         assertNotNull("yara:tag must be set on matched item", tags);
         assertTrue("expected tag 'demo' but got " + tags, tags.contains("demo"));
         assertTrue("expected tag 'malware' but got " + tags, tags.contains("malware"));
 
-        String json = (String) item.getExtraAttribute(ExtraProperties.YARA_MATCH_DETAIL);
-        assertNotNull("yara:matches JSON must be set", json);
-        assertTrue("JSON must include engineVersion key: " + json, json.contains("\"engineVersion\""));
-        assertTrue("JSON must include namespace 'hello': " + json, json.contains("\"hello\""));
-        assertTrue("JSON must include rule 'hello_world': " + json, json.contains("\"hello_world\""));
+        // Per-rule field is the sole match surface since rev-5.
+        @SuppressWarnings("unchecked")
+        List<String> ruleValues = (List<String>) item
+                .getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "hello/hello_world");
+        assertNotNull("yara:match:hello/hello_world must be set on matched item", ruleValues);
+        assertEquals(Arrays.asList("hello world"), ruleValues);
     }
 
     @Test
@@ -125,9 +121,8 @@ public class YaraScanTaskIntegrationTest {
         Item item = makeItem("not-pe.txt", "GIF89a — this is not a PE file");
         task.process(item);
 
-        assertNull(item.getExtraAttribute(ExtraProperties.YARA_RULE));
         assertNull(item.getExtraAttribute(ExtraProperties.YARA_TAGS));
-        assertNull(item.getExtraAttribute(ExtraProperties.YARA_MATCH_DETAIL));
+        assertNull(item.getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "only_mz/mz_at_start"));
     }
 
     @Test
@@ -151,7 +146,9 @@ public class YaraScanTaskIntegrationTest {
         Item item = makeItem("big.txt", sb.toString());
         task.process(item);
 
-        assertNull("item above cap must not be scanned", item.getExtraAttribute(ExtraProperties.YARA_RULE));
+        assertNull("item above cap must not be scanned",
+                item.getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "any/always"));
+        assertNull(item.getExtraAttribute(ExtraProperties.YARA_TAGS));
     }
 
     @Test
@@ -171,14 +168,15 @@ public class YaraScanTaskIntegrationTest {
             Item item = makeItem("evidence.txt", "this contains abc as substring");
             task.process(item);
             @SuppressWarnings("unchecked")
-            List<String> rules = (List<String>) item.getExtraAttribute(ExtraProperties.YARA_RULE);
-            assertNotNull("good rule must still match despite bad rule presence", rules);
-            assertEquals(Arrays.asList("good/good_rule"), rules);
+            List<String> values = (List<String>) item
+                    .getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "good/good_rule");
+            assertNotNull("good rule must still match despite bad rule presence", values);
+            assertEquals(Arrays.asList("abc"), values);
         }
     }
 
     @Test
-    public void multiple_rules_matched_are_listed_lexicographically() throws Exception {
+    public void multiple_rules_matched_produce_one_per_rule_field_each() throws Exception {
         File ruleDir = tmp.newFolder("rules-multi");
         writeRule(ruleDir, "zeta.yar",
                 "rule zeta_rule { strings: $s = \"target\" condition: $s }");
@@ -193,11 +191,54 @@ public class YaraScanTaskIntegrationTest {
         task.process(item);
 
         @SuppressWarnings("unchecked")
-        List<String> rules = (List<String>) item.getExtraAttribute(ExtraProperties.YARA_RULE);
-        assertNotNull(rules);
-        assertEquals(2, rules.size());
-        assertEquals("alpha/alpha_rule", rules.get(0));
-        assertEquals("zeta/zeta_rule", rules.get(1));
+        List<String> alphaValues = (List<String>) item
+                .getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "alpha/alpha_rule");
+        @SuppressWarnings("unchecked")
+        List<String> zetaValues = (List<String>) item
+                .getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "zeta/zeta_rule");
+        assertNotNull("alpha rule's per-rule field must be set", alphaValues);
+        assertNotNull("zeta rule's per-rule field must be set", zetaValues);
+        assertEquals(Arrays.asList("target"), alphaValues);
+        assertEquals(Arrays.asList("target"), zetaValues);
+    }
+
+    @Test
+    public void per_rule_facet_field_yara_match_is_populated_with_decoded_values() throws Exception {
+        // Two rules in different namespaces — each gets its own
+        // yara:match:<namespace>/<name> multi-valued field, mirroring how
+        // RegexTask produces Regex:CPF, Regex:EMAIL, etc.
+        File ruleDir = tmp.newFolder("rules-permatch");
+        writeRule(ruleDir, "alpha.yar",
+                "rule greeting { strings: $g = \"hello\" condition: $g }");
+        writeRule(ruleDir, "beta.yar",
+                "rule farewell { strings: $f1 = \"world\" $f2 = \"please\" condition: any of them }");
+
+        YaraConfig config = buildEnabledConfig(ruleDir);
+        task = new YaraScanTask();
+        task.initWithConfig(config);
+
+        Item item = makeItem("evidence.txt", "say hello to the world please");
+        task.process(item);
+
+        // Per-rule fields — each entry is a distinct matched string (decoded text
+        // since these patterns are pure ASCII).
+        @SuppressWarnings("unchecked")
+        java.util.List<String> greetingValues = (java.util.List<String>) item
+                .getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "alpha/greeting");
+        assertNotNull("yara:match:alpha/greeting must be set", greetingValues);
+        assertEquals(Arrays.asList("hello"), greetingValues);
+
+        @SuppressWarnings("unchecked")
+        java.util.List<String> farewellValues = (java.util.List<String>) item
+                .getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "beta/farewell");
+        assertNotNull("yara:match:beta/farewell must be set", farewellValues);
+        // Two distinct matched strings; the task sorts them lexicographically for
+        // deterministic SortedSetDocValues ordering.
+        assertEquals(Arrays.asList("please", "world"), farewellValues);
+
+        // The non-matching rule's per-rule field must NOT appear at all.
+        assertNull("non-matching rules must not produce yara:match:* fields",
+                item.getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "nonexistent/rule"));
     }
 
     @Test
@@ -216,7 +257,8 @@ public class YaraScanTaskIntegrationTest {
 
         Item item = makeItem("anything.txt", "nothing should match");
         task.process(item);
-        assertNull(item.getExtraAttribute(ExtraProperties.YARA_RULE));
+        assertNull(item.getExtraAttribute(ExtraProperties.YARA_TAGS));
+        assertNull(item.getExtraAttribute(ExtraProperties.YARA_MATCH_PREFIX + "anything/rule"));
     }
 
     /* ----------------------------------------------------------------- *

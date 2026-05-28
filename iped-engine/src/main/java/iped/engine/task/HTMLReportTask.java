@@ -77,12 +77,10 @@ import iped.engine.localization.Messages;
 import iped.engine.preview.PreviewConstants;
 import iped.engine.task.index.IndexItem;
 import iped.engine.task.video.VideoThumbTask;
-import iped.engine.task.yara.YaraReportRenderer;
 import iped.engine.util.UIPropertyListenerProvider;
 import iped.engine.util.Util;
 import iped.parsers.util.MetadataUtil;
 import iped.properties.BasicProps;
-import iped.properties.ExtraProperties;
 import iped.utils.ExternalImageConverter;
 import iped.utils.IOUtil;
 import iped.utils.ImageUtil;
@@ -728,21 +726,13 @@ public class HTMLReportTask extends AbstractTask {
             if (selectedProperties.contains(BasicProps.HASH))
                 fillItemProperty(it, item, Messages.getString("HTMLReportTask.ItemHash"), reg.hash);
 
-            // Fill extra properties (skip yara:matches — rendered as a structured block below).
+            // Fill extra properties (per-rule yara:match:* fields render as ordinary
+            // multi-valued metadata; the legacy yara:matches JSON block was removed
+            // in rev-5 along with the yara:matches field itself — see research.md R-05).
             for (String property : selectedProperties) {
-                if (!basicReportProps.contains(property)
-                        && !ExtraProperties.YARA_MATCH_DETAIL.equals(property)) {
+                if (!basicReportProps.contains(property)) {
                     String propertyValue = ipedCase.getItemProperty(reg.evidenceId, property);
                     fillItemProperty(it, item, property, propertyValue);
-                }
-            }
-
-            // Render YARA matches as a structured (HTML-safe) block if the user selected the property.
-            if (selectedProperties.contains(ExtraProperties.YARA_MATCH_DETAIL)) {
-                String yaraJson = ipedCase.getItemProperty(reg.evidenceId, ExtraProperties.YARA_MATCH_DETAIL);
-                String yaraHtml = YaraReportRenderer.renderHtml(yaraJson);
-                if (yaraHtml != null) {
-                    fillItemProperty(it, item, Messages.getString("HTMLReportTask.YaraMatches"), yaraHtml);
                 }
             }
             if (selectedProperties.contains(IndexItem.ID_IN_SOURCE)) {

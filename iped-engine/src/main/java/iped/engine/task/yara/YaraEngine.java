@@ -47,13 +47,12 @@ import com.sun.jna.ptr.PointerByReference;
  * Regras com {@code import "cuckoo"} produzem erro de compilação isolado e a regra
  * é descartada; as demais continuam (FR-002 + FR-005 + R-09).</p>
  *
- * <p><b>Limitação conhecida desta v1 do binding:</b> a extração detalhada de
- * matched-strings (offsets + bytes) ainda não é feita — apesar de o YARA-X expor
- * iteradores limpos ({@code yrx_rule_iter_patterns} / {@code yrx_pattern_iter_matches})
- * que tornam isso muito mais simples do que era na libyara clássica, esta iteração
- * (slice "Foundation + JNA") entrega apenas a coleta de identificadores + tags.
- * O contrato em {@code lucene-fields.contract.md} permite {@code strings: []} sem
- * quebra.</p>
+ * <p>A extração detalhada de matched-strings (pattern ID + offset + bytes) é
+ * feita via {@code yrx_rule_iter_patterns} → {@code yrx_pattern_iter_matches}
+ * em {@link YaraScanner}. Os bytes são recortados do buffer do scan atual e
+ * codificados em hex lowercase, truncados em {@code YaraConfig.matchHexMaxBytes}
+ * — alimenta tanto o JSON {@code yara:matches} quanto o highlight do viewer
+ * de texto (FR-008a, ver {@code research.md} §R-05 e §R-02).</p>
  */
 public final class YaraEngine implements AutoCloseable {
 
@@ -253,12 +252,29 @@ public final class YaraEngine implements AutoCloseable {
         }
     }
 
+    /** Default cap usado por {@link #createScanner()} e {@link #scan} (em sync com {@code YaraConfig} default). */
+    public static final int DEFAULT_MATCH_HEX_MAX_BYTES = 256;
+
     /**
-     * Cria um {@link YaraScanner} (uma instância por worker) sobre este ruleset.
-     * O scanner não é thread-safe; {@code YRX_RULES} (compartilhado read-only entre
-     * scanners) é. Veja {@code research.md} §R-04.
+     * Cria um {@link YaraScanner} (uma instância por worker) sobre este ruleset
+     * usando o cap default de hex por match.
+     *
+     * <p>O scanner não é thread-safe; {@code YRX_RULES} (compartilhado read-only
+     * entre scanners) é. Veja {@code research.md} §R-04.</p>
      */
     public YaraScanner createScanner() {
+        return createScanner(DEFAULT_MATCH_HEX_MAX_BYTES);
+    }
+
+    /**
+     * Cria um {@link YaraScanner} com cap explícito de bytes por matched-string —
+     * usado pelo {@code YaraScanTask} que repassa {@code YaraConfig.matchHexMaxBytes}.
+     *
+     * @param matchHexMaxBytes número máximo de bytes a recortar do buffer de scan
+     *                         por match individual (acima disso o hex é truncado e
+     *                         {@link MatchedString#isTruncated()} fica {@code true})
+     */
+    public YaraScanner createScanner(int matchHexMaxBytes) {
         if (rulesPtr == null || !libraryAvailable) {
             return null;
         }
@@ -268,12 +284,12 @@ public final class YaraEngine implements AutoCloseable {
             logger.warn("yrx_scanner_create returned {}: {}", rc, lastError());
             return null;
         }
-        return new YaraScanner(scannerRef.getValue());
+        return new YaraScanner(scannerRef.getValue(), matchHexMaxBytes);
     }
 
     /**
      * Conveniência para scans one-shot (usado em testes). Para o pipeline real,
-     * use {@link #createScanner()} uma vez por worker e reutilize.
+     * use {@link #createScanner(int)} uma vez por worker e reutilize.
      *
      * @param buffer bytes a escanear
      * @param length bytes válidos no buffer (≤ {@code buffer.length})
@@ -425,6 +441,13 @@ public final class YaraEngine implements AutoCloseable {
 
         int yrx_rule_iter_tags(Pointer rule, TagCallback callback, Pointer userData);
 
+        int yrx_rule_iter_patterns(Pointer rule, PatternCallback callback, Pointer userData);
+
+        // Pattern introspection (inside the pattern callback)
+        int yrx_pattern_identifier(Pointer pattern, PointerByReference ident, LongByReference len);
+
+        int yrx_pattern_iter_matches(Pointer pattern, MatchCallback callback, Pointer userData);
+
         // Buffer
         void yrx_buffer_destroy(Pointer buf);
 
@@ -443,6 +466,38 @@ public final class YaraEngine implements AutoCloseable {
         }
     }
 
+    /**
+     * Layout do {@code YRX_MATCH} ({@code size_t offset; size_t length;}). Os
+     * campos {@code size_t} são modelados como {@code long} — válido em Win64
+     * e Linux64 (ambos têm {@code size_t} de 8 bytes), que são os SOs que o
+     * IPED suporta hoje (ver {@code root CLAUDE.md} §3).
+     */
+    public static class YRX_MATCH extends Structure {
+        public long offset;
+        public long length;
+
+        public YRX_MATCH() {
+        }
+
+        public YRX_MATCH(Pointer p) {
+            super(p);
+        }
+
+        @Override
+        protected List<String> getFieldOrder() {
+            return Arrays.asList("offset", "length");
+        }
+
+        public static class ByReference extends YRX_MATCH implements Structure.ByReference {
+            public ByReference() {
+            }
+
+            public ByReference(Pointer p) {
+                super(p);
+            }
+        }
+    }
+
     /** Callback nativo para matches: {@code void (*)(const YRX_RULE *rule, void *user_data)}. */
     public interface RuleCallback extends Callback {
         void invoke(Pointer rule, Pointer userData);
@@ -451,6 +506,23 @@ public final class YaraEngine implements AutoCloseable {
     /** Callback nativo para tags: {@code void (*)(const char *tag, void *user_data)}. */
     public interface TagCallback extends Callback {
         void invoke(String tag, Pointer userData);
+    }
+
+    /** Callback nativo para patterns: {@code void (*)(const YRX_PATTERN *pattern, void *user_data)}. */
+    public interface PatternCallback extends Callback {
+        void invoke(Pointer pattern, Pointer userData);
+    }
+
+    /**
+     * Callback nativo para matches dentro de um pattern:
+     * {@code void (*)(const YRX_MATCH *match, void *user_data)}.
+     *
+     * <p>O ponteiro é válido apenas durante a execução do callback (a libyara-x-capi
+     * libera o objeto no retorno) — leia {@code offset}/{@code length} ANTES de
+     * retornar.</p>
+     */
+    public interface MatchCallback extends Callback {
+        void invoke(YRX_MATCH.ByReference match, Pointer userData);
     }
 
     /** Sink simples para reportar erros de compilação individuais (FR-002 + FR-005). */

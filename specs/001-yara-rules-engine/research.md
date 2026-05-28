@@ -60,15 +60,20 @@ Este documento consolida as decisões técnicas que destravam o Plan e elimina t
 | `yrx_rule_identifier(rule, &ident, &len)` | Lê o nome da regra dentro do callback. |
 | `yrx_rule_namespace(rule, &ns, &len)` | Lê o namespace dentro do callback. |
 | `yrx_rule_iter_tags(rule, tag_callback, user_data)` | Lê as tags da regra (cada tag é `const char*`). |
+| `yrx_rule_iter_patterns(rule, pattern_callback, user_data)` | (rev-3) Itera os patterns que casaram dentro da regra; o callback recebe um `YRX_PATTERN*` opaco. |
+| `yrx_pattern_identifier(pattern, &ident, &len)` | (rev-3) Lê o nome do pattern (formato `$name`/`$re_xxx`) dentro do callback. |
+| `yrx_pattern_iter_matches(pattern, match_callback, user_data)` | (rev-3) Itera os matches do pattern; o callback recebe um `YRX_MATCH*` com `{offset, length}`. |
 | `yrx_buffer_destroy(buf)` | Libera buffers retornados por `errors_json`. |
 | `yrx_last_error()` | Para mensagens de diagnóstico quando uma função retorna falha sem JSON. |
 
-**Rationale**: cobre 100% do que `YaraScanTask` precisa para satisfazer FR-001 a FR-005, FR-012 e FR-014, sem expor superfície adicional que aumentaria a manutenção do binding. Funções de profiling, módulos customizados, variáveis globais e serialização de rulesets ficam **deliberadamente fora** da v1.
+**Rationale**: cobre 100% do que `YaraScanTask` precisa para satisfazer FR-001 a FR-005, FR-008a, FR-012 e FR-014, sem expor superfície adicional que aumentaria a manutenção do binding. Funções de profiling, módulos customizados, variáveis globais e serialização de rulesets ficam **deliberadamente fora** da v1.
 
 **Mudança importante de semântica em relação à libyara clássica**:
 - A libyara clássica entregava match strings via `yr_rules_scan_mem` callback com mensagens `CALLBACK_MSG_RULE_MATCHING`. Para extrair os bytes/offsets era preciso caminhar pelas estruturas `YR_STRING`/`YR_MATCH` (opacas e fragéis).
 - A C API do YARA-X expõe iteradores explícitos: `yrx_rule_iter_patterns(rule, cb, user)` → para cada pattern, `yrx_pattern_iter_matches(pattern, match_cb, user)` → `YRX_MATCH { offset, length }`. Os bytes do match não são entregues diretamente; lado Java faz `Arrays.copyOfRange(buffer, offset, offset+length)` sobre o buffer original (que controlamos integralmente).
-- Resultado: extração de matched-string detail é **mais simples e estável** com YARA-X do que com libyara clássica. A v1 pode (e deve) implementar a coleta completa. A v1 do binding **atual** (entregue no slice "Foundation + JNA") ainda popula `strings: []`; a captura completa fica para a próxima iteração — limitação documentada no Javadoc da classe.
+- Resultado: extração de matched-string detail é **mais simples e estável** com YARA-X do que com libyara clássica.
+
+**Status da implementação (rev-3, 2026-05-25)**: a coleta completa de `MatchedString[]` está **wired** em `YaraScanner.MatchCollector`. O collector mantém uma referência ao buffer Java do scan corrente; os callbacks de pattern/match recortam `(offset, length)` desse buffer e hex-encode lowercase, com cap em `YaraConfig.matchHexMaxBytes` (default 256 bytes). A iteração só ocorre dentro do callback nativo de `yrx_scanner_on_matching_rule` (mesma thread do worker), então não há contenção. Validação: `YaraScanTaskIntegrationTest.yara_matches_json_contains_real_matched_string_with_hex_bytes` cobre o caminho com regra de dois patterns. A v1.0 do binding entregou `strings: []` em produção — falha foi detectada via inspeção visual da aba metadados (regra de domain detection com `yara:matches` mostrando `strings:[]`).
 
 **Alternatives considered**: expor toda a API `yrx_*` — rejeitado por princípio de mínima superfície.
 
@@ -148,6 +153,26 @@ Este documento consolida as decisões técnicas que destravam o Plan e elimina t
 **Alternatives considered**:
 - Persistir matched bytes como blob binário separado — adiciona um storage paralelo; rejeitado por contrariar "sem dependência de novo armazenamento" (Assumptions).
 - Indexar `yara:matches` JSON — desperdício; ninguém vai fazer full-text search dentro do JSON serializado.
+
+**Update (rev-3, 2026-05-25)**: FR-008a originalmente adicionava um consumidor secundário de `yara:matches` no `iped-app`: quando o usuário facetava `yara:rule`/`yara:tag` no `MetadataPanel`, o painel decodificava o campo `hex` de cada `MatchedString` (via `YaraHighlightSupport.decodeHexToPrintable`) e injetava os termos imprimíveis no Set de highlight do `App`. Bounded por `MAX_DOCS_FOR_YARA_HIGHLIGHT = 4096` docs e `MAX_TERMS_TO_HIGHLIGHT = 1024` termos.
+
+**Update (rev-4, 2026-05-27)**: revisão do FR-008a para casar **exatamente** com o padrão do `RegexTask` (que é o mental model que os peritos já usam). Em vez do panel parsear `yara:matches` JSON em tempo de seleção, o `YaraScanTask.persistMatches()` agora denormaliza no momento do scan: para cada regra que casa, escreve um campo **`yara:match:<namespace>/<name>`** multi-valorado em que cada valor é um matched-string distinto (decodificado para texto se tudo for ASCII imprimível, senão o hex lowercase). Mirror exato de `Regex:CPF`, `Regex:EMAIL` etc.
+
+Consequências:
+- O `MetadataPanel.getHighlightTerms()` simplifica para o branch literal já existente — basta adicionar `ExtraProperties.YARA_MATCH_PREFIX` à lista de prefixos junto com `Regex:`/`NER:`. Removido todo o código de scan SSDV + fetch stored field + parse JSON + decode (~70 linhas).
+- Cada regra ganha sua faceta dedicada na lista lateral do painel de metadados, com contagem de itens por valor casado. Drill-down filtra a galeria; selecionar valores destaca no viewer de texto.
+- Estratégia de denormalização: `YaraHighlightSupport.decodeHexForFacet(hex)` retorna texto ASCII imprimível trimmed, ou o hex lowercase como fallback. Valores binários ficam no índice como hex (facetáveis mesmo assim), text viewer simplesmente não vai ancorar.
+
+**Update (rev-5, 2026-05-27)**: validação UI da rev-4 levou à decisão de remover do índice os campos `yara:rule` (lista agregada de identificadores) e `yara:matches` (JSON de auditoria com offsets/meta/hex completo). Justificativas:
+1. `yara:rule` virou redundante: o conjunto de regras casadas em um item é exatamente o conjunto de field names com prefixo `yara:match:` presentes no doc.
+2. `yara:matches` adicionava ruído à UI (uma faceta enorme com JSON cru) sem ganho para o fluxo principal — os valores facetáveis úteis já estão em `yara:match:<id>`.
+3. Cost-benefit do JSON: o único consumidor era `HTMLReportTask` via `YaraReportRenderer`, e a perda de offset/meta/hex completo no relatório é aceita em troca da limpeza da UI e do índice. Quem precisar dessa granularidade pode reaplicar `--yara-only` com `yara:matches` re-introduzido (não há barreira de design — só foi cortado por preferência operacional).
+
+Consequências da rev-5:
+- Constantes `ExtraProperties.YARA_RULE` e `YARA_MATCH_DETAIL` removidas (a feature nunca foi merged em `master`, então a remoção pré-release não dispara obrigação de deprecation).
+- Classes `YaraMatchSerializer` (170 LOC, 10 testes) e `YaraReportRenderer` (~100 LOC, 10 testes) **deletadas** — código morto após o JSON sumir.
+- `HTMLReportTask` perde o bloco estruturado YARA (linhas 731-746 da v1): campos `yara:tag` e `yara:match:*` agora aparecem como qualquer outro campo multi-valor no relatório.
+- O contrato `contracts/lucene-fields.contract.md` foi reescrito para refletir o conjunto reduzido (`yara:tag` + `yara:match:<id>` apenas).
 
 ---
 
