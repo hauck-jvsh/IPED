@@ -1,4 +1,21 @@
 <!--
+SYNC IMPACT REPORT (mais recente)
+==================
+Version change: 1.1.0 → 1.2.0
+Justificativa do bump: MINOR — atualização material da seção "Restrições
+de Build, Ferramentas e Distribuição": a baseline de plataforma muda de
+Java 11 para Java 21 LTS (cut-over total) e a regra de compilação passa
+de `source/target = 11` para `release = 21`. É atualização material de
+orientação de build existente (MINOR), não remoção/redefinição dos
+princípios I–V (seria MAJOR) nem mera correção de redação (seria PATCH).
+
+Princípios alterados: nenhum dos 5 princípios principais (I–V) muda.
+Seções afetadas: "Restrições de Build, Ferramentas e Distribuição" (1º
+bullet reescrito: Java 11 → Java 21 LTS; `release = 21`).
+Feature de origem: specs/003-java21-migration (migração para Java 21 LTS).
+Follow-up: CLAUDE.md §3/§5 a atualizar na própria feature (tasks T049/T056).
+
+=== HISTÓRICO ANTERIOR ===
 SYNC IMPACT REPORT
 ==================
 Version change: 1.0.0 → 1.1.0
@@ -180,9 +197,10 @@ quando uma DLL nativa quebra em um único arquivo malformado.
 
 ## Restrições de Build, Ferramentas e Distribuição
 
-- **Java 11 com JavaFX** (Liberica/BellSoft Full JDK).
-  `maven.compiler.source/target = 11`. Não introduzir APIs de Java
-  posteriores; não introduzir dependência de JavaFX além do que já
+- **Java 21 LTS com JavaFX** (Liberica/BellSoft Full JDK).
+  `maven.compiler.release = 21`. Migrado de Java 11 na feature
+  `003-java21-migration` (cut-over total: Java 11 deixou de ser
+  suportado). Não introduzir dependência de JavaFX além do que já
   está embarcado via `JFXPanel`.
 - **Build**: Maven 3.6+ multi-módulo a partir do `pom.xml` raiz
   (versão atual `4.4.0-SNAPSHOT`). Submódulos herdam a versão; não
@@ -279,4 +297,4 @@ quando uma DLL nativa quebra em um único arquivo malformado.
   agentes de IA e desenvolvedores. Esta constituição os referencia;
   não os substitui.
 
-**Version**: 1.1.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-21
+**Version**: 1.2.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-29

@@ -12,6 +12,21 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 **Organization**: tarefas agrupadas por user story. Como é uma migração cross-cutting, a **Phase 2 (Foundational)** concentra o substrato comum que precisa compilar e carregar no Java 21 antes de qualquer story.
 
+## Progresso da implementação — sessão 2026-05-29 (JDK 21 em `H:\java\LibericaJDK-21-Full`)
+
+**Verificado por compilação (`mvn clean compile` → BUILD SUCCESS no JDK 21, 16 módulos):**
+- T001 emenda da constituição (Java 11→21, v1.2.0).
+- T002–T007 toolchain (`release=21`; compiler 3.13.0; surefire 3.5.4; jar 3.4.1; dependency 3.8.1; findbugs removido).
+- T014–T015 FST removido (cache de regex via serialização JDK, leitura resiliente a cache antigo).
+- T030 version check (`Util.MIN/MAX_JAVA_VER = 21`).
+- T009 `TelegramParser`: `parseBase64Binary` → `java.util.Base64` (o uso real era Base64, não Hex).
+- T011 `CachePersistance`: `printHexBinary` → `java.util.HexFormat` (uppercase; preserva nomes de cache).
+
+**Pendente / follow-up (não iniciado ou parcial):**
+- T008/T010 (`CertificateParser`/`GeofileParser`): uso real é `DatatypeConverter.parseDateTime` (datas) — **mantido via JAXB transitivo** para não arriscar o determinismo forense (Princípio IV); migrar p/ `java.time` exige validação dedicada.
+- T012 (OFCParser `JAXBContext`) e T013 (jsr305): compilam/rodam via deps transitivas; tornar explícitas é higiene (FR-014).
+- T016–T021 bumps (Lucene/Tika/JNA/BC/Jersey/zstd) · T022–T026 **Neo4j 5** (runtime, maior risco) · T027–T028 JEP (rebuild nativo) · T029 add-opens · T031–T058 testes/validação/distribuição/docs.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: pode rodar em paralelo (arquivos diferentes, sem dependências pendentes).
@@ -24,13 +39,13 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 **Purpose**: legitimar a nova baseline e configurar o projeto para alvejar Java 21.
 
-- [ ] T001 **Emenda da constituição PRIMEIRO** (gate de governança V10): atualizar a seção "Restrições de Build" (Java 11 → 21, `release=21`) em `.specify/memory/constitution.md`, com Sync Impact Report e **bump MINOR**. Isto desbloqueia/legitima todas as mudanças de build abaixo (resolve o conflito CRITICAL antes de violá-lo).
-- [ ] T002 Instalar **BellSoft Liberica Full JDK 21** (com JavaFX) e apontar `JAVA_HOME` para ele; confirmar `java -version` = 21 (ver [quickstart.md](quickstart.md) §1).
-- [ ] T003 Em `pom.xml` (raiz), substituir `maven.compiler.source/target = 11` por `maven.compiler.release = 21`.
-- [ ] T004 Bump `maven-compiler-plugin` → 3.13.0 em `pom.xml` e nos POMs que o fixam: `iped-carvers/pom.xml`, `iped-viewers/pom.xml`, `iped-geo/pom.xml`, `iped-app/pom.xml`.
-- [ ] T005 Bump `maven-surefire-plugin` → 3.5.x em `iped-carvers/pom.xml`, `iped-viewers/pom.xml`, `iped-app/pom.xml` (e onde mais estiver fixado).
-- [ ] T006 [P] Bump `maven-jar-plugin` → 3.4.x e `maven-dependency-plugin` → 3.8.x em `iped-app/pom.xml` e `iped-utils/pom.xml`.
-- [ ] T007 [P] Remover `findbugs-maven-plugin` 3.0.0 de `pom.xml` (raiz).
+- [X] T001 **Emenda da constituição PRIMEIRO** (gate de governança V10): atualizar a seção "Restrições de Build" (Java 11 → 21, `release=21`) em `.specify/memory/constitution.md`, com Sync Impact Report e **bump MINOR**. Isto desbloqueia/legitima todas as mudanças de build abaixo (resolve o conflito CRITICAL antes de violá-lo).
+- [X] T002 Instalar **BellSoft Liberica Full JDK 21** (com JavaFX) e apontar `JAVA_HOME` para ele; confirmar `java -version` = 21 (ver [quickstart.md](quickstart.md) §1).
+- [X] T003 Em `pom.xml` (raiz), substituir `maven.compiler.source/target = 11` por `maven.compiler.release = 21`.
+- [X] T004 Bump `maven-compiler-plugin` → 3.13.0 em `pom.xml` e nos POMs que o fixam: `iped-carvers/pom.xml`, `iped-viewers/pom.xml`, `iped-geo/pom.xml`, `iped-app/pom.xml`.
+- [X] T005 Bump `maven-surefire-plugin` → 3.5.x em `iped-carvers/pom.xml`, `iped-viewers/pom.xml`, `iped-app/pom.xml` (e onde mais estiver fixado).
+- [X] T006 [P] Bump `maven-jar-plugin` → 3.4.x e `maven-dependency-plugin` → 3.8.x em `iped-app/pom.xml` e `iped-utils/pom.xml`.
+- [X] T007 [P] Remover `findbugs-maven-plugin` 3.0.0 de `pom.xml` (raiz).
 
 ---
 
@@ -43,16 +58,16 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 ### APIs Java EE removidas (paralelas — arquivos distintos)
 
 - [ ] T008 [P] Substituir `javax.xml.bind.DatatypeConverter` por `java.util.HexFormat` em `iped-parsers/iped-parsers-impl/src/main/java/iped/parsers/security/CertificateParser.java`.
-- [ ] T009 [P] Substituir `javax.xml.bind.DatatypeConverter` por `java.util.HexFormat` em `iped-parsers/iped-parsers-impl/src/main/java/iped/parsers/telegram/TelegramParser.java`.
+- [X] T009 [P] Substituir `javax.xml.bind.DatatypeConverter.parseBase64Binary` por `java.util.Base64` em `iped-parsers/iped-parsers-impl/src/main/java/iped/parsers/telegram/TelegramParser.java`.
 - [ ] T010 [P] Substituir `javax.xml.bind.DatatypeConverter` por `java.util.HexFormat` em `iped-geo/src/main/java/iped/geo/parsers/GeofileParser.java`.
-- [ ] T011 [P] Substituir `javax.xml.bind.DatatypeConverter` por `java.util.HexFormat` em `iped-app/src/main/java/iped/app/timelinegraph/cache/persistance/CachePersistance.java`.
+- [X] T011 [P] Substituir `javax.xml.bind.DatatypeConverter.printHexBinary` por `java.util.HexFormat` em `iped-app/src/main/java/iped/app/timelinegraph/cache/persistance/CachePersistance.java`.
 - [ ] T012 [P] Adicionar dependências explícitas `jakarta.xml.bind:jakarta.xml.bind-api` + runtime `org.glassfish.jaxb:jaxb-runtime` em `iped-parsers/iped-parsers-impl/pom.xml` e ajustar imports JAXB em `iped-parsers/iped-parsers-impl/src/main/java/iped/parsers/misc/OFCParser.java`.
 - [ ] T013 [P] Adicionar dependência explícita `com.google.code.findbugs:jsr305` (iped-engine) e confirmar import em `iped-engine/src/main/java/iped/engine/task/jumplist/PathToGuidConverter.java`.
 
 ### Remoção do FST
 
-- [ ] T014 Substituir o cache FST por serialização JDK (`ObjectOutputStream`/`ObjectInputStream`) em `iped-engine/src/main/java/iped/engine/task/regex/RegexTask.java` (remover `FSTConfiguration`/`asByteArray`/`asObject`), confirmando que `Regex` e `dk.brics.automaton.Automaton` são `Serializable`.
-- [ ] T015 Remover a dependência `de.ruedigermoeller:fst` de `iped-engine/pom.xml`.
+- [X] T014 Substituir o cache FST por serialização JDK (`ObjectOutputStream`/`ObjectInputStream`) em `iped-engine/src/main/java/iped/engine/task/regex/RegexTask.java` (remover `FSTConfiguration`/`asByteArray`/`asObject`), confirmando que `Regex` e `dk.brics.automaton.Automaton` são `Serializable`.
+- [X] T015 Remover a dependência `de.ruedigermoeller:fst` de `iped-engine/pom.xml`.
 
 ### Bumps de dependências compilação-bloqueantes
 
@@ -79,7 +94,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 ### Inicialização e detecção de versão
 
 - [ ] T029 Adicionar os `--add-opens`/`--add-exports` necessários (Neo4j 5 e libs Swing) em `getCustomJVMArgs()` de `iped-app/src/main/java/iped/app/bootstrap/Bootstrap.java` (validar empiricamente; manter lista mínima).
-- [ ] T030 Atualizar `MIN_JAVA_VER`/`MAX_JAVA_VER` (11/14 → 21) em `iped-engine/src/main/java/iped/engine/util/Util.java` conforme [contracts/runtime-version-check.contract.md](contracts/runtime-version-check.contract.md); revisar textos `JavaVersion.*` em `iped-app/resources/localization/iped-engine-messages*.properties` se citarem "11"/"14".
+- [X] T030 Atualizar `MIN_JAVA_VER`/`MAX_JAVA_VER` (11/14 → 21) em `iped-engine/src/main/java/iped/engine/util/Util.java` conforme [contracts/runtime-version-check.contract.md](contracts/runtime-version-check.contract.md); revisar textos `JavaVersion.*` em `iped-app/resources/localization/iped-engine-messages*.properties` se citarem "11"/"14".
 
 ### Checkpoint Foundational
 
