@@ -1,36 +1,47 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: (template não-preenchido) → 1.0.0
-Justificativa do bump: Ratificação inicial da constituição a partir do template
-placeholder, com cinco princípios derivados do CLAUDE.md raiz.
+Version change: 1.0.0 → 1.1.0
+Justificativa do bump: MINOR — expansão material da seção "Fluxo de
+Desenvolvimento e Gates de Qualidade" (item 2): a regra antiga de
+"preservar idioma do arquivo" para Javadoc/comentários foi substituída
+por uma política explícita de "inglês para todo código novo". Não é
+remoção/redefinição de princípio (seria MAJOR), e ultrapassa correção
+de redação (seria PATCH).
 
-Princípios definidos (novos):
-  I.   Estabilidade da API Pública (NÃO-NEGOCIÁVEL)
-  II.  Extensão Modular em vez de Modificação
-  III. Configuração antes de Código
-  IV.  Integridade Forense e Determinismo
-  V.   Disciplina de Concorrência e Isolamento de Processo
+Princípios alterados: nenhum dos 5 princípios principais (I–V) muda.
+Apenas o fluxo de desenvolvimento que governa contribuições novas
+foi atualizado.
 
-Seções adicionadas:
-  - Restrições de Build, Ferramentas e Distribuição
-  - Fluxo de Desenvolvimento e Gates de Qualidade
-  - Governance
+Seções afetadas:
+  - Fluxo de Desenvolvimento e Gates de Qualidade → item 2 reescrito
+    para mandar inglês em todo código fonte novo (Java, JS/Nashorn,
+    Python/Jep, XML/properties), justificativa explícita ("IPED é
+    usado por equipes fora do Brasil"), e tratamento de Javadocs/
+    comentários PT-BR legados (manter, ou traduzir oportunisticamente
+    em PRs adjacentes).
 
-Seções removidas: (nenhuma — arquivo anterior era 100% placeholder)
+Seções adicionadas: nenhuma.
+Seções removidas: nenhuma.
+
+Histórico anterior (1.0.0, 2026-05-19):
+  Ratificação inicial — 5 princípios derivados do CLAUDE.md raiz
+  (Estabilidade da API Pública, Extensão Modular em vez de Modificação,
+  Configuração antes de Código, Integridade Forense e Determinismo,
+  Disciplina de Concorrência e Isolamento de Processo) + seções de
+  Build/Distribuição, Fluxo de Desenvolvimento e Governance.
 
 Templates / artefatos verificados:
-  - .specify/templates/plan-template.md   — ✅ alinhado (o bloco
-    "Constitution Check" é resolvido por feature; gates derivam destes
-    cinco princípios)
-  - .specify/templates/spec-template.md   — ✅ alinhado (nenhuma seção
-    obrigatória adicional exigida pela constituição)
-  - .specify/templates/tasks-template.md  — ✅ alinhado (fases Setup /
-    Foundational / User Stories cobrem extensão por nova task, parser,
-    viewer, carver e Configurable)
-  - CLAUDE.md (raiz e por módulo)         — ✅ continua sendo a referência
-    operacional autoritativa; a constituição aponta para ele em vez de
-    duplicar conteúdo
+  - .specify/templates/plan-template.md   — ✅ não afetado.
+  - .specify/templates/spec-template.md   — ✅ não afetado.
+  - .specify/templates/tasks-template.md  — ✅ não afetado.
+  - .specify/templates/checklist-template.md — ✅ não afetado.
+  - CLAUDE.md (raiz)                      — ✅ atualizado §4
+    Convenções globais para refletir a nova regra de idioma.
+  - iped-api/CLAUDE.md                    — ✅ atualizado §5
+    Convenções + checklist §10 para refletir a nova regra.
+  - demais CLAUDE.md por módulo           — ✅ verificados; sem
+    referência à convenção de idioma de código (Javadoc legado).
 
 Follow-up TODOs: (nenhum)
 -->
@@ -194,10 +205,34 @@ quando uma DLL nativa quebra em um único arquivo malformado.
 1. **Antes de editar**: ler o `CLAUDE.md` do módulo afetado; usar
    `Grep` para localizar implementações e consumidores de qualquer
    símbolo público que será tocado.
-2. **Durante a edição**: respeitar os cinco princípios acima.
-   Javadocs e comentários em PT-BR existentes **DEVEM** ter o idioma
-   preservado ao editar; novos comentários seguem a convenção do
-   arquivo em que entram.
+2. **Durante a edição** — idioma do código:
+   - Todo **código novo** (arquivos `.java`, `.js`, `.py`, `.xml`, `.properties`
+     e qualquer outro de implementação) **DEVE** ser comentado e documentado
+     em **inglês**: Javadocs, comentários de bloco, comentários de linha,
+     identificadores em comentários, mensagens de log, mensagens de exceção
+     técnicas e exemplos em docstrings. Aplica-se também a arquivos novos
+     adicionados a módulos cujos arquivos legados estão em PT-BR.
+   - **Javadocs e comentários em PT-BR pré-existentes** no código legado
+     **PODEM permanecer** como estão — não há mandato de tradução em massa
+     do legado. Ao editar uma região com comentário PT-BR pré-existente:
+     se a edição é trivial (rename, format), preservar o idioma; se a edição
+     reescreve substancialmente o bloco ou seu Javadoc, **DEVE-SE** traduzir
+     o comentário/Javadoc afetado para inglês no mesmo PR.
+   - **Strings visíveis ao usuário final** continuam regidas pelo Princípio
+     III §3 (bundles em `iped-app/resources/localization/`, PT-BR + EN no
+     mínimo). Esta regra cobre o que o desenvolvedor lê no fonte; aquela,
+     o que o perito lê na UI.
+   - **Esta constituição e os `CLAUDE.md`** permanecem em PT-BR (idioma
+     de trabalho do fork). Decisão de governança, fora do escopo de "código".
+   - Demais princípios desta constituição (I–V) continuam aplicáveis sem
+     mudança.
+
+   **Justificativa**: IPED é usado por equipes forenses fora do Brasil
+   (LEAs internacionais, pesquisadores, contribuidores OSS). Código fonte
+   em inglês é a base comum que permite leitura, debug e contribuição sem
+   atrito linguístico. O custo de manter PT-BR no código é alto e crescente;
+   o custo de traduzir em massa o legado é alto e pouco prioritário — daí a
+   convivência (legado preservado, novo em inglês).
 3. **Antes de commit**:
    - `mvn -pl <módulo> -am install` no módulo afetado (e em
      `iped-app` se a mudança puder impactar o release).
@@ -244,4 +279,4 @@ quando uma DLL nativa quebra em um único arquivo malformado.
   agentes de IA e desenvolvedores. Esta constituição os referencia;
   não os substitui.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-19
+**Version**: 1.1.0 | **Ratified**: 2026-05-19 | **Last Amended**: 2026-05-21

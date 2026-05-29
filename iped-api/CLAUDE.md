@@ -91,7 +91,7 @@ Logging (`log4j`, `slf4j`), JUnit, Hamcrest vêm do parent `iped:iped-parent`.
 
 - Interfaces públicas têm prefixo `I` (`IItem`, `IIPEDSource`, `IBookmarks`).
 - Implementações concretas correspondem sem o prefixo: `Item`, `IPEDSource`, `Bookmarks` (em `iped-engine`).
-- Javadocs estão majoritariamente em **português brasileiro**. Mantenha o padrão ao adicionar javadocs.
+- Javadocs em código legado estão majoritariamente em **português brasileiro**; novos Javadocs (a partir da constituição v1.1.0) **DEVEM ser em inglês**. Ao reescrever substancialmente uma classe legada, traduzir o Javadoc do bloco afetado no mesmo PR. Edições triviais (rename, format) preservam o idioma original.
 - Constantes em `UPPERCASE_WITH_UNDERSCORE`, com prefixos por domínio (`CONVERSATION_*`, `UFED_*`).
 - Métodos: `get/set`, `is/has` para booleanos, `add/remove` para coleções.
 
@@ -161,7 +161,7 @@ Use `Grep` para localizar implementações ou consumidores antes de mudar a inte
 ## 10. Checklist antes de fazer PR contra esta API
 
 - [ ] Mudança é aditiva (novo método, nova constante)? Se for breaking, há plano de migração?
-- [ ] Adicionou javadoc em PT-BR no padrão do módulo?
+- [ ] Adicionou javadoc em **inglês** (constituição v1.1.0)? Edição em classe legada com Javadoc PT-BR: trivial preserva, reescrita substancial traduz.
 - [ ] Atualizou `BasicProps.SET` se mexeu em `BasicProps`?
 - [ ] Não renomeou strings literais que são chaves de índice Lucene?
 - [ ] Verificou implementações em `iped-engine/data/Item.java`?

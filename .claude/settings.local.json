@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn -pl iped-api,iped-engine -am compile -q)"
+    ]
+  }
+}
