@@ -5,4 +5,4 @@ nbactions.xml
 /.project
 .pydevproject
 /.idea/
-*.dll
+tools/yara-x/win64/yara_x_capi.dll
