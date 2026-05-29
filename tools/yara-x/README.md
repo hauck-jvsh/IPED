@@ -41,11 +41,18 @@ normally.
 | Arquivo | Tamanho | SHA-256 |
 |---|---|---|
 | `win64/yara_x_capi.dll` | 21,542,400 | `0F56AC336EFF5242F4BAB23F9A4419FC466A5DD2696B7A3CF6B11F6758B29121` |
-| `linux64/libyara_x_capi.so` | — | *(ver "Linux build" abaixo — sem prebuilt no release 1.16.0)* |
+| `linux64/libyara_x_capi.so` | 31,940,896 | `4ccc394ffbad106674e628672ce67ddd960b3619451f992161f20100b7f1ba00` |
 
 SHA-256 do zip upstream do qual a DLL foi extraída:
 `D9FFF45807F752333138B8959F16C0E68D6603F08E161F254CF1E95CF725ECC4`
 (`yara-x-capi-v1.16.0-x86_64-pc-windows-msvc.zip`, 19,800,959 bytes).
+
+A `.so` Linux foi compilada do fonte (tag `v1.16.0` em `github.com/VirusTotal/yara-x`)
+em WSL Ubuntu 26.04 LTS com Rust 1.96.0 stable, perfil `--release`, conforme
+procedimento da seção "Linux (x86_64)" abaixo. Apenas dependências de sistema
+(`libc`, `libm`, `libgcc_s`, `ld-linux`) — OpenSSL e demais dependências Rust
+ficam estaticamente linkadas. 53 símbolos `yrx_*` exportados, cobrindo a
+superfície consumida pelo `YaraEngine.java`.
 
 ## Como atualizar a versão do `libyara-x-capi`
 
