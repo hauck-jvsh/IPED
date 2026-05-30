@@ -1,3 +1,15 @@
+> [!WARNING]
+> **This is NOT the official IPED repository.**
+>
+> This is an unofficial **fork** used to experiment with and test ideas. It may contain
+> features that have **not** been reviewed and may or may not ever be accepted into the
+> official project. These changes are **experimental** and come with **no guarantees** of
+> correctness, stability, or forensic soundness.
+>
+> **If you are working on a real forensic case, do NOT use this fork.** Please use the
+> official IPED repository instead:
+> **https://github.com/sepinf-inc/IPED**
+
 # IPED Digital Forensic Tool
 
 IPED is an open source software that can be used to process and analyze digital evidence, often seized at crime scenes by law enforcement or in a corporate investigation by private examiners.
