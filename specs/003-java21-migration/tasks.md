@@ -22,6 +22,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - T009 `TelegramParser`: `parseBase64Binary` → `java.util.Base64` (o uso real era Base64, não Hex).
 - T011 `CachePersistance`: `printHexBinary` → `java.util.HexFormat` (uppercase; preserva nomes de cache).
 - T018/T020/T021 (deps): **JNA 5.14.0**, **Jersey 2.41**, **zstd-jni 1.5.6-9** (engine + parsers-impl). Engine: **136 testes verdes** no JDK 21 (`mvn -pl iped-engine test`).
+- **JRE embarcado (T050, parcial)**: `unpack-jre` bumpado `java:jre` 11.0.13 → **21.0.11** em `iped-app/pom.xml`. ⚠️ Runtime Java 11 embarcado causava `UnsupportedClassVersionError (class file 65.0 vs 55.0)` ao rodar `iped.exe`. **Requer o usuário publicar** o zip `java:jre:21.0.11` (top-level `jre/`, Liberica Full 21 c/ JavaFX) no maven do projeto antes do `mvn package` resolver.
 - **Fix de empacotamento (regressão da própria migração)**: `maven-jar-plugin` do `iped-app` revertido **3.4.1 → 2.6**. O 3.4.0+ aborta a execução `create-jar` ("You have to use a classifier…") → release saía **sem `iped.jar` e com `lib/` incompleto** (sintoma: `iped.exe` → "Unable to access jarfile iped.jar"). Validado com `mvn package`: release completo (iped.jar + iped-search-app/webapi/hashdb + 510 jars em `lib/`).
 - T022–T024/T026 **Neo4j 4.4.4 → 5.26.0**: **reator inteiro compila limpo (0 erros)** — a API moderna `DatabaseManagementServiceBuilder` já era usada; só warnings de `getId()`/`getStartNodeId()` deprecated (**mantidos**: migrar p/ `getElementId()` mudaria a semântica do ID `long`→`String` = mudança de comportamento, contra FR-018). ⚠️ **Compile-verified, NÃO runtime** — falta validar startup embarcado Neo4j 5 + Cypher 5 (T025) + guarda de store antigo (T043) com grafo real.
 
@@ -165,7 +166,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 **Independent Test**: instalar o release em máquina Windows sem Java e em Linux com Java 21 do sistema, e processar um caso de ponta a ponta.
 
-- [ ] T050 [US4] Publicar o zip do **Liberica Full JDK 21** no maven do projeto e bumpar o artefato `java:jre` (11.0.13 → 21.0.x) na execution `unpack-jre` de `iped-app/pom.xml`.
+- [~] T050 [US4] Publicar o zip do **Liberica Full JDK 21** no maven do projeto e bumpar o artefato `java:jre` na execution `unpack-jre` de `iped-app/pom.xml`. **pom bumpado p/ `java:jre:21.0.11`** (commit pendente); **falta o usuário publicar** o zip (estrutura: pasta `jre/` no topo, ~Liberica Full 21 com JavaFX) em `java/jre/21.0.11/` no repo `iped-maven`. Sintoma se rodar `mvn package` antes de publicar: falha na `unpack-jre` (artefato não encontrado). Unblock p/ teste: trocar `jre/` do release pela Liberica Full 21 manualmente.
 - [ ] T051 [US4] Gerar o release e validar a árvore `target/release/iped-4.4.0/` com o runtime 21 embarcado (Windows).
 - [ ] T052 [P] [US4] Smoke **Windows sem Java**: instalar o release e processar um caso pequeno de ponta a ponta, confirmando as ferramentas nativas (Sleuthkit out-of-process, ImageMagick, Tesseract/JEP) (gate SC-004/FR-009).
 - [ ] T053 [P] [US4] Smoke **Linux com Java 21 do sistema**: iniciar e confirmar ferramentas nativas (Sleuthkit out-of-process, OCR/JEP, ImageMagick, LibreOffice, RegRipper) (gate SC-004/FR-009).
