@@ -21,11 +21,13 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - T030 version check (`Util.MIN/MAX_JAVA_VER = 21`).
 - T009 `TelegramParser`: `parseBase64Binary` → `java.util.Base64` (o uso real era Base64, não Hex).
 - T011 `CachePersistance`: `printHexBinary` → `java.util.HexFormat` (uppercase; preserva nomes de cache).
+- T018/T020/T021 (deps): **JNA 5.14.0**, **Jersey 2.41**, **zstd-jni 1.5.6-9** (engine + parsers-impl). Engine: **136 testes verdes** no JDK 21 (`mvn -pl iped-engine test`).
 
 **Pendente / follow-up (não iniciado ou parcial):**
 - T008/T010 (`CertificateParser`/`GeofileParser`): uso real é `DatatypeConverter.parseDateTime` (datas) — **mantido via JAXB transitivo** para não arriscar o determinismo forense (Princípio IV); migrar p/ `java.time` exige validação dedicada.
 - T012 (OFCParser `JAXBContext`) e T013 (jsr305): compilam/rodam via deps transitivas; tornar explícitas é higiene (FR-014).
-- T016–T021 bumps (Lucene/Tika/JNA/BC/Jersey/zstd) · T022–T026 **Neo4j 5** (runtime, maior risco) · T027–T028 JEP (rebuild nativo) · T029 add-opens · T031–T058 testes/validação/distribuição/docs.
+- **T016 Lucene 9.12** e **T019 BC jdk18on** revertidos/adiados: Lucene 9.12 muda a API de `LeafReader`/`LeafMetaData` (quebra `SlowCompositeReaderWrapper` — Princípio I); BC `jdk18on` conflita (split-package `org.bouncycastle.*`) com o `jdk15on` transitivo do icepdf. Ambos **já rodam no Java 21** na versão atual — modernizá-los é independente da migração (follow-up dedicado).
+- **T017 Tika 2.9** não iniciado (alto risco; toca ~200 parsers). · T022–T026 **Neo4j 5** (runtime, maior risco) · T027–T028 JEP (rebuild nativo) · T029 add-opens · T031–T058 testes/validação/distribuição/docs.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -73,10 +75,10 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 - [ ] T016 Bump `lucene.version` 9.2.0 → 9.12.x em `pom.xml` (raiz); manter `lucene-backward-codecs`; **não** tocar `AppAnalyzer`/chaves de campo.
 - [ ] T017 Bump `tika.version`/`tika.core.version` → 2.9.2 em `pom.xml` (raiz); avaliar reverter o workaround `SyncMetadata` (commit `b673cf4`) e abandonar o fork `-p1` (TIKA-4126 corrigido upstream).
-- [ ] T018 [P] Alinhar `net.java.dev.jna:jna` → 5.14.0 em `iped-engine/pom.xml` e `iped-parsers/iped-parsers-impl/pom.xml`.
+- [X] T018 [P] Alinhar `net.java.dev.jna:jna` → 5.14.0 em `iped-engine/pom.xml` e `iped-parsers/iped-parsers-impl/pom.xml`.
 - [ ] T019 [P] Substituir `org.bouncycastle:bcpkix-jdk15on` 1.70 por `bcpkix-jdk18on` 1.78.1 (+ `bcprov-jdk18on`) em `iped-engine/pom.xml`.
-- [ ] T020 [P] Bump Jersey/HK2/Grizzly → 2.41 (mantendo namespace `javax`) em `iped-engine/pom.xml`.
-- [ ] T021 [P] Bump `com.github.luben:zstd-jni` → 1.5.x em `iped-engine/pom.xml`.
+- [X] T020 [P] Bump Jersey/HK2/Grizzly → 2.41 (mantendo namespace `javax`) em `iped-engine/pom.xml`.
+- [X] T021 [P] Bump `com.github.luben:zstd-jni` → 1.5.x em `iped-engine/pom.xml`.
 - [ ] T022 Verificar no Java 21 e bumpar **somente se necessário**: `opensearch-rest-high-level-client`, `minio`, `postgresql`, `sevenzipjbinding`, DockingFrames, em `iped-engine/pom.xml` e `iped-app/pom.xml` (registrar achados em [research.md](research.md) §13).
 
 ### Neo4j 4.4 → 5.26 (maior risco)
