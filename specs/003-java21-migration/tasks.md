@@ -12,7 +12,9 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 **Organization**: tarefas agrupadas por user story. Como é uma migração cross-cutting, a **Phase 2 (Foundational)** concentra o substrato comum que precisa compilar e carregar no Java 21 antes de qualquer story.
 
-## Progresso da implementação — sessão 2026-05-29 (JDK 21 em `H:\java\LibericaJDK-21-Full`)
+## Progresso da implementação — sessão 2026-05-29/30 (JDK 21 em `H:\java\LibericaJDK-21-Full`)
+
+> 📋 **Registro consolidado, evidências de verificação e pendências em [implementation-report.md](implementation-report.md).** O resumo abaixo é o histórico por commit.
 
 **Verificado por compilação (`mvn clean compile` → BUILD SUCCESS no JDK 21, 16 módulos):**
 - T001 emenda da constituição (Java 11→21, v1.2.0).

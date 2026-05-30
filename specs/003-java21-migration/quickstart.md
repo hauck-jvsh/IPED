@@ -91,3 +91,32 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 | Distribuição | Win (embarcado) + Linux (sistema) iniciam e processam (SC-004) |
 | Runtime limpo | sem erro por incompat JDK (SC-006) |
 | Governança/Docs | constituição emendada; `ThirdParty.txt`/`licenses/`/CI/CLAUDE.md atualizados |
+
+## 8. Rodar o release no Java 21 — estado atual (Windows)
+
+> Enquanto o artefato `java:jre:21.0.11` não é publicado e os launchers `.exe` não são rebuildados, use o caminho abaixo. Ver [implementation-report.md](implementation-report.md) §4 para o porquê.
+
+1. **Build**: `mvn clean package` (com `JAVA_HOME` = Liberica Full 21). Gera o release completo (`iped.jar` + `lib/` + `jre/`).
+   - ⚠️ Se o `java:jre:21.0.11` ainda não foi publicado, o `package` **falha na `unpack-jre`**. Workaround: comente/pule a `unpack-jre` ou troque o `jre/` do release manualmente (passo 3).
+2. **Deploy**: copiar `target/release/iped-4.4.0-SNAPSHOT/` para a instalação (o usuário é dono do deploy).
+3. **JRE 21 no release** (se o artefato não foi publicado): substituir a pasta `jre/` por uma Liberica Full 21:
+   ```powershell
+   Remove-Item -Recurse -Force "<release>\jre"
+   Copy-Item -Recurse "H:\java\LibericaJDK-21-Full" "<release>\jre"
+   ```
+4. **Executar via `iped.bat`** (não o `iped.exe`, que pega Java 11 do registro):
+   ```powershell
+   cd <release>
+   .\iped.bat -profile forensic -d <fonte> -o <saida>
+   ```
+   O `iped.bat` usa o `jre/` embarcado e passa `-Djava.security.manager=allow` (propagado à JVM filha).
+
+## 9. Validação realizada (2026-05-30)
+
+- **Build**: `mvn clean package` no JDK 21 → BUILD SUCCESS (16 módulos; release completo).
+- **Testes**: `mvn -pl iped-engine test` → 136 testes, 0 falhas, 2 skips (YARA integration-gated).
+- **Processamento real**: `iped.bat -profile forensic -d E:\hds\RockPi4\RockPi4.E01 -o F:\test`
+  - Sleuthkit decodificou o E01; pipeline completo; índice; UI de análise navegável; 0 erros de SecurityManager.
+  - Cache de regex reconstruído a partir do formato FST antigo (esperado).
+  - Não-fatais: `numpy` ausente (Python/JEP); NPE pré-existente no viewer de SVG.
+- **Pendente**: paridade formal (SC-002, requer baseline Java 11); grafo Neo4j 5 em runtime; smokes de distribuição "limpos" (após publicar o JRE e rebuildar os `.exe`).

@@ -137,3 +137,4 @@ specs/003-java21-migration/quickstart.md      # procedimento de validação de p
 - **Phase 0 — Research** → [research.md](research.md): resolve versões-alvo, matriz de compatibilidade de dependências, estratégia Neo4j 5, substituição do FST, add-opens necessários, e se o fork Tika pode ser abandonado.
 - **Phase 1 — Design & Contracts** → [data-model.md](data-model.md) (artefatos + matriz de upgrade), [contracts/](contracts/) (contrato de detecção de versão + contrato de validação de paridade), [quickstart.md](quickstart.md) (setup/build/validação).
 - **Phase 2 — Tasks** → gerado por `/speckit-tasks` (não aqui).
+- **Implementação & validação** → ver [implementation-report.md](implementation-report.md) (o que foi feito, verificado por compilação/testes/run real, e o que permanece pendente).
