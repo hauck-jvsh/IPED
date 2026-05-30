@@ -94,26 +94,10 @@
                         <goals>
                             <goal>analyze</goal>
                         </goals>
-                    </execution>                                        
-                    <execution>
-                        <id>unpack-jre</id>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>unpack</goal>
-                        </goals>
-                        <configuration>
-                            <artifactItems>
-                                <artifactItem>
-                                    <groupId>java</groupId>
-                                    <artifactId>jre</artifactId>
-                                    <version>21.0.11</version>
-                                    <type>zip</type>
-                                    <overWrite>false</overWrite>
-                                    <outputDirectory>${release.dir}</outputDirectory>
-                                </artifactItem>
-                            </artifactItems>
-                        </configuration>
                     </execution>
+                    <!-- JRE is bundled from the local folder iped-jre/ (see copy-jre in
+                         maven-resources-plugin below) instead of the java:jre Maven artifact.
+                         Java 21 migration (003): avoids depending on a published java:jre:21.x zip. -->
                     <execution>
                         <id>unpack-python</id>
                         <phase>package</phase>
@@ -858,6 +842,26 @@
                                 <resource>
                                     <filtering>false</filtering>
                                     <directory>${project.basedir}/../tools/yara-x</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <!-- COPY BUNDLED JRE (Java 21 migration, 003).
+                         Copies the local Liberica Full 21 JRE placed in iped-jre/<jdk-dir>
+                         into ${release.dir}/jre, replacing the old unpack of the java:jre
+                         Maven artifact. filtering=false to keep native binaries intact. -->
+                    <execution>
+                        <id>copy-jre</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${release.dir}/jre</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <filtering>false</filtering>
+                                    <directory>${parent.root}/iped-jre/jre-21.0.11-full</directory>
                                 </resource>
                             </resources>
                         </configuration>
