@@ -22,12 +22,13 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - T009 `TelegramParser`: `parseBase64Binary` → `java.util.Base64` (o uso real era Base64, não Hex).
 - T011 `CachePersistance`: `printHexBinary` → `java.util.HexFormat` (uppercase; preserva nomes de cache).
 - T018/T020/T021 (deps): **JNA 5.14.0**, **Jersey 2.41**, **zstd-jni 1.5.6-9** (engine + parsers-impl). Engine: **136 testes verdes** no JDK 21 (`mvn -pl iped-engine test`).
+- T022–T024/T026 **Neo4j 4.4.4 → 5.26.0**: **reator inteiro compila limpo (0 erros)** — a API moderna `DatabaseManagementServiceBuilder` já era usada; só warnings de `getId()`/`getStartNodeId()` deprecated (**mantidos**: migrar p/ `getElementId()` mudaria a semântica do ID `long`→`String` = mudança de comportamento, contra FR-018). ⚠️ **Compile-verified, NÃO runtime** — falta validar startup embarcado Neo4j 5 + Cypher 5 (T025) + guarda de store antigo (T043) com grafo real.
 
 **Pendente / follow-up (não iniciado ou parcial):**
 - T008/T010 (`CertificateParser`/`GeofileParser`): uso real é `DatatypeConverter.parseDateTime` (datas) — **mantido via JAXB transitivo** para não arriscar o determinismo forense (Princípio IV); migrar p/ `java.time` exige validação dedicada.
 - T012 (OFCParser `JAXBContext`) e T013 (jsr305): compilam/rodam via deps transitivas; tornar explícitas é higiene (FR-014).
 - **T016 Lucene 9.12** e **T019 BC jdk18on** revertidos/adiados: Lucene 9.12 muda a API de `LeafReader`/`LeafMetaData` (quebra `SlowCompositeReaderWrapper` — Princípio I); BC `jdk18on` conflita (split-package `org.bouncycastle.*`) com o `jdk15on` transitivo do icepdf. Ambos **já rodam no Java 21** na versão atual — modernizá-los é independente da migração (follow-up dedicado).
-- **T017 Tika 2.9** não iniciado (alto risco; toca ~200 parsers). · T022–T026 **Neo4j 5** (runtime, maior risco) · T027–T028 JEP (rebuild nativo) · T029 add-opens · T031–T058 testes/validação/distribuição/docs.
+- **T017 Tika 2.9** não iniciado (alto risco; toca ~200 parsers). · **Neo4j 5 runtime**: T025 Cypher 5 + validação de startup embarcado + T043 guarda de store antigo (compila, falta rodar com grafo real) · T027–T028 JEP (rebuild nativo) · T029 add-opens · T031–T058 testes/validação/distribuição/docs.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -83,7 +84,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 ### Neo4j 4.4 → 5.26 (maior risco)
 
-- [ ] T023 Bump `org.neo4j:neo4j` 4.4.4 → 5.26.x em `iped-engine/pom.xml` (manter exclusões de slf4j-nop/jaxb/commons-logging).
+- [X] T023 Bump `org.neo4j:neo4j` 4.4.4 → **5.26.0** em `iped-engine/pom.xml` (mantidas exclusões de slf4j-nop/jaxb/commons-logging). Reator compila limpo no JDK 21; runtime pendente.
 - [ ] T024 Migrar a API embarcada do Neo4j (engine) em `iped-engine/src/main/java/iped/engine/graph/` (`GraphService.java`, `GraphTask.java` e classes relacionadas) para a API 5.x (`DatabaseManagementServiceBuilder`).
 - [ ] T025 [P] Revisar/ajustar a sintaxe Cypher dos templates em `iped-engine/src/main/resources/iped/engine/graph/links/*.cypher` para Neo4j 5.x.
 - [ ] T026 Migrar o consumidor Neo4j da UI em `iped-app/src/main/java/iped/app/graph/` (`AppGraphAnalytics.java`, `LoadGraphDatabaseWorker.java`) para a API 5.x.
