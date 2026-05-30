@@ -22,6 +22,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - T009 `TelegramParser`: `parseBase64Binary` → `java.util.Base64` (o uso real era Base64, não Hex).
 - T011 `CachePersistance`: `printHexBinary` → `java.util.HexFormat` (uppercase; preserva nomes de cache).
 - T018/T020/T021 (deps): **JNA 5.14.0**, **Jersey 2.41**, **zstd-jni 1.5.6-9** (engine + parsers-impl). Engine: **136 testes verdes** no JDK 21 (`mvn -pl iped-engine test`).
+- **Fix de empacotamento (regressão da própria migração)**: `maven-jar-plugin` do `iped-app` revertido **3.4.1 → 2.6**. O 3.4.0+ aborta a execução `create-jar` ("You have to use a classifier…") → release saía **sem `iped.jar` e com `lib/` incompleto** (sintoma: `iped.exe` → "Unable to access jarfile iped.jar"). Validado com `mvn package`: release completo (iped.jar + iped-search-app/webapi/hashdb + 510 jars em `lib/`).
 - T022–T024/T026 **Neo4j 4.4.4 → 5.26.0**: **reator inteiro compila limpo (0 erros)** — a API moderna `DatabaseManagementServiceBuilder` já era usada; só warnings de `getId()`/`getStartNodeId()` deprecated (**mantidos**: migrar p/ `getElementId()` mudaria a semântica do ID `long`→`String` = mudança de comportamento, contra FR-018). ⚠️ **Compile-verified, NÃO runtime** — falta validar startup embarcado Neo4j 5 + Cypher 5 (T025) + guarda de store antigo (T043) com grafo real.
 
 **Pendente / follow-up (não iniciado ou parcial):**
@@ -47,7 +48,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - [X] T003 Em `pom.xml` (raiz), substituir `maven.compiler.source/target = 11` por `maven.compiler.release = 21`.
 - [X] T004 Bump `maven-compiler-plugin` → 3.13.0 em `pom.xml` e nos POMs que o fixam: `iped-carvers/pom.xml`, `iped-viewers/pom.xml`, `iped-geo/pom.xml`, `iped-app/pom.xml`.
 - [X] T005 Bump `maven-surefire-plugin` → 3.5.x em `iped-carvers/pom.xml`, `iped-viewers/pom.xml`, `iped-app/pom.xml` (e onde mais estiver fixado).
-- [X] T006 [P] Bump `maven-jar-plugin` → 3.4.x e `maven-dependency-plugin` → 3.8.x em `iped-app/pom.xml` e `iped-utils/pom.xml`.
+- [X] T006 [P] `maven-dependency-plugin` → 3.8.x (`iped-app`/`iped-utils`). ⚠️ **`maven-jar-plugin` do `iped-app` mantido em 2.6** — NÃO bumpar p/ 3.4.0+: a partir do 3.4.0 o plugin proíbe execuções multi-jar sem classifier (`create-jar`/`create-search-jar`/`create-webapi-jar`/`create-hashdb-jar`) e **quebra o release** (sem `iped.jar`/`lib`).
 - [X] T007 [P] Remover `findbugs-maven-plugin` 3.0.0 de `pom.xml` (raiz).
 
 ---
