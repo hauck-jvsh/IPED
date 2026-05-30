@@ -6,4 +6,6 @@ rem that still selects a Java 11 from the Windows registry and ignores the
 rem bundled jre/ and JAVA_HOME. Remove once iped.exe is rebuilt for Java 21.
 setlocal
 set "IPED_HOME=%~dp0"
-"%IPED_HOME%jre\bin\java.exe" -jar "%IPED_HOME%iped.jar" %*
+rem -Djava.security.manager=allow is propagated to the forked JVM, where IPED
+rem installs a SecurityManager (blocked by default on Java 18+).
+"%IPED_HOME%jre\bin\java.exe" -Djava.security.manager=allow -jar "%IPED_HOME%iped.jar" %*

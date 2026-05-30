@@ -231,6 +231,10 @@ public class Bootstrap {
     private static List<String> getCustomJVMArgs(){
         return Arrays.asList("-XX:+IgnoreUnrecognizedVMOptions",
                 "-XX:+HeapDumpOnOutOfMemoryError",
+                // Java 18+ disables System.setSecurityManager() by default. IPED still installs a
+                // SecurityManager (see Configuration.loadConfigurables) to block network access from
+                // the HTML viewers, so re-enable it. (SecurityManager is only removed in Java 24+.)
+                "-Djava.security.manager=allow",
                 "--add-opens=java.base/java.util=ALL-UNNAMED",
                 "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
                 "--add-opens=java.base/java.lang=ALL-UNNAMED",
