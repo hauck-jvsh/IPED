@@ -18,8 +18,17 @@ public class BoltNode extends BoltEntity implements Node {
 
     private final List<Label> labels;
 
+    /** Node degree captured by the producing query (COUNT {{ (n)--() }}), or -1 when not requested. */
+    private final int degree;
+
     public BoltNode(long id, String elementId, Iterable<String> labelNames, Map<String, Object> properties) {
+        this(id, elementId, labelNames, properties, -1);
+    }
+
+    public BoltNode(long id, String elementId, Iterable<String> labelNames, Map<String, Object> properties,
+            int degree) {
         super(id, elementId, properties);
+        this.degree = degree;
         this.labels = new ArrayList<>();
         if (labelNames != null) {
             for (String name : labelNames) {
@@ -30,6 +39,10 @@ public class BoltNode extends BoltEntity implements Node {
 
     static BoltNode from(org.neo4j.driver.types.Node node) {
         return new BoltNode(node.id(), node.elementId(), node.labels(), node.asMap());
+    }
+
+    static BoltNode from(org.neo4j.driver.types.Node node, int degree) {
+        return new BoltNode(node.id(), node.elementId(), node.labels(), node.asMap(), degree);
     }
 
     @Override
@@ -109,24 +122,29 @@ public class BoltNode extends BoltEntity implements Node {
         throw unsupported();
     }
 
+    // Degree is read by the graph UI (GraphModel) only to size nodes. It is served from the snapshot
+    // value carried by the producing query; when that query did not request it we report 0 so
+    // rendering falls back to the base node size instead of failing. The direction/type-filtered
+    // variants cannot be answered from a detached snapshot, so they report the same total degree.
+
     @Override
     public int getDegree() {
-        throw unsupported();
+        return degree < 0 ? 0 : degree;
     }
 
     @Override
     public int getDegree(RelationshipType type) {
-        throw unsupported();
+        return getDegree();
     }
 
     @Override
     public int getDegree(Direction direction) {
-        throw unsupported();
+        return getDegree();
     }
 
     @Override
     public int getDegree(RelationshipType type, Direction direction) {
-        throw unsupported();
+        return getDegree();
     }
 
     @Override

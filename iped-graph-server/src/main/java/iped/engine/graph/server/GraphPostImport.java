@@ -78,20 +78,31 @@ public class GraphPostImport {
             return;
         }
         System.out.println("Running post generation statements.");
-        try (Transaction tx = graphDB.beginTx()) {
-            for (String stmt : statements) {
-                if (!stmt.trim().isEmpty()) {
-                    System.out.println("Running " + stmt);
-                    tx.execute(stmt);
-                }
+        for (String stmt : statements) {
+            if (stmt.trim().isEmpty()) {
+                continue;
             }
-            tx.commit();
+            // Each statement runs in its own transaction: Neo4j 5 forbids mixing schema commands (e.g.
+            // CREATE INDEX) with data operations in a single transaction, and isolating them keeps one
+            // failing/legacy statement from aborting the whole post-import (including contact grouping).
+            try (Transaction tx = graphDB.beginTx()) {
+                System.out.println("Running " + stmt);
+                tx.execute(stmt);
+                tx.commit();
+            } catch (Exception e) {
+                System.out.println(
+                        "WARNING: post-generation statement failed and was skipped: " + stmt + " -> " + e.getMessage());
+            }
         }
     }
 
     private void groupContacts(GraphDatabaseService graphDB) {
         for (String label : CONTACT_GROUP_LABELS) {
-            groupContacts(graphDB, label);
+            try {
+                groupContacts(graphDB, label);
+            } catch (Exception e) {
+                System.out.println("WARNING: contact grouping failed for label " + label + ": " + e.getMessage());
+            }
         }
     }
 

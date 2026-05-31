@@ -180,6 +180,17 @@ public class GraphServiceImpl implements GraphService {
         return BoltNode.from(rec.get(column).asNode());
     }
 
+    /**
+     * Same as {@link #node(Record, String)} but also carries the node degree returned by the query in
+     * {@code degreeColumn} (the {@code COUNT {{ (n)--() }}} columns), used by the UI to size nodes.
+     * Falls back to an unknown degree when the column is absent/null.
+     */
+    private static BoltNode nodeWithDegree(Record rec, String nodeColumn, String degreeColumn) {
+        int degree = rec.containsKey(degreeColumn) && !rec.get(degreeColumn).isNull() ? rec.get(degreeColumn).asInt()
+                : -1;
+        return BoltNode.from(rec.get(nodeColumn).asNode(), degree);
+    }
+
     /** Builds a relationship carrying its start/end nodes (queries add startNode(r) as sn, endNode(r) as en). */
     private static BoltRelationship relWithEnds(Record rec) {
         return BoltRelationship.from(rec.get("edge").asRelationship(), node(rec, "sn"), node(rec, "en"));
@@ -236,11 +247,11 @@ public class GraphServiceImpl implements GraphService {
     @Override
     public void getNodes(Collection<Long> ids, NodeQueryListener listener) {
         try (Session session = driver.session()) {
-            Result result = session.run("MATCH (n) WHERE id(n) IN $param RETURN n",
+            Result result = session.run("MATCH (n) WHERE id(n) IN $param RETURN n, COUNT { (n)--() } as deg",
                     Collections.singletonMap("param", new ArrayList<>(ids)));
             boolean proceed = true;
             while (result.hasNext() && proceed) {
-                proceed = listener.nodeFound(node(result.next(), "n"));
+                proceed = listener.nodeFound(nodeWithDegree(result.next(), "n", "deg"));
             }
         }
     }
@@ -249,7 +260,7 @@ public class GraphServiceImpl implements GraphService {
     public void getNeighbours(Long id, NodeEdgeQueryListener listener, int maxNodes) {
         try (Session session = driver.session()) {
             Result result = session.run(
-                    "MATCH (n)-[r]-(m) WHERE id(n) = $param RETURN m as node, r as edge, startNode(r) as sn, endNode(r) as en",
+                    "MATCH (n)-[r]-(m) WHERE id(n) = $param RETURN m as node, COUNT { (m)--() } as deg, r as edge, startNode(r) as sn, endNode(r) as en",
                     Collections.singletonMap("param", id));
             emitNeighbours(result, listener, maxNodes);
         }
@@ -264,7 +275,7 @@ public class GraphServiceImpl implements GraphService {
         try (Session session = driver.session()) {
             Result result = session.run(
                     "MATCH (n)-[r]-(m) WHERE id(n) = $nodeId AND ANY(l IN labels(m) WHERE l IN $labels) "
-                            + "RETURN m as node, r as edge, startNode(r) as sn, endNode(r) as en",
+                            + "RETURN m as node, COUNT { (m)--() } as deg, r as edge, startNode(r) as sn, endNode(r) as en",
                     params);
             emitNeighbours(result, listener, maxNodes);
         }
@@ -276,7 +287,7 @@ public class GraphServiceImpl implements GraphService {
         // Cypher 5 type alternation is A|B (the old A|:B form was removed).
         String typeFilter = relationships.isEmpty() ? "" : ":" + relationships.stream().collect(Collectors.joining("|"));
         String query = "MATCH (n)-[r" + typeFilter + "]-(m) WHERE id(n) = $nodeId "
-                + "RETURN m as node, r as edge, startNode(r) as sn, endNode(r) as en";
+                + "RETURN m as node, COUNT { (m)--() } as deg, r as edge, startNode(r) as sn, endNode(r) as en";
         try (Session session = driver.session()) {
             Result result = session.run(query, Collections.singletonMap("nodeId", nodeId));
             emitNeighbours(result, listener, maxNodes);
@@ -295,7 +306,7 @@ public class GraphServiceImpl implements GraphService {
         boolean proceed = true;
         while (result.hasNext() && proceed) {
             Record next = result.next();
-            proceed = listener.nodeFound(node(next, "node"));
+            proceed = listener.nodeFound(nodeWithDegree(next, "node", "deg"));
             proceed = proceed && listener.edgeFound(relWithEnds(next));
         }
     }
@@ -314,7 +325,7 @@ public class GraphServiceImpl implements GraphService {
         Map<Long, NodeRels> edgeMap = new HashMap<>();
         while (result.hasNext()) {
             Record next = result.next();
-            Node node = node(next, "node");
+            Node node = nodeWithDegree(next, "node", "deg");
             NodeRels nodeRels = edgeMap.computeIfAbsent(node.getId(), k -> {
                 NodeRels nr = new NodeRels();
                 nr.node = node;
@@ -368,12 +379,13 @@ public class GraphServiceImpl implements GraphService {
 
     @Override
     public void search(String param, NodeQueryListener listener) {
-        String query = "MATCH (n) WHERE ANY(prop IN keys(n) WHERE toUpper(toString(n[prop])) CONTAINS $param) RETURN n";
+        String query = "MATCH (n) WHERE ANY(prop IN keys(n) WHERE toUpper(toString(n[prop])) CONTAINS $param) "
+                + "RETURN n, COUNT { (n)--() } as deg";
         try (Session session = driver.session()) {
             Result result = session.run(query, Collections.singletonMap("param", param.toUpperCase()));
             boolean proceed = true;
             while (result.hasNext() && proceed) {
-                proceed = listener.nodeFound(node(result.next(), "n"));
+                proceed = listener.nodeFound(nodeWithDegree(result.next(), "n", "deg"));
             }
         }
     }
@@ -437,7 +449,7 @@ public class GraphServiceImpl implements GraphService {
                 }
             }
         }
-        queryBuilder.append(" RETURN n ");
+        queryBuilder.append(" RETURN n, COUNT { (n)--() } as deg ");
         if (ordering.length > 0) {
             queryBuilder.append(" ORDER BY ");
             queryBuilder.append(Arrays.stream(ordering).map(o -> "n." + o).collect(Collectors.joining(", ")));
@@ -446,7 +458,7 @@ public class GraphServiceImpl implements GraphService {
             Result result = session.run(queryBuilder.toString(), params);
             boolean proceed = true;
             while (result.hasNext() && proceed) {
-                proceed = listener.nodeFound(node(result.next(), "n"));
+                proceed = listener.nodeFound(nodeWithDegree(result.next(), "n", "deg"));
             }
         }
     }
