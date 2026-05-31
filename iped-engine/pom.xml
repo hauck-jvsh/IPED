@@ -275,24 +275,20 @@
             <artifactId>libphonenumber</artifactId>
             <version>8.9.14</version>
         </dependency>
+        <!-- Java 21 migration (003): the embedded Neo4j 5 engine runs out-of-process (module
+             iped-graph-server, isolated antlr 4.13.x). This process only needs the graphdb-api
+             interfaces (the Bolt-snapshot boundary type, see BoltNode/BoltRelationship/BoltPath)
+             and the Bolt driver to talk to GraphServer. It must NOT pull the full engine, which
+             would drag antlr 4.13.x onto this classpath and clash with libfqlite's antlr 4.9.2. -->
         <dependency>
             <groupId>org.neo4j</groupId>
-            <artifactId>neo4j</artifactId>
+            <artifactId>neo4j-graphdb-api</artifactId>
             <version>5.26.0</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>org.slf4j</groupId>
-                    <artifactId>slf4j-nop</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>javax.xml.bind</groupId>
-                    <artifactId>jaxb-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>commons-logging</groupId>
-                    <artifactId>commons-logging</artifactId>
-                </exclusion>
-            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.neo4j.driver</groupId>
+            <artifactId>neo4j-java-driver</artifactId>
+            <version>5.26.0</version>
         </dependency>
 		<dependency>
 			<groupId>org.bouncycastle</groupId>

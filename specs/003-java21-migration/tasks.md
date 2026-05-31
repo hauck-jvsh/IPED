@@ -27,13 +27,30 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - **Launchers `.exe` (T050, parcial)**: `iped.exe`/`IPED-SearchApp.exe` são **binários pré-compilados** (`iped-app/resources/root/`) que **ignoram o `jre/` embarcado E o `JAVA_HOME`** e selecionam um **Java 11 registrado no Windows** → `UnsupportedClassVersionError (65.0 vs 55.0)` mesmo com `jre/`=21 e `JAVA_HOME`=21. Precisam ser **refeitos para Java 21** (launch4j; config fora do repo — follow-up de distribuição). **Interim:** adicionado `iped-app/resources/root/iped.bat` (usa o `jre/` embarcado; validado: `iped.jar` roda no Java 21, exit 0). Falta análogo p/ a UI (`IPED-SearchApp`).
 - **JRE embarcado (T050, parcial)**: `unpack-jre` bumpado `java:jre` 11.0.13 → **21.0.11** em `iped-app/pom.xml`. ⚠️ Runtime Java 11 embarcado causava `UnsupportedClassVersionError (class file 65.0 vs 55.0)` ao rodar `iped.exe`. **Requer o usuário publicar** o zip `java:jre:21.0.11` (top-level `jre/`, Liberica Full 21 c/ JavaFX) no maven do projeto antes do `mvn package` resolver.
 - **Fix de empacotamento (regressão da própria migração)**: `maven-jar-plugin` do `iped-app` revertido **3.4.1 → 2.6**. O 3.4.0+ aborta a execução `create-jar` ("You have to use a classifier…") → release saía **sem `iped.jar` e com `lib/` incompleto** (sintoma: `iped.exe` → "Unable to access jarfile iped.jar"). Validado com `mvn package`: release completo (iped.jar + iped-search-app/webapi/hashdb + 510 jars em `lib/`).
-- T022–T024/T026 **Neo4j 4.4.4 → 5.26.0**: **reator inteiro compila limpo (0 erros)** — a API moderna `DatabaseManagementServiceBuilder` já era usada; só warnings de `getId()`/`getStartNodeId()` deprecated (**mantidos**: migrar p/ `getElementId()` mudaria a semântica do ID `long`→`String` = mudança de comportamento, contra FR-018). ⚠️ **Compile-verified, NÃO runtime** — falta validar startup embarcado Neo4j 5 + Cypher 5 (T025) + guarda de store antigo (T043) com grafo real.
+- T022–T024/T026 **Neo4j 4.4.4 → 5.26.0**: reator compila limpo; runtime resolvido na sessão 2026-05-31 (ver abaixo).
 
 **Pendente / follow-up (não iniciado ou parcial):**
 - T008/T010 (`CertificateParser`/`GeofileParser`): uso real é `DatatypeConverter.parseDateTime` (datas) — **mantido via JAXB transitivo** para não arriscar o determinismo forense (Princípio IV); migrar p/ `java.time` exige validação dedicada.
 - T012 (OFCParser `JAXBContext`) e T013 (jsr305): compilam/rodam via deps transitivas; tornar explícitas é higiene (FR-014).
 - **T016 Lucene 9.12** e **T019 BC jdk18on** revertidos/adiados: Lucene 9.12 muda a API de `LeafReader`/`LeafMetaData` (quebra `SlowCompositeReaderWrapper` — Princípio I); BC `jdk18on` conflita (split-package `org.bouncycastle.*`) com o `jdk15on` transitivo do icepdf. Ambos **já rodam no Java 21** na versão atual — modernizá-los é independente da migração (follow-up dedicado).
-- **T017 Tika 2.9** não iniciado (alto risco; toca ~200 parsers). · **Neo4j 5 runtime**: T025 Cypher 5 + validação de startup embarcado + T043 guarda de store antigo (compila, falta rodar com grafo real) · T027–T028 JEP (rebuild nativo) · T029 add-opens · T031–T058 testes/validação/distribuição/docs.
+- **T017 Tika 2.9** não iniciado (alto risco; toca ~200 parsers). · T027–T028 JEP (rebuild nativo) · T031–T058 testes/validação/distribuição/docs.
+
+## Progresso da implementação — sessão 2026-05-31 (grafo Neo4j 5 out-of-process via Bolt)
+
+> 📋 Detalhes, decisão arquitetural e evidências em [implementation-report.md](implementation-report.md) §2.5/§2.6.
+
+**JRE local + PNG (commits `81d6fb6`, `e1c5e04`):**
+- **JRE embarcada da pasta local** `iped-jre/` (gitignored) via `copy-jre` no `iped-app/pom.xml` — substitui o `unpack` do artefato `java:jre` (não publicado). Resolve o pendente de distribuição (T050 parcial) sem depender de publicar o JRE.
+- **T029 (parcial)** `--add-exports=java.desktop/{com.sun.imageio.plugins.common,sun.awt.image}=ALL-UNNAMED` em `Bootstrap.getCustomJVMArgs()` — o leitor `png-reader` (`com.sun.imageio.plugins.png2`) acessa internos do `java.desktop` (lista via `jdeps -jdkinternals`). Verificado em runtime.
+
+**Grafo Neo4j 5 — reescrito out-of-process + Bolt (build verde; esta sessão):**
+- **Conflito-raiz:** Cypher do Neo4j 5.26 exige antlr `4.13.x`; `libfqlite` (undelete SQLite) fixa antlr `4.9.2`; ATN incompatível nos 2 sentidos → não coexistem no mesmo classpath. Decisão (mira OSGi): **isolamento por processo**.
+- **T024** (API embarcada do engine): **redesenhada** — não é mais migração in-process. Novo módulo **`iped-graph-server`** roda o Neo4j embarcado + Bolt em JVM filha (classpath `lib/neo4j/`, antlr 4.13). `GraphServiceImpl` reescrito como **cliente do driver Bolt** (spawn do server via `Neo4jChildLauncher`); adapters `Bolt{Node,Relationship,Path}` implementam `graphdb-api` → UI intocada. `GraphImportRunner` (CLI Neo4j 5: `database import full`) e `GraphGenerator`/`GraphPostImport` (post-import embedded no filho) usam o `lib/neo4j` isolado.
+- **T025** Cypher 5: `size((n)--())`→`COUNT{...}`; `:A|:B`→`:A|B`; queries de rel retornam `startNode(r)/endNode(r)`. ✅
+- **T026** consumidor UI: ✅ **sem mudança** nos 11 arquivos de `iped-app/.../graph/` (adapters preservam o tipo de fronteira `graphdb-api`); só `SearchLinksWorker` trocou `getGraphDb()` → `GraphService`.
+- **Empacotamento:** `iped-engine` → `neo4j-graphdb-api` + `neo4j-java-driver`; `iped-app` desempacota o zip do `iped-graph-server` em `lib/neo4j/` com exclusão wildcard dos transitivos (evita vazar engine+antlr-4.13 p/ o `lib/` plano). Gotcha: `CacheTimePeriodEntry` usava `scala.Array.copy` (transitivo do neo4j) → `System.arraycopy`.
+- **Verificado:** `mvn clean package` BUILD SUCCESS + separação de classpath confirmada (`lib/` sem cypher/scala/antlr-4.13; `lib/neo4j/` = 239 jars isolados). Import Neo4j 5 validado (graph.db gerado dos CSVs reais). ⏳ Aba de grafo na UI pendente de reprocessamento (caso empacota a própria `iped/lib`).
+- **T043** guarda de store 4.x: ainda pendente (agora = try/catch no startup do `GraphServer`/carregamento).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -89,10 +106,10 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 ### Neo4j 4.4 → 5.26 (maior risco)
 
-- [X] T023 Bump `org.neo4j:neo4j` 4.4.4 → **5.26.0** em `iped-engine/pom.xml` (mantidas exclusões de slf4j-nop/jaxb/commons-logging). Reator compila limpo no JDK 21; runtime pendente.
-- [ ] T024 Migrar a API embarcada do Neo4j (engine) em `iped-engine/src/main/java/iped/engine/graph/` (`GraphService.java`, `GraphTask.java` e classes relacionadas) para a API 5.x (`DatabaseManagementServiceBuilder`).
-- [ ] T025 [P] Revisar/ajustar a sintaxe Cypher dos templates em `iped-engine/src/main/resources/iped/engine/graph/links/*.cypher` para Neo4j 5.x.
-- [ ] T026 Migrar o consumidor Neo4j da UI em `iped-app/src/main/java/iped/app/graph/` (`AppGraphAnalytics.java`, `LoadGraphDatabaseWorker.java`) para a API 5.x.
+- [X] T023 Bump `org.neo4j:neo4j` 4.4.4 → **5.26.0** (depois **redesenhado**: `iped-engine` ficou só com `neo4j-graphdb-api` + `neo4j-java-driver`; o engine full foi para o módulo isolado `iped-graph-server`). Ver §2.5 do report.
+- [X] T024 **Engine Neo4j 5 — redesenhado para out-of-process** (conflito antlr 4.13 vs libfqlite 4.9). Novo módulo `iped-graph-server` (`GraphServer` Bolt + `GraphPostImport`); `GraphServiceImpl` reescrito como cliente do driver Bolt + adapters `Bolt{Node,Relationship,Path}`; `GraphImportRunner`/`GraphGenerator` usam o `lib/neo4j` isolado via `Neo4jChildLauncher`. Build verde; import validado; **aba na UI pendente de reprocessamento**.
+- [X] T025 Cypher 5 ajustado em `GraphServiceImpl` (`size(pattern)`→`COUNT{}`; `:A|:B`→`:A|B`; `startNode(r)/endNode(r)` nas queries de rel). Templates `links/*.cypher` retornam `path` (consumidos via `GraphService.searchPaths` over Bolt).
+- [X] T026 Consumidor UI: **sem mudança** nos 11 arquivos de `iped-app/.../graph/` (adapters preservam o tipo de fronteira `graphdb-api`); só `SearchLinksWorker` passou de `getGraphDb()` → `GraphService`.
 
 ### JEP (Python embarcado)
 
@@ -101,7 +118,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 ### Inicialização e detecção de versão
 
-- [ ] T029 Adicionar os `--add-opens`/`--add-exports` necessários (Neo4j 5 e libs Swing) em `getCustomJVMArgs()` de `iped-app/src/main/java/iped/app/bootstrap/Bootstrap.java` (validar empiricamente; manter lista mínima).
+- [X] T029 `--add-opens`/`--add-exports` em `getCustomJVMArgs()` de `Bootstrap.java`: `-Djava.security.manager=allow` + `--add-exports` p/ o leitor PNG (`java.desktop/{com.sun.imageio.plugins.common,sun.awt.image}`). Os `--add-opens` do Neo4j 5 ficam no `Neo4jChildLauncher` (JVM filha do grafo), não no processo principal. Validado em runtime.
 - [X] T030 Atualizar `MIN_JAVA_VER`/`MAX_JAVA_VER` (11/14 → 21) em `iped-engine/src/main/java/iped/engine/util/Util.java` conforme [contracts/runtime-version-check.contract.md](contracts/runtime-version-check.contract.md); revisar textos `JavaVersion.*` em `iped-app/resources/localization/iped-engine-messages*.properties` se citarem "11"/"14".
 
 ### Checkpoint Foundational

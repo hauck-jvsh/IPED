@@ -26,6 +26,26 @@
             <artifactId>iped-geo</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Out-of-process Neo4j graph server distribution (zip). Declared only so the reactor
+             builds it before iped-app and the unpack-graph-server execution can resolve it; the
+             zip type keeps it off this module's classpath (and excludeTypes=zip keeps it out of
+             the flat lib/). Java 21 migration (003). -->
+        <dependency>
+            <groupId>iped</groupId>
+            <artifactId>iped-graph-server</artifactId>
+            <version>${project.version}</version>
+            <classifier>neo4j</classifier>
+            <type>zip</type>
+            <!-- The zip already bundles the full embedded Neo4j stack (unpacked into lib/neo4j/).
+                 Exclude its transitive POM deps so the embedded engine + antlr 4.13.x do NOT also
+                 leak into the flat lib/ (which keeps antlr 4.9.2 for libfqlite). -->
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
       	<dependency>
           <groupId>com.beust</groupId>
           <artifactId>jcommander</artifactId>
@@ -98,6 +118,31 @@
                     <!-- JRE is bundled from the local folder iped-jre/ (see copy-jre in
                          maven-resources-plugin below) instead of the java:jre Maven artifact.
                          Java 21 migration (003): avoids depending on a published java:jre:21.x zip. -->
+                    <!-- Out-of-process Neo4j graph stack (embedded engine + antlr 4.13.x), unpacked
+                         into lib/neo4j/ and used only as the classpath of the GraphServer /
+                         GraphPostImport / neo4j-admin child JVMs. Java 21 migration (003). -->
+                    <execution>
+                        <id>unpack-graph-server</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>iped</groupId>
+                                    <artifactId>iped-graph-server</artifactId>
+                                    <version>${project.version}</version>
+                                    <classifier>neo4j</classifier>
+                                    <type>zip</type>
+                                    <overWrite>true</overWrite>
+                                    <!-- The zip stores jars under a neo4j/ prefix; unpack into lib/
+                                         so they land in lib/neo4j/ (see Neo4jChildLauncher). -->
+                                    <outputDirectory>${lib.dir}</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
                     <execution>
                         <id>unpack-python</id>
                         <phase>package</phase>
@@ -568,6 +613,9 @@
                             <overWriteSnapshots>false</overWriteSnapshots>
                             <overWriteIfNewer>true</overWriteIfNewer>
                             <excludeScope>provided</excludeScope>
+                            <!-- The iped-graph-server distribution is a zip; it is unpacked into
+                                 lib/neo4j/ (unpack-graph-server below), not copied flat into lib/. -->
+                            <excludeTypes>zip</excludeTypes>
                         </configuration>
                     </execution>
                 </executions>
