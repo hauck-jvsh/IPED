@@ -101,14 +101,15 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 - **Rebuildar os launchers `.exe`** (`iped.exe`, `IPED-SearchApp.exe`) para Java 21 (launch4j — config fora do repo). Interino: `iped.bat` (falta análogo `IPED-SearchApp.bat`).
 - **Embutir os fixes no jar**: novo `mvn clean package` embute `Bootstrap` (SecurityManager) e `StartUpControl` no `iped.jar` — aí o flag manual no `.bat` e o spam deixam de existir.
 
-### 4.2 Ambiente Python (não-fatal)
-- `ModuleNotFoundError: No module named 'numpy'` — task Python/JEP. Bundle Python embarcado é da era Java 11. Fix: `pip install numpy` no `python/` embarcado **ou** rebuild do bundle JEP 4.2 (T027/T028).
+### 4.2 Ambiente Python (não-fatal — **não é regressão do 21**; diagnosticado 2026-06-01)
+- `ModuleNotFoundError: No module named 'numpy'` no startup é **ruído inofensivo de tasks de IA opcionais desabilitadas**, idêntico ao master Java 11 — **não é regressão da migração**. Evidências: (1) o bundle `python-jep-dlib:3.9.12-4.0.3-19.23.1-2` é o mesmo do master (`git diff` na `unpack-python` = vazio) e nunca trouxe numpy (`site-packages` = `dlib`/`jep`/`bs4`/`soupsieve`/`termcolor`/`docopt`); (2) `PythonParser` força o Python embarcado (`setPythonHome`+`IgnoreEnvironmentFlag`+`NoUserSiteDirectory`) → numpy do sistema não vaza; (3) `enableFaceRecognition/AgeEstimation/YahooNSFWDetection/CSAMDetector/AudioTranscription = false` por padrão (as únicas consumidoras de numpy) e se auto-desabilitam graciosamente; o processamento completa.
+- **JEP 4.0.3 validado no Java 21**: o erro é `ModuleNotFoundError` *de dentro do Python* — **zero** `UnsatisfiedLinkError`/`JEP_NOT_FOUND`/`UnsupportedClassVersion` no log → a ponte nativa JEP→Python carrega e executa no 21 (era o real risco de migração; **descartado**). numpy + ML (torch/tensorflow/face_recognition/opencv) são instalados **por task pelo usuário** (User Manual), não bundlados. T027 (bump 4.2) / T028 (rebuild do bundle) são modernização adiada, não bloqueadores — ver tasks.md §JEP.
 
 ### 4.3 Modernizações adiadas (independentes do Java 21 — já rodam no 21)
 - **Lucene 9.2 → 9.12**: revertido — muda a API de `LeafReader`/`LeafMetaData` e quebra o custom `SlowCompositeReaderWrapper` (infra de leitura de índice, Princípio I).
 - **BouncyCastle `jdk15on` → `jdk18on`**: revertido — split-package `org.bouncycastle.*` com o `jdk15on` transitivo do icepdf; exige alinhamento project-wide.
 - **Tika 2.4 → 2.9**: não iniciado (alto risco; toca ~200 parsers; o fork `-p1` poderia ser abandonado — TIKA-4126).
-- **JEP 4.0.3 → 4.2** + rebuild do bundle nativo.
+- **JEP 4.0.3 → 4.2** + rebuild do bundle nativo — **4.0.3 já roda no 21** (validado, §4.2); modernização opcional, não migração.
 
 ### 4.4 Neo4j 5 — runtime (FEITA e VALIDADA; ver §2.5)
 - **Implementado, build-verde e validado end-to-end**: import Neo4j 5, grafo out-of-process via Bolt (server isolado + driver + adapters), post-import isolado, fixes Cypher 5, isolamento de classpath. Import validado contra dados reais; **aba de grafo na UI renderizando** após reprocessamento (commit `3153a89`).
@@ -157,7 +158,7 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 | ~~FR-005~~ portáteis antigos | ❌ **retirado (2026-06-01)** — casos autocontidos |
 | ~~FR-006~~ grafo (caso novo) | ❌ **retirado (2026-06-01)** — garantia de render do grafo absorvida por FR-011; grafo ✅ validado na aba Vínculos (§2.5, commit `3153a89`) |
 | ~~FR-007~~ guarda store 4.x | ❌ **retirado (2026-06-01)** — release novo não abre graph store de outra versão |
-| FR-008 scripts JS/Python | ⚠️ Python parcial (numpy ausente) |
+| FR-008 scripts JS/Python | ✅ JS/Python rodam no 21 (JEP 4.0.3 validado); numpy/ML instalados por-task pelo usuário — não-regressão (§4.2) |
 | FR-009 tools nativas | ✅ (Sleuthkit/MPlayer/libesedb/ImageMagick/LibreOffice/sqlite no run real) |
 | FR-011 viewers (incl. grafo) | ⚠️ LibreOffice/UI/**grafo (aba Vínculos ✅)** OK; NPE pré-existente em SVG |
 | FR-012 version check | ✅ |

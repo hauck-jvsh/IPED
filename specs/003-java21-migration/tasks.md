@@ -114,8 +114,10 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 ### JEP (Python embarcado)
 
-- [ ] T027 Bump `jep` 4.0.3 → 4.2.x em `iped-parsers/iped-parsers-impl/pom.xml`.
-- [ ] T028 Rebuildar/atualizar o bundle nativo `org.python:python-jep-dlib` (JEP 4.2 + Python) e bumpar a versão na execution `unpack-python` de `iped-app/pom.xml`.
+**Diagnóstico (2026-06-01): JEP 4.0.3 validado no Java 21 — T027/T028 NÃO são bloqueadores da migração, ADIADAS.** O `ModuleNotFoundError: No module named 'numpy'` visto no run real **não é regressão do 21**: (1) o bundle `python-jep-dlib:3.9.12-4.0.3-19.23.1-2` é byte-a-byte igual ao master Java 11 (`git diff master` na `unpack-python` = vazio) e nunca trouxe numpy (só `dlib`/`jep`/`bs4`/`soupsieve`/`termcolor`/`docopt`); (2) `PythonParser` força o Python embarcado (`setPythonHome` + `IgnoreEnvironmentFlag` + `NoUserSiteDirectory`), então numpy do sistema não vaza — comportamento idêntico ao 11; (3) todas as tasks que importam numpy estão **off por padrão** (`enableFaceRecognition/AgeEstimation/YahooNSFWDetection/CSAMDetector/AudioTranscription = false`) e se auto-desabilitam; (4) o erro é `ModuleNotFoundError` **de dentro do Python** — zero `UnsatisfiedLinkError`/`UnsupportedClassVersion` no log — provando que a ponte nativa JEP→Python carrega e executa no 21 (era o real risco de migração; descartado). numpy + o stack de ML (torch/tensorflow/face_recognition/opencv) são instalados **por task pelo usuário** (User Manual), não bundlados.
+
+- [ ] T027 **[ADIADA — não-bloqueador]** Bump `jep` 4.0.3 → 4.2.x em `iped-parsers/iped-parsers-impl/pom.xml`. Modernização independente do 21 (4.0.3 já roda no 21).
+- [ ] T028 **[ADIADA — não-bloqueador]** Rebuildar/atualizar o bundle nativo `org.python:python-jep-dlib` (JEP 4.2 + Python) e bumpar a versão na execution `unpack-python` de `iped-app/pom.xml`. Bloqueada em produzir artefato nativo (Windows: python+jep+dlib) publicado no Maven; não automatizável e desnecessária para a migração.
 
 ### Inicialização e detecção de versão
 
