@@ -283,9 +283,9 @@ Veja exemplos: `ExampleScriptTask.js`, `PythonScriptTask.py`, `AgeEstimationTask
 | `org.apache.pdfbox:pdfbox(+tools+xmpbox)`, `jbig2-imageio` | 2.0.27 / 3.0.4 | PDF |
 | `org.xerial:sqlite-jdbc` | 3.41.2.2 | SQLite |
 | `org.neo4j:neo4j-graphdb-api` + `org.neo4j.driver:neo4j-java-driver` | 5.26.0 | Graph (engine full Neo4j 5 isolado no módulo `iped-graph-server` → `lib/neo4j/`, acessado **out-of-process via Bolt**; o engine só carrega a API + o driver) |
-| `org.glassfish.jersey.containers:jersey-container-grizzly2-servlet` + jersey-hk2 | 2.30.1 | Web API |
+| `org.glassfish.jersey.containers:jersey-container-grizzly2-servlet` + jersey-hk2 | 2.41 | Web API |
 | `io.swagger:swagger-jersey2-jaxrs` | 1.6.10 | Swagger |
-| `org.glassfish.jersey.media:jersey-media-json-jackson` | 2.28 | JSON |
+| `org.glassfish.jersey.media:jersey-media-json-jackson` | 2.41 | JSON |
 | `io.minio:minio` | 8.3.8 | Object storage |
 | `org.opensearch.client:opensearch-rest-high-level-client` | 2.1.0 | ES/OpenSearch |
 | `com.alphacephei:vosk` | 0.3.32 | Speech offline |
@@ -299,7 +299,7 @@ Veja exemplos: `ExampleScriptTask.js`, `PythonScriptTask.py`, `AgeEstimationTask
 | `com.h2database:h2` | 2.3.232 | DB embarcado (cache) |
 | `org.apache.commons:commons-compress` | 1.27.1 | ZIP, RAR, 7z, tar (#1068) |
 | `com.googlecode.libphonenumber:libphonenumber` | 8.9.14 | Validação de telefone |
-| `com.github.luben:zstd-jni` | 1.3.3-3 | Compressão Zstd |
+| `com.github.luben:zstd-jni` | 1.5.6-9 | Compressão Zstd |
 | `com.mchange:c3p0`, `mchange-commons-java` | 0.9.5.5 / 0.2.20 | JDBC pool legado |
 | `com.zaxxer:SparseBitSet` | 1.1 | Bitsets esparsos |
 | `org.apache.httpcomponents:httpmime` | 4.5.13 | HTTP MIME |

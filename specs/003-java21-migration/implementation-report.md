@@ -105,11 +105,20 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 - `ModuleNotFoundError: No module named 'numpy'` no startup é **ruído inofensivo de tasks de IA opcionais desabilitadas**, idêntico ao master Java 11 — **não é regressão da migração**. Evidências: (1) o bundle `python-jep-dlib:3.9.12-4.0.3-19.23.1-2` é o mesmo do master (`git diff` na `unpack-python` = vazio) e nunca trouxe numpy (`site-packages` = `dlib`/`jep`/`bs4`/`soupsieve`/`termcolor`/`docopt`); (2) `PythonParser` força o Python embarcado (`setPythonHome`+`IgnoreEnvironmentFlag`+`NoUserSiteDirectory`) → numpy do sistema não vaza; (3) `enableFaceRecognition/AgeEstimation/YahooNSFWDetection/CSAMDetector/AudioTranscription = false` por padrão (as únicas consumidoras de numpy) e se auto-desabilitam graciosamente; o processamento completa.
 - **JEP 4.0.3 validado no Java 21**: o erro é `ModuleNotFoundError` *de dentro do Python* — **zero** `UnsatisfiedLinkError`/`JEP_NOT_FOUND`/`UnsupportedClassVersion` no log → a ponte nativa JEP→Python carrega e executa no 21 (era o real risco de migração; **descartado**). numpy + ML (torch/tensorflow/face_recognition/opencv) são instalados **por task pelo usuário** (User Manual), não bundlados. T027 (bump 4.2) / T028 (rebuild do bundle) são modernização adiada, não bloqueadores — ver tasks.md §JEP.
 
-### 4.3 Modernizações adiadas (independentes do Java 21 — já rodam no 21)
-- **Lucene 9.2 → 9.12**: revertido — muda a API de `LeafReader`/`LeafMetaData` e quebra o custom `SlowCompositeReaderWrapper` (infra de leitura de índice, Princípio I).
-- **BouncyCastle `jdk15on` → `jdk18on`**: revertido — split-package `org.bouncycastle.*` com o `jdk15on` transitivo do icepdf; exige alinhamento project-wide.
-- **Tika 2.4 → 2.9**: não iniciado (alto risco; toca ~200 parsers; o fork `-p1` poderia ser abandonado — TIKA-4126).
+### 4.3 Bumps de dependências (revisado 2026-06-01)
+
+**FEITOS nesta branch (build-verde + run real no 21):**
+- **JNA 5.7.0 → 5.14.0** (`iped-engine` + `iped-parsers-impl`; versões alinhadas para evitar skew, comentário no pom). Usada por libesedb e pela `YaraEngine`.
+- **Jersey 2.30.1 → 2.41** (`jersey-container-grizzly2-servlet`/`jersey-hk2`/`jersey-media-json-jackson` no `iped-engine`). Web API.
+- **zstd-jni 1.3.3-3 → 1.5.6-9** (`iped-engine`). Compressão.
+
+**ADIADOS — bloqueio/risco confirmado no código (independentes do Java 21; já rodam no 21):**
+- **Lucene 9.2 → 9.12**: revertido — muda a API de `LeafReader`/`LeafMetaData` e quebra o custom `iped.engine.lucene.SlowCompositeReaderWrapper` (classe que o IPED mantém porque o Lucene a removeu; usada em `IPEDSource`/`IPEDMultiSource`/`DuplicateTask`/`SkipCommitedTask`/`ExportIndexedTerms`). Infra de leitura de índice forense — **Princípio I** (formato de índice congelado). Bump exige reescrever o wrapper + revalidação de paridade.
+- **BouncyCastle `jdk15on` → `jdk18on`**: revertido — `icepdf-core` 7.0.0 traz BC `jdk15on` transitivo (já há `<exclusion>` de `bcprov-ext-jdk15on`) e o engine depende direto de `bcpkix-jdk15on:1.70`; mover p/ `jdk18on` causa split-package `org.bouncycastle.*`. Resolver depende do icepdf migrar p/ jdk18on (upstream) ou exclusão + validação do PDF/crypto. `jdk15on:1.70` **roda no 21** — bump é só higiene de naming.
+- **Tika 2.4 → 2.9**: não iniciado (alto risco; toca ~200 parsers; o fork custom `tika.core.version=2.4.0-p1` precisaria ser rebuildado no 2.9; o `-p1` poderia ser abandonado quando o upstream incluir TIKA-4126, revertendo a mudança de `SyncMetadata` do commit b673cf4).
 - **JEP 4.0.3 → 4.2** + rebuild do bundle nativo — **4.0.3 já roda no 21** (validado, §4.2); modernização opcional, não migração.
+
+> **Recomendação:** os 3 adiados (Lucene/Tika/BC) são follow-ups pós-migração, cada um com validação dedicada (Princípio IV — determinismo forense). Mantê-los fora da branch de migração preservadora de comportamento. Dependência pendurada notada: `de.ruedigermoeller:fst:2.57` segue no `iped-engine/pom.xml` mas nenhum código a importa mais (removida do `RegexTask`) — candidata a remoção em cleanup separado.
 
 ### 4.4 Neo4j 5 — runtime (FEITA e VALIDADA; ver §2.5)
 - **Implementado, build-verde e validado end-to-end**: import Neo4j 5, grafo out-of-process via Bolt (server isolado + driver + adapters), post-import isolado, fixes Cypher 5, isolamento de classpath. Import validado contra dados reais; **aba de grafo na UI renderizando** após reprocessamento (commit `3153a89`).

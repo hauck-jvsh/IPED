@@ -178,7 +178,7 @@ Base: `SQLite3DBParser` → `AbstractDBParser`.
 | `png-reader` | jdk11+28-p1 | PNG metadata |
 | `dd-plist` | 1.26 | Apple Plist |
 | `telegram-decoder-{api,impl}` | 1.0.14 | Telegram decode |
-| `jna` | 5.7.0 | Native libs (libesedb) |
+| `jna` | 5.14.0 | Native libs (libesedb) |
 | `jep` | 4.0.3 | Java Embedded Python (OCR) |
 | `apk-parser` | 2.6.10 | APK Android |
 | `ofx4j` | 1.36 | Open Financial Exchange |

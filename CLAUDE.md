@@ -54,7 +54,7 @@ IPED/
 | SQLite | xerial-sqlite-jdbc 3.41.2.2, libfqlite 1.57.05 (undelete) |
 | Office | LibreOffice 7.2.2 via UNO bridge + NOA-Libre |
 | Graph | Neo4j 5.26.0 (engine full embarcado **out-of-process via Bolt**, isolado em `lib/neo4j/` pelo módulo `iped-graph-server`; o engine consome só `neo4j-graphdb-api` + `neo4j-java-driver`) |
-| Web API | Jersey 2.30 + Grizzly + Swagger |
+| Web API | Jersey 2.41 + Grizzly + Swagger |
 | Storage opcional | MinIO 8.3.8, OpenSearch 2.1 |
 | Scripting | Nashorn 15.4 (JS), JEP 4.0.3 (Python embarcado) |
 | Speech | Vosk 0.3.32, Microsoft Cognitive Speech 1.19, Google Cloud Speech 1.22 |
