@@ -9,9 +9,9 @@ Saída do IPED em `{caseDir}/iped/`.
 - **Campos**: índice Lucene (`index/`), storage SQLite (`storage-*.db`), bookmarks, thumbnails, eventual graph store Neo4j, `CaseData` serializado.
 - **Origem**: gerado por um release (Java 11 = "antigo"; Java 21 = "novo").
 - **Invariantes**:
-  - I1 (FR-004, Princípio I): índice Lucene de caso antigo **DEVE** abrir e ser pesquisável no release 21 (Lucene 9.x + `backward-codecs`).
-  - I2 (FR-005): caso portátil antigo **DEVE** abrir.
-  - I3 (FR-007): graph store Neo4j 4.x **NÃO** precisa abrir; tentar abri-lo **NÃO PODE** crashar o carregamento do caso.
+  - ~~I1 (FR-004, Princípio I): índice Lucene de caso antigo **DEVE** abrir e ser pesquisável no release 21.~~ — **Removido (2026-06-01)** com FR-004 (casos autocontidos; release novo não abre casos antigos). O formato de índice (Lucene 9.x, `backward-codecs`, chaves/`AppAnalyzer`) segue **congelado** por Princípio I — para evitar churn e manter o caso legível com **suas próprias libs** —, mas não como garantia de retrocompatibilidade do release novo.
+  - ~~I2 (FR-005): caso portátil antigo **DEVE** abrir.~~ — **Removido (2026-06-01)** junto com FR-005 (casos autocontidos; release novo não abre casos antigos).
+  - ~~I3 (FR-007): graph store Neo4j 4.x **NÃO** precisa abrir; tentar abri-lo **NÃO PODE** crashar o carregamento do caso.~~ — **Removido (2026-06-01)** junto com FR-007.
   - I4 (Princípio I): chaves de campo Lucene (`BasicProps`/`IndexItem`) e `AppAnalyzer` **imutáveis**.
 
 ### 2. Conjunto de dados de referência (`Reference Baseline Dataset`)
@@ -71,14 +71,14 @@ Amostra de fontes para validar paridade.
 
 ## Transições de estado
 
-### Carregamento de caso antigo no release 21 (invariante I3)
+### Carregamento de caso no release 21
 ```
 abrir caso → abrir índice Lucene (OK) → abrir storage SQLite (OK)
-   → tentar abrir graph store Neo4j
-        ├─ store ausente/compatível → aba de grafo normal
-        └─ store 4.x (incompatível) → CATCH → aba de grafo degradada
-                                       (indica "reprocessar"), caso segue utilizável
+   → abrir graph store Neo4j 5 (gerado pelo mesmo release autocontido) → aba de grafo normal
 ```
+> Removida (2026-06-01) a ramificação de store 4.x incompatível: casos são autocontidos
+> (acompanham JRE + libs do seu processamento), então o release novo nunca abre um graph
+> store de outra versão. Sem FR-007, não há guarda de degradação a modelar.
 
 ### Fases da migração (cut-over, sem janela dupla)
 ```
@@ -87,7 +87,7 @@ abrir caso → abrir índice Lucene (OK) → abrir storage SQLite (OK)
    → substituir/atualizar deps (FST out, Neo4j 5, Lucene/Tika/JEP/JNA/BC/Jersey)
    → add-opens + version check + Bootstrap
    → release Windows (embarcado) / Linux (sistema)
-   → validação de paridade + abertura de casos antigos
+   → validação de paridade (caso recém-processado no 21 vs baseline 11)
    → emenda da constituição + CI 21
 [Java 21 único runtime suportado]
 ```
@@ -99,8 +99,8 @@ abrir caso → abrir índice Lucene (OK) → abrir storage SQLite (OK)
 | V1: build compila no `release=21`, todos os módulos | FR-001 | `mvn clean package` |
 | V2: 100% dos testes passam no 21 | FR-002/SC-001 | `mvn test` |
 | V3: paridade forense por campo definido | FR-003/SC-002 | suíte de paridade (contrato) |
-| V4: casos antigos abrem/buscam | FR-004/SC-003 | abrir conjunto de casos de validação |
-| V5: graph store antigo não crasha | FR-007 | abrir caso com `graph.db` 4.x |
+| ~~V4: casos antigos abrem/buscam~~ | ~~FR-004/SC-003~~ | **Removido (2026-06-01)** — casos autocontidos; release novo não abre casos antigos. Busca/navegação de caso **recém-processado** coberta por V3/V7 + render de viewers (FR-011) |
+| ~~V5: graph store antigo não crasha~~ | ~~FR-007~~ | **Removido (2026-06-01)** — casos autocontidos; release novo não abre graph store antigo |
 | V6: release inicia (Win sem Java / Linux c/ Java 21) | FR-015/SC-004 | smoke test em máquina limpa |
 | V7: sem erro de runtime por incompat JDK | FR-014/SC-006 | logs limpos nas execuções de validação |
 | V8: version check reconhece 21 | FR-012/SC-008 | inspecionar aviso na inicialização |

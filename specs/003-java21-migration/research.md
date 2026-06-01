@@ -32,13 +32,13 @@
 
 ## 3. Neo4j (maior risco)
 
-**Decisão**: **Neo4j 5.26.x LTS** embarcado. Não preservar grafos de casos antigos (FR-007). Abertura de graph store legado (4.x) **guardada** por try/catch → degradação controlada da aba de grafo, sem crash do carregamento do caso.
+**Decisão**: **Neo4j 5.26.x LTS** embarcado. Não preservar grafos de casos antigos. Como casos são **autocontidos** (cada caso acompanha a JRE + libs do seu processamento — Clarifications 2026-06-01), o release novo nunca abre um graph store de outra versão; **não há guarda de store 4.x** a implementar (FR-007 retirado).
 
 **Justificativa**: Neo4j 4.4 suporta apenas Java 11/17 — não inicia em Java 21. 5.26 é o LTS da linha 5, certificado para Java 17/21. A API embarcada (`DatabaseManagementServiceBuilder`) já existe na linha 4.4 (migração de chamadas é contida). Cypher dos templates `.cypher` precisa de revisão (sintaxe 5.x). Como não há requisito de abrir stores antigos, a mudança de formato é aceitável.
 
 **Alternativas**: (a) Neo4j 2025.x (calver) — também Java 21, porém mais novo/instável para embarcado; 5.26 LTS é mais conservador. (b) Manter 4.4 e travar em Java 17 — contraria a feature. (c) Substituir Neo4j por outra engine de grafo — fora de escopo (mudança funcional).
 
-**Itens a validar**: classe de inicialização embarcada, `--add-opens` exigidos, sintaxe Cypher dos templates de `links/`, e que abrir caso antigo (`graph.db` 4.x) não derruba a UI.
+**Itens a validar**: classe de inicialização embarcada, `--add-opens` exigidos, sintaxe Cypher dos templates de `links/`. (A verificação de "abrir `graph.db` 4.x sem derrubar a UI" saiu do escopo em 2026-06-01.)
 
 ---
 
@@ -56,9 +56,9 @@
 
 **Decisão**: **Lucene 9.12.x** (manter linha 9.x). Manter `lucene-backward-codecs`. Não tocar `AppAnalyzer`/`StandardASCIIAnalyzer` nem as chaves de campo.
 
-**Justificativa**: dentro da linha 9.x o formato de índice é compatível (Princípio I / FR-004); 9.12 é testado em Java 21 e usa o Panama/MMap moderno. Subir para Lucene 10 sairia da compatibilidade de índice e exigiria Java 21 mínimo — ganho desnecessário e arriscado para esta feature.
+**Justificativa**: dentro da linha 9.x o formato de índice é estável (Princípio I — evita churn; o caso é lido com suas próprias libs); 9.12 é testado em Java 21 e usa o Panama/MMap moderno. Subir para Lucene 10 mudaria o formato de índice e exigiria Java 21 mínimo — ganho desnecessário e arriscado para esta feature. (FR-004 retirado em 2026-06-01 — não há mais requisito de abrir índices antigos; manter 9.x continua valendo por estabilidade/Princípio I.)
 
-**Alternativas**: Lucene 10.x — rejeitado (quebra compatibilidade de índice de casos antigos; muda mínimos). Manter 9.2.0 — funciona no 21 mas perde correções e otimizações de MMap/Panama.
+**Alternativas**: Lucene 10.x — rejeitado (muda o formato de índice e os mínimos de JDK; churn desnecessário para uma migração preservadora). Manter 9.2.0 — funciona no 21 mas perde correções e otimizações de MMap/Panama.
 
 ---
 

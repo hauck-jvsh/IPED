@@ -47,7 +47,6 @@ Antes de comparar: trim, colapsar whitespace repetido, normalizar quebras de lin
 - Medir throughput (itens/s ou GB/h) de baseline e candidato no **mesmo hardware/dataset**.
 - **Critério**: candidato ≥ baseline, admitida **regressão máxima de 5%**. Regressão > 5% é tratada como defeito de migração.
 
-## Abertura de casos antigos (FR-004/FR-007 — V4/V5)
+## ~~Abertura de casos antigos~~ — **Removido (2026-06-01)**
 
-- Abrir um conjunto de casos pré-existentes (inclui portáteis) no release 21: busca, navegação, filtros, bookmarks e relatório funcionam (V4).
-- Abrir um caso antigo **com graph store 4.x**: o carregamento **não** falha; a aba de grafo degrada de forma controlada (V5).
+> Toda a seção saiu do escopo: FR-004 (abrir índice/storage/bookmarks antigos), FR-005 (portáteis antigos) e FR-007 (graph store 4.x) foram retirados. Casos são **autocontidos** (acompanham JRE + libs do seu processamento e são analisados com elas), então o release novo não abre casos de outra versão. A busca/navegação/render de um caso **recém-processado** é coberta pela própria geração do caso-candidato + validação de viewers (FR-011).

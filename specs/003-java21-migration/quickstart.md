@@ -71,7 +71,8 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 ```
 
 - **Throughput** (SC-005): medir itens/s nos dois e exigir candidato ≥ baseline − 5%.
-- **Casos antigos** (V4/V5): abrir conjunto de casos pré-existentes (inclui portáteis) na UI 21 — busca/navegação/relatório OK; caso com `graph.db` 4.x **não** crasha (aba de grafo degrada).
+
+> **Removido (2026-06-01):** o passo de abrir casos antigos (V4/V5, casos portáteis, graph 4.x) saiu do escopo junto com FR-004/005/006/007 — casos são autocontidos (analisados com as libs empacotadas neles). A busca/navegação/render de um caso **recém-processado** é coberta pela validação do caso-candidato (acima) + render de viewers (FR-011).
 
 ## 6. Smoke de distribuição (SC-004)
 
@@ -87,7 +88,7 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 | Testes | 100% passam (SC-001) |
 | Paridade | zero divergências em C1–C8 (SC-002) |
 | Performance | regressão ≤ 5% (SC-005) |
-| Casos antigos | abrem e buscam; graph 4.x não crasha (SC-003, FR-007) |
+| ~~Casos antigos~~ | **Fora de escopo (2026-06-01)** — casos autocontidos; release novo não abre casos antigos (FR-004/005/006/007 retirados) |
 | Distribuição | Win (embarcado) + Linux (sistema) iniciam e processam (SC-004) |
 | Runtime limpo | sem erro por incompat JDK (SC-006) |
 | Governança/Docs | constituição emendada; `ThirdParty.txt`/`licenses/`/CI/CLAUDE.md atualizados |

@@ -49,8 +49,9 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - **T025** Cypher 5: `size((n)--())`→`COUNT{...}`; `:A|:B`→`:A|B`; queries de rel retornam `startNode(r)/endNode(r)`. ✅
 - **T026** consumidor UI: ✅ **sem mudança** nos 11 arquivos de `iped-app/.../graph/` (adapters preservam o tipo de fronteira `graphdb-api`); só `SearchLinksWorker` trocou `getGraphDb()` → `GraphService`.
 - **Empacotamento:** `iped-engine` → `neo4j-graphdb-api` + `neo4j-java-driver`; `iped-app` desempacota o zip do `iped-graph-server` em `lib/neo4j/` com exclusão wildcard dos transitivos (evita vazar engine+antlr-4.13 p/ o `lib/` plano). Gotcha: `CacheTimePeriodEntry` usava `scala.Array.copy` (transitivo do neo4j) → `System.arraycopy`.
-- **Verificado:** `mvn clean package` BUILD SUCCESS + separação de classpath confirmada (`lib/` sem cypher/scala/antlr-4.13; `lib/neo4j/` = 239 jars isolados). Import Neo4j 5 validado (graph.db gerado dos CSVs reais). ⏳ Aba de grafo na UI pendente de reprocessamento (caso empacota a própria `iped/lib`).
-- **T043** guarda de store 4.x: ainda pendente (agora = try/catch no startup do `GraphServer`/carregamento).
+- **Verificado:** `mvn clean package` BUILD SUCCESS + separação de classpath confirmada (`lib/` sem cypher/scala/antlr-4.13; `lib/neo4j/` = 239 jars isolados). Import Neo4j 5 validado (graph.db gerado dos CSVs reais).
+- **Aba de grafo na UI VALIDADA (2026-05-31):** reprocessou o caso RockPi4 com o build novo e abriu a aba Vínculos — nós renderizam. Caminho Bolt completo (GraphServer out-of-process + driver + adapters + Kharon) OK no Java 21. Dois fixes no caminho: (1) `GraphConfig.json` post-gen usava sintaxe de índice Cypher 4 → `CREATE INDEX IF NOT EXISTS FOR ...` + `GraphPostImport` endurecido (tx por statement); (2) `BoltNode.getDegree()` (stub que lançava) → carrega degree como snapshot do `COUNT { (n)--() }`, nunca lança. Commit `3153a89`.
+- ~~**T043** guarda de store 4.x~~: **descartada (2026-06-01)** — casos são autocontidos (JRE + libs empacotadas com o caso), o release novo não abre graph store de outra versão; sem FR-007, não há guarda a implementar.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -150,19 +151,21 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 ---
 
-## Phase 4: User Story 2 - Abrir e analisar casos pré-existentes sem regressão (Priority: P2)
+## Phase 4: ~~User Story 2 - Abrir e analisar casos pré-existentes~~ → **Validação de viewers/UI no Java 21 (FR-011)**
 
-**Goal**: casos processados por releases Java 11 abrem e são plenamente analisáveis no release 21.
+> **US2 removida por completo (2026-06-01).** Casos são distribuídos **autocontidos** (cada caso acompanha a JRE + libs do seu processamento em `<caso>/iped/jre` + `<caso>/iped/lib`) e são analisados com esse runtime/libs, **não** com um release de visualização posterior. Logo abrir casos antigos com o release novo deixou de ser requisito — **FR-004/005/006/007** retirados e **T042/T043/T044/T046 descartadas**. Resta apenas a validação de **render de viewers/UI** (FR-011), que se exercita sobre o **caso recém-processado** (aberto na UI no fluxo da US1).
 
-**Independent Test**: abrir um conjunto de casos antigos (inclui portáteis e um com graph store 4.x) no release 21 e exercitar busca, navegação, filtros, bookmarks, **viewers** e relatório.
+**Goal**: viewers e visualizações renderizam corretamente no JavaFX/Swing do Java 21 (FR-011).
 
-- [ ] T042 [US2] Verificar abertura/busca de um caso antigo (índice Lucene Java 11) na UI 21 — busca full-text, navegação, filtros, galeria (gate FR-004; Princípio I).
-- [ ] T043 [US2] Implementar **guarda de degradação** ao abrir graph store Neo4j **4.x** (formato incompatível) no caminho de carregamento de grafo (`iped-engine/src/main/java/iped/engine/graph/GraphService.java` e/ou `iped-app/src/main/java/iped/app/graph/LoadGraphDatabaseWorker.java`): try/catch → aba de grafo indica "reprocessar" sem crashar o caso (gate FR-007).
-- [ ] T044 [P] [US2] Verificar abertura de um **caso portátil** gerado no build Java 11 (gate FR-005).
-- [ ] T045 [P] [US2] **Validar render dos viewers no JavaFX 21** (FR-011): exercitar `iped-viewers/iped-viewers-impl/.../HtmlViewer.java`, `AudioViewer.java`, `MetadataViewer.java` (WebView), a aba **Mapa** (`iped-geo/.../impl/MapViewer.java` + WebView) e a **Timeline** (`iped-app/.../timelinegraph/IpedChartsPanel.java`); confirmar render correto e ausência de exceções de shutdown JavaFX (regressão #2874).
-- [ ] T046 [US2] Rodar o **conjunto de validação de casos antigos** (search/navigate/report) no release 21 (gate SC-003).
+**Independent Test**: abrir um caso recém-processado no release 21 e exercitar todos os viewers + aba de grafo + timeline + mapa.
 
-**Checkpoint**: continuidade operacional de casos antigos validada (US1 + US2 funcionam de forma independente).
+- ~~T042 [US2] Verificar abertura/busca de um caso antigo (índice Lucene Java 11)~~ — **descartada (2026-06-01)** com FR-004 (casos autocontidos).
+- ~~T043 [US2] Guarda de degradação ao abrir graph store Neo4j 4.x~~ — **descartada (2026-06-01)** com FR-007.
+- ~~T044 [P] [US2] Verificar abertura de um caso portátil gerado no build Java 11~~ — **descartada (2026-06-01)** com FR-005.
+- [ ] T045 [US2] **Validar render dos viewers no JavaFX 21** (FR-011) sobre o caso recém-processado: exercitar `iped-viewers/iped-viewers-impl/.../HtmlViewer.java`, `AudioViewer.java`, `MetadataViewer.java` (WebView), a aba **Mapa** (`iped-geo/.../impl/MapViewer.java` + WebView), a **Timeline** (`iped-app/.../timelinegraph/IpedChartsPanel.java`) e o **grafo** (aba Vínculos — ✅ já validada, ver §sessão 2026-05-31); confirmar render correto e ausência de exceções de shutdown JavaFX (regressão #2874).
+- ~~T046 [US2] Rodar o conjunto de validação de casos antigos (gate SC-003)~~ — **descartada (2026-06-01)** com SC-003.
+
+**Checkpoint**: render de viewers/UI validado no Java 21 (FR-011).
 
 ---
 
@@ -203,7 +206,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - [ ] T055 Registrar todas as dependências novas/atualizadas em `ThirdParty.txt` e anexar licenças em `licenses/` (Princípio Build).
 - [ ] T056 [P] Atualizar baselines/versões de dependências em `CLAUDE.md` (raiz §3), `iped-engine/CLAUDE.md` (§14), `iped-app/CLAUDE.md` (§1/§6/§12).
 - [ ] T057 [P] Atualizar `ReleaseNotes.txt` com a entrada da migração para Java 21.
-- [ ] T058 Sweep de regressão final por [quickstart.md](quickstart.md) §7 (todos os gates: build, testes, paridade, perf, casos antigos, Web API, viewers, distribuição, runtime limpo).
+- [ ] T058 Sweep de regressão final por [quickstart.md](quickstart.md) §7 (todos os gates: build, testes, paridade, perf, Web API, viewers, distribuição, runtime limpo).
 
 ---
 
@@ -214,14 +217,14 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - **Setup (Phase 1)**: começa imediatamente. **T001 (emenda) primeiro** — legitima T003+ (mudança de baseline de build).
 - **Foundational (Phase 2)**: depende do Setup — **BLOQUEIA** todas as user stories. Concluída só com T031 (build) + T032 (testes verdes).
 - **User Stories (Phase 3–6)**: dependem da Foundational.
-  - US1 (P1) é o MVP. US2 depende da Foundational (e a guarda T043 depende de T023–T026).
-  - US3 (CI) e US4 (distribuição) podem rodar em paralelo a US1/US2 após a Foundational, mas o smoke de distribuição (US4) só faz sentido após o build do release (T051).
+  - US1 (P1) é o MVP. A Phase 4 (FR-011 viewers — ex-US2, T045) depende da Foundational e exercita o caso recém-processado da US1.
+  - US3 (CI) e US4 (distribuição) podem rodar em paralelo a US1 após a Foundational, mas o smoke de distribuição (US4) só faz sentido após o build do release (T051).
 - **Polish (Phase 7)**: após as stories desejadas.
 
 ### User Story Dependencies
 
 - **US1 (P1)**: após Foundational. Independente das demais (T041 Web API usa o caso-candidato de T034).
-- **US2 (P2)**: após Foundational. T043 usa o trabalho de Neo4j (T023–T026); T045 valida JavaFX. Testável de forma independente de US1.
+- **Phase 4 — FR-011 viewers (ex-US2, P2)**: após Foundational. Só **T045** (valida JavaFX/Swing, incl. aba de grafo já validada) sobre o caso recém-processado. (US2 inteira + T042/T043/T044/T046 descartadas em 2026-06-01 — casos autocontidos, FR-004/005/006/007 retirados.)
 - **US3 (P3)**: após Foundational. Independente.
 - **US4 (P3)**: após Foundational; T052/T053 dependem de T050–T051.
 
@@ -230,7 +233,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - Setup: T006, T007 em paralelo.
 - Foundational: T008–T013 (APIs removidas, arquivos distintos) em paralelo; T018–T021 são bumps independentes (mas tocam `iped-engine/pom.xml` — coordenar para evitar conflito no mesmo arquivo); T025 paralelo às demais de Neo4j.
 - US1: T035, T036, T037 em paralelo (validações independentes).
-- US2: T044, T045 em paralelo.
+- Phase 4 (FR-011 viewers): só T045 (T042/T043/T044/T046 descartadas em 2026-06-01).
 - US4: T052, T053, T054 em paralelo.
 - Polish: T056, T057 em paralelo.
 
@@ -260,7 +263,7 @@ T013 PathToGuidConverter.java→ jsr305
 
 1. Setup + Foundational → substrato pronto (compila + testes verdes).
 2. US1 → valida paridade de processamento + Web API → **MVP**.
-3. US2 → valida casos antigos + viewers JavaFX.
+3. Phase 4 (ex-US2) → valida render de viewers/UI JavaFX (FR-011) sobre o caso recém-processado.
 4. US3 → CI no 21.
 5. US4 → distribuição validada.
 6. Polish → docs + sweep final.

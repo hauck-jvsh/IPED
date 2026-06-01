@@ -16,7 +16,7 @@ Descobriu-se que a migração de **código** é pequena (o reator compilou com a
 | Build (16 módulos) no JDK 21 | ✅ BUILD SUCCESS (`mvn clean package`) |
 | Testes engine no JDK 21 | ✅ 136 testes, 0 falhas, 2 skips (YARA integration-gated) |
 | Processamento real E01 (forensic) | ✅ rodou de ponta a ponta (Sleuthkit + pipeline + índice + UI) |
-| Neo4j 4.4 → 5.26 | ✅ migrado **out-of-process via Bolt** (build verde, isolamento de classpath verificado, import Neo4j 5 validado); aba de grafo na UI pendente de validação (reprocessamento) — ver §2.5 |
+| Neo4j 4.4 → 5.26 | ✅ migrado **out-of-process via Bolt** e **validado end-to-end** (build verde, isolamento de classpath, import Neo4j 5, post-import Cypher 5 e **aba de grafo na UI renderizando** após reprocessamento) — ver §2.5 |
 | JRE embarcada | ✅ agora copiada da pasta local `iped-jre/` (substitui o artefato `java:jre`) — ver §2.6 |
 | Distribuição (Windows) | ⚠️ funciona via workaround (`iped.bat`); rebuild dos `.exe` pendente |
 | Validação de paridade forense (SC-002) | ⏳ não executada (requer caso-baseline Java 11) |
@@ -110,10 +110,10 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 - **Tika 2.4 → 2.9**: não iniciado (alto risco; toca ~200 parsers; o fork `-p1` poderia ser abandonado — TIKA-4126).
 - **JEP 4.0.3 → 4.2** + rebuild do bundle nativo.
 
-### 4.4 Neo4j 5 — runtime (grande parte FEITA; ver §2.5)
-- **Implementado e build-verde**: import Neo4j 5, grafo out-of-process via Bolt (server isolado + driver + adapters), post-import isolado, fixes Cypher 5, isolamento de classpath. Import validado contra dados reais.
-- **Pendente**: validar a **aba de grafo na UI** com um caso reprocessado pelo build novo (exercita `GraphServer` + driver + adapters + render Kharon) e o **post-import** (`GraphPostImport`) num caso com contatos UFED.
-- **Guarda de store antigo (FR-007/T043)**: com o isolamento por processo, um `graph.db` 4.x faria o `GraphServer` falhar no startup; falta o try/catch no caminho de carregamento para a aba degradar sem crashar o caso.
+### 4.4 Neo4j 5 — runtime (FEITA e VALIDADA; ver §2.5)
+- **Implementado, build-verde e validado end-to-end**: import Neo4j 5, grafo out-of-process via Bolt (server isolado + driver + adapters), post-import isolado, fixes Cypher 5, isolamento de classpath. Import validado contra dados reais; **aba de grafo na UI renderizando** após reprocessamento (commit `3153a89`).
+- Dois fixes no caminho de validação: (1) `GraphConfig.json` post-gen usava sintaxe de índice Cypher 4 → `CREATE INDEX IF NOT EXISTS FOR ...` + `GraphPostImport` endurecido (tx por statement, catch/continue); (2) `BoltNode.getDegree()` (stub que lançava, quebrando o sizing em `GraphModel.convert`) → carrega o degree como snapshot do `COUNT { (n)--() }`, nunca lança.
+- ~~**Guarda de store antigo (FR-007/T043)**~~: **descartada (2026-06-01)** — casos são autocontidos (JRE + libs empacotadas com o caso); o release novo não abre graph store de outra versão, então não há cenário de store 4.x a guardar.
 
 ### 4.5 Validação formal de paridade (SC-002)
 - Gerar caso-baseline no build Java 11 e comparar os campos C1–C8 ([contracts/parity-validation.contract.md](contracts/parity-validation.contract.md)). Ainda não executado.
@@ -153,11 +153,13 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 | FR-001 build/run no 21 | ✅ |
 | FR-002 testes passam | ✅ (engine 136/136) |
 | FR-003/SC-002 paridade forense | ⏳ pendente (baseline) |
-| FR-004 casos antigos abrem | ⏳ não testado (sem caso Java 11) |
-| FR-006 grafo (caso novo) | 🔄 reescrito out-of-process via Bolt (build verde, import validado); aba na UI pendente de reprocessamento (§2.5) |
+| ~~FR-004~~ casos antigos abrem | ❌ **retirado (2026-06-01)** — casos autocontidos; release novo não abre casos antigos |
+| ~~FR-005~~ portáteis antigos | ❌ **retirado (2026-06-01)** — casos autocontidos |
+| ~~FR-006~~ grafo (caso novo) | ❌ **retirado (2026-06-01)** — garantia de render do grafo absorvida por FR-011; grafo ✅ validado na aba Vínculos (§2.5, commit `3153a89`) |
+| ~~FR-007~~ guarda store 4.x | ❌ **retirado (2026-06-01)** — release novo não abre graph store de outra versão |
 | FR-008 scripts JS/Python | ⚠️ Python parcial (numpy ausente) |
 | FR-009 tools nativas | ✅ (Sleuthkit/MPlayer/libesedb/ImageMagick/LibreOffice/sqlite no run real) |
-| FR-011 viewers | ⚠️ LibreOffice/UI OK; NPE pré-existente em SVG |
+| FR-011 viewers (incl. grafo) | ⚠️ LibreOffice/UI/**grafo (aba Vínculos ✅)** OK; NPE pré-existente em SVG |
 | FR-012 version check | ✅ |
 | FR-014 deps compatíveis | ✅ (no escopo migrado) |
 | FR-015 runtime embarcado (Win) | ✅ JRE 21 embarcada da pasta local `iped-jre/` (§2.6); rebuild dos `.exe` pendente |

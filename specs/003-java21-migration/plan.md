@@ -13,7 +13,7 @@ Elevar a plataforma de build e execução do IPED de **Java 11 para Java 21 LTS*
 **Language/Version**: Java 21 LTS (atual: Java 11). `maven.compiler.source/target` → `maven.compiler.release = 21` no parent POM. Runtime: **BellSoft Liberica Full JDK 21** (com JavaFX embutido), conforme [Clarifications Q3](spec.md).
 
 **Primary Dependencies** (as que mudam — ver [research.md](research.md) para a matriz completa):
-- **Neo4j** 4.4.4 → **5.26.x LTS** (embarcado; troca de formato de store aceita — FR-007).
+- **Neo4j** 4.4.4 → **5.26.x LTS** (embarcado out-of-process via Bolt; troca de formato de store aceita — casos autocontidos, sem abrir grafos antigos; Clarifications 2026-06-01).
 - **FST** 2.57 → **removido** (substituído por serialização JDK no cache de `RegexTask`).
 - **Lucene** 9.2.0 → **9.12.x** (compatibilidade de índice mantida dentro da linha 9.x — Princípio I).
 - **Tika** 2.4.0-p1 (fork interno) → **2.9.2** upstream (avaliar drop do fork — TIKA-4126 já corrigido upstream).
@@ -25,11 +25,11 @@ Elevar a plataforma de build e execução do IPED de **Java 11 para Java 21 LTS*
 - Toolchain Maven: `maven-compiler-plugin` 3.2/3.7/3.10.1 → 3.13.0; `maven-surefire-plugin` 2.18.1/2.20.1 → 3.5.x; `maven-jar-plugin` 2.5/3.1.0 → 3.4.x; `maven-dependency-plugin` 2.10 → 3.8.x; `findbugs-maven-plugin` 3.0.0 → removido.
 - Runtime embarcado: artefato `java:jre` 11.0.13 → Liberica Full **21.0.x** (publicar no maven do projeto).
 
-**Storage** (compatibilidade é gate — Princípio I / FR-004):
-- Índice **Lucene** do caso → leitura compatível (linha 9.x + `lucene-backward-codecs`).
+**Storage** (formato congelado por Princípio I — evitar churn; FR-004 retirado em 2026-06-01, então não é mais gate de retrocompatibilidade do release novo):
+- Índice **Lucene** do caso → formato inalterado (linha 9.x + `lucene-backward-codecs`).
 - **SQLite** (`storage-*.db`, hashdb) via xerial-sqlite-jdbc → sem mudança de formato.
 - **H2** (cache) 2.3.232 → sem mudança.
-- **Neo4j** graph store → formato muda (5.x); grafos antigos **não** precisam abrir (FR-007), mas abrir um caso com store 4.x **não pode** crashar (degradação controlada).
+- **Neo4j** graph store → formato muda (5.x); grafos antigos **não** precisam abrir. Casos são autocontidos (JRE + libs do processamento empacotadas com o caso — Clarifications 2026-06-01), então o release novo nunca abre um store de outra versão; sem guarda de store 4.x (FR-007 retirado).
 
 **Testing**: JUnit 4.13.2 + Hamcrest 3.0 + Mockito 3.8.0 via `maven-surefire-plugin` (atualizado p/ 3.5.x). Testes YARA integration-gated (`assumeTrue` em `YARA_X_LIB_PATH`). **Novo**: harness de **paridade forense** (compara campos definidos entre baseline Java 11 e Java 21 — ver [contracts/parity-validation.contract.md](contracts/parity-validation.contract.md)).
 
@@ -42,9 +42,9 @@ Elevar a plataforma de build e execução do IPED de **Java 11 para Java 21 LTS*
 **Constraints**:
 - **Preservador de comportamento** (FR-018): sem novos recursos de linguagem, sem mudança funcional.
 - **Determinismo forense** (Princípio IV): saída idêntica nos campos definidos (SC-002).
-- **Compatibilidade de índice** (Princípio I): `BasicProps`/`IndexItem`/`AppAnalyzer` congelados; casos antigos abrem.
+- **Estabilidade de formato de índice** (Princípio I): `BasicProps`/`IndexItem`/`AppAnalyzer` congelados (evita churn; o caso é lido com suas próprias libs). Abrir casos antigos com o release novo não é mais requisito (FR-004 retirado em 2026-06-01).
 - **Modelo de concorrência** (Princípio V): workers, per-worker task instances e out-of-process preservados; **sem virtual threads**.
-- **Sem migração jakarta** e **sem preservar grafos antigos** (Out of Scope / FR-007).
+- **Sem migração jakarta** e **sem preservar/abrir grafos antigos** (casos autocontidos — Out of Scope / Clarifications 2026-06-01).
 
 **Scale/Scope**: 8 módulos, 16 POMs, ~193K LOC. ~30 dependências de terceiros a verificar/atualizar. CI a reconfigurar. Toque cross-cutting (não há "feature tree" isolada).
 
@@ -56,15 +56,15 @@ Elevar a plataforma de build e execução do IPED de **Java 11 para Java 21 LTS*
 
 | Princípio | Avaliação | Status |
 |---|---|---|
-| **I. Estabilidade da API Pública** | `iped-api`, `BasicProps`/`IndexItem` (chaves Lucene) e `AppAnalyzer` **não** podem mudar. Lucene sobe dentro da linha 9.x com `backward-codecs` → leitura de índices antigos preservada (FR-004). Bump de versão do projeto permanece `4.4.0-SNAPSHOT` (ou conforme release). | ✅ PASS (gate: validar abertura de casos antigos) |
-| **II. Extensão Modular vs Modificação** | Migração é inerentemente cross-cutting. Núcleo (`Manager`/`Worker`/`ProcessingQueues`/`IndexWriter`) **não** sofre mudança de lógica. Toques pontuais inevitáveis: `Bootstrap.getCustomJVMArgs()` (add-opens), guarda na abertura de graph store 4.x, `Util` (versão), `RegexTask` (remoção FST), módulo `graph/` (Neo4j 5 API). Documentados em Complexity Tracking. | ⚠️ PASS c/ justificativa |
+| **I. Estabilidade da API Pública** | `iped-api`, `BasicProps`/`IndexItem` (chaves Lucene) e `AppAnalyzer` **não** podem mudar. Lucene sobe dentro da linha 9.x com `backward-codecs` → formato de índice inalterado (evita churn; o caso é lido com suas próprias libs). Bump de versão do projeto permanece `4.4.0-SNAPSHOT` (ou conforme release). | ✅ PASS (FR-004 retirado 2026-06-01 — não há mais gate de abertura de casos antigos) |
+| **II. Extensão Modular vs Modificação** | Migração é inerentemente cross-cutting. Núcleo (`Manager`/`Worker`/`ProcessingQueues`/`IndexWriter`) **não** sofre mudança de lógica. Toques pontuais inevitáveis: `Bootstrap.getCustomJVMArgs()` (add-opens), `Util` (versão), `RegexTask` (remoção FST), módulo `graph/` (Neo4j 5 API, reescrito out-of-process via Bolt). Documentados em Complexity Tracking. | ⚠️ PASS c/ justificativa |
 | **III. Configuração antes de Código** | Sem novo comportamento hardcoded. Mensagens de versão permanecem em `localization/` (PT-BR+EN). Constantes `MIN/MAX_JAVA_VER` em código já são o padrão atual (apenas atualizadas). | ✅ PASS |
 | **IV. Integridade Forense e Determinismo** | Gate central. Charset/log/`java.time`/`SleuthkitClient` inalterados. Risco: bumps de libs podem introduzir não-determinismo (ordenação, encoders de imagem). Mitigado pela **suíte de paridade** (SC-002) e por revisar libs que afetam saída forense. | ✅ PASS (gate: paridade verde) |
 | **V. Concorrência e Isolamento de Processo** | Modelo de workers, instância-por-worker e out-of-process (`SleuthkitClient`, `ParsingProcess`, `Bootstrap`→JVM filha) preservados. **Proibido** adotar virtual threads (FR-018). JavaFX em `Platform.runLater`, Swing na EDT — inalterados. | ✅ PASS |
 
 **Restrições de Build/Distribuição**: novas/atualizadas dependências **DEVEM** ser registradas em `ThirdParty.txt` + `licenses/`; o `.github/workflows/maven.yml` **DEVE** ser atualizado no mesmo conjunto de mudanças (gate de CI).
 
-**Resultado do gate**: PASS condicionado a (a) PR de emenda da constituição, (b) suíte de paridade verde, (c) abertura de casos antigos validada, (d) `ThirdParty.txt`/CI atualizados. Sem violações que exijam abandono de princípio.
+**Resultado do gate**: PASS condicionado a (a) PR de emenda da constituição, (b) suíte de paridade verde, (c) `ThirdParty.txt`/CI atualizados. Sem violações que exijam abandono de princípio. (A validação de abertura de casos antigos saiu do escopo em 2026-06-01 — FR-004 retirado.)
 
 ## Project Structure
 
@@ -130,7 +130,7 @@ specs/003-java21-migration/quickstart.md      # procedimento de validação de p
 | Edição de `Bootstrap.getCustomJVMArgs()` (núcleo de inicialização) | Neo4j 5 embarcado e libs Swing exigem `--add-opens` adicionais sob encapsulamento forte | Não dá para adicionar via "novo módulo"; os args da JVM filha vivem no Bootstrap; `-XX:+IgnoreUnrecognizedVMOptions` já mitiga flags removidas |
 | Migração da API do Neo4j em `graph/` (engine + app) → **resolvida como out-of-process** | Neo4j 4.4 não roda em Java 21; o Cypher do 5.26 exige antlr 4.13, incompatível com o antlr 4.9 que o `libfqlite` fixa (ATN incompatível). Não coexistem no mesmo classpath. | Manter 4.4 impede Java 21; forçar um antlr quebra o outro lado; shading do libfqlite foi preterido. Solução (mira OSGi): engine embarcado em **JVM filha isolada** (módulo `iped-graph-server`, `lib/neo4j/`), UI fala **Bolt**. Adapters `graphdb-api` mantêm os consumidores da UI intocados. Ver [implementation-report.md](implementation-report.md) §2.5. |
 | Remoção do FST em `RegexTask` (toca task existente) | FST 2.57 usa `Unsafe`/reflexão e quebra sob encapsulamento forte | Adicionar `--add-opens` para FST mantém dependência morta e frágil; o uso é isolado (cache local) e trivialmente substituível por serialização JDK |
-| Guarda na abertura de graph store antigo (carregamento de caso) | Abrir caso com store Neo4j 4.x não pode crashar (FR-007) | Ignorar o caso quebraria casos antigos (Princípio I); a guarda é mínima e degrada a aba de grafo |
+| ~~Guarda na abertura de graph store antigo (carregamento de caso)~~ | ~~Abrir caso com store Neo4j 4.x não pode crashar (FR-007)~~ | **Removido (2026-06-01)**: casos são autocontidos (JRE + libs empacotadas com o caso); o release novo não abre graph store de outra versão, então não há guarda a justificar. |
 
 ## Phases
 

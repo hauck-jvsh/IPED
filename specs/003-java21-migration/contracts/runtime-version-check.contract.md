@@ -32,5 +32,5 @@
 
 - **CLI** (`Bootstrap`/`Main`): flags `-d`, `-o`, `-profile`, `--append`/`--continue`/`--restart`, `--yara-only`, etc. — **sem mudança** (FR-018).
 - **Web API REST** (`/search`, `/sources`, `/content`, `/text`, `/thumbnail`, `/bookmarks`): rotas, parâmetros e respostas — **sem mudança** (FR-010); apenas o stack (Jersey 2.41) é atualizado por baixo.
-- **Formato de caso** (índice Lucene, storage SQLite, bookmarks): leitura compatível (FR-004) — chaves de campo e `AppAnalyzer` congelados (Princípio I).
+- **Formato de caso** (índice Lucene, storage SQLite, bookmarks): formato **inalterado** — chaves de campo e `AppAnalyzer` congelados (Princípio I; evita churn e mantém o caso legível com suas próprias libs). (FR-004 retirado em 2026-06-01 — não é mais requisito o release novo abrir casos antigos.)
 - **Configs/profiles/localização**: inalterados (FR-016).
