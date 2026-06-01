@@ -17,7 +17,7 @@
 - **Graph**: análise de relacionamentos em Neo4j (chamadas, e-mails, mensagens, redes wireless).
 - **Extensibilidade**: scripts JavaScript (Nashorn) e Python (Jep) para tarefas customizadas.
 
-Versão: `4.4.0-SNAPSHOT`. Java 11+. Lucene 9.2.0, Tika 2.4.0, Sleuthkit 4.12.0.p1.
+Versão: `4.4.0-SNAPSHOT`. Java 21+. Lucene 9.2.0, Tika 2.4.0, Sleuthkit 4.12.0.p1.
 
 ## 2. Estrutura de pacotes
 
@@ -282,7 +282,7 @@ Veja exemplos: `ExampleScriptTask.js`, `PythonScriptTask.py`, `AgeEstimationTask
 | `org.sleuthkit:sleuthkit` | 4.12.0.p1 | Imagens forenses |
 | `org.apache.pdfbox:pdfbox(+tools+xmpbox)`, `jbig2-imageio` | 2.0.27 / 3.0.4 | PDF |
 | `org.xerial:sqlite-jdbc` | 3.41.2.2 | SQLite |
-| `org.neo4j:neo4j` | 4.4.4 | Graph |
+| `org.neo4j:neo4j-graphdb-api` + `org.neo4j.driver:neo4j-java-driver` | 5.26.0 | Graph (engine full Neo4j 5 isolado no módulo `iped-graph-server` → `lib/neo4j/`, acessado **out-of-process via Bolt**; o engine só carrega a API + o driver) |
 | `org.glassfish.jersey.containers:jersey-container-grizzly2-servlet` + jersey-hk2 | 2.30.1 | Web API |
 | `io.swagger:swagger-jersey2-jaxrs` | 1.6.10 | Swagger |
 | `org.glassfish.jersey.media:jersey-media-json-jackson` | 2.28 | JSON |

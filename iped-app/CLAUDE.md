@@ -15,7 +15,7 @@
 - **Implementar a UI Swing principal** (`App.java`, ~2500 linhas) com tabela de resultados, gallery, árvores (filesystem/categorias/bookmarks/IA), painéis (metadata, filtros, evidência), aba de viewers, busca por imagem/face similar, exportação, relatórios.
 - **Hospedar visualizações dockáveis** (DockingFrames): mapa (de `iped-geo`), grafo Neo4j (`graph/`), timeline (`timelinegraph/`), filtros AI, viewers do `iped-viewers`.
 
-Versão `4.4.0-SNAPSHOT`. Java 11 + JavaFX. Empacotamento: `jar`. Main-class no `META-INF/MANIFEST.MF`: `iped.app.bootstrap.Bootstrap`.
+Versão `4.4.0-SNAPSHOT`. Java 21 + JavaFX. Empacotamento: `jar`. Main-class no `META-INF/MANIFEST.MF`: `iped.app.bootstrap.Bootstrap`.
 
 ## 2. Estrutura
 
@@ -254,7 +254,7 @@ Estatísticas sobre valores únicos por campo (counts, ranges, money).
 
 | Execution ID | Artefato | Versão | Destino |
 |---|---|---|---|
-| `unpack-jre` | `java:jre` | `11.0.13` | `${release.dir}` |
+| `copy-jre` (agora `maven-resources-plugin`, não `dependency-plugin`) | pasta local `iped-jre/jre-21.0.11-full/` | Liberica Full `21.0.11` | `${release.dir}/jre` |
 | `unpack-python` | `org.python:python-jep-dlib` | `3.9.12-4.0.3-19.23.1-2` | `${release.dir}` |
 | `unpack-esedbexport` | `libyal:libesedb` | `20151213.1` | `${tools.dir}` |
 | `unpack-pffexport` | `libyal:libpff` | `20131028` | `${tools.dir}` |
@@ -451,7 +451,7 @@ Cargo de plugins/tools que o release espera encontrar:
 - **Plugins** (`plugins/`): Stanford CoreNLP 3.8.0, java-dbx 1.1-p6, telegram-decoder-impl 1.0.14, qualquer drop-in do usuário (TSK jar customizado, PhotoDNA jar restrito, etc.). Carregados pelo `PluginConfig` (engine).
 - **Tools** (`tools/`): RegRipper, ImageMagick, Tesseract, MPlayer, GraphViz, libpff/libesedb/libagdb/libmsiecf/evt*export/sccainfo/rifiuti2, Sleuthkit DLLs, CaffViewer, LibreOffice zip.
 - **Models** (`models/`): DIE (rfdie.dat), NSFW (Yahoo Keras h5), Vosk pt/en.
-- **JRE**: `jre/` (Windows) — Liberica 11.0.13 Full FX.
+- **JRE**: `jre/` (Windows) — Liberica 21.0.11 Full FX (copiada da pasta local `iped-jre/jre-21.0.11-full/` pela execution `copy-jre`).
 - **Python**: distribuído junto (JEP + dlib) em `python/`.
 
 Em Linux, várias dessas ferramentas vêm de pacotes `apt` (vide [`.github/workflows/maven.yml`](../.github/workflows/maven.yml)).

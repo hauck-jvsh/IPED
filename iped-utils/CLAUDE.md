@@ -6,7 +6,7 @@
 
 Fundação técnica do IPED: I/O, streams, hashes, imagens, formatação localizada, datas, processo externo (ImageMagick), ícones e XML. Sem lógica de negócio — apenas helpers reutilizáveis.
 
-- Empacotamento: `jar`. Compilado para **Java 11**.
+- Empacotamento: `jar`. Compilado para **Java 21**.
 - Versão: `4.4.0-SNAPSHOT` (parent `iped:iped-parent`).
 - Consome `iped-api` para interfaces (`IHashValue`, `IItem`, `IItemReader`, `SeekableInputStream`).
 

@@ -201,3 +201,22 @@ JNA — Java Native Access
   Apache 2.0 text in licenses/Apache 2.0.txt; LGPL 2.1 text in licenses/LGPL 2.1.txt.
 - Usage: JVM-to-native bridge used by iped.engine.task.yara.YaraEngine to call
   into libyara-x-capi without forking the official yara-x CLI per item.
+
+Neo4j Community Edition 5.26.0
+- Site: https://github.com/neo4j/neo4j
+- License: GNU GPL v3 (text in licenses/GPL 3.txt)
+- Usage: graph database engine for IPED's link analysis (calls, e-mails,
+  messages, wireless networks). The full embedded engine 5.26.0 (plus its
+  Cypher/antlr 4.13 stack) is bundled isolated under lib/neo4j/ and run as a
+  separate child JVM (GraphServer) speaking the Bolt protocol — this isolates
+  Cypher's antlr 4.13 from the antlr 4.9.2 required by libfqlite on the main
+  classpath. The processing/UI JVMs only carry the API jar (neo4j-graphdb-api)
+  and the Bolt client (see below); they never load the full engine.
+  Imports use neo4j-admin (org.neo4j.cli.AdminTool) from the same lib/neo4j/.
+
+Neo4j Java Driver 5.26.0
+- Site: https://github.com/neo4j/neo4j-java-driver
+- License: Apache License, Version 2.0 (text in licenses/Apache 2.0.txt)
+- Usage: Bolt client (org.neo4j.driver) used by iped.engine.graph.GraphServiceImpl
+  to query the out-of-process GraphServer; results are exposed to the UI through
+  read-only Bolt{Node,Relationship,Path} adapters over neo4j-graphdb-api.
