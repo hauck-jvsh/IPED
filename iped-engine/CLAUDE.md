@@ -294,7 +294,6 @@ Veja exemplos: `ExampleScriptTask.js`, `PythonScriptTask.py`, `AgeEstimationTask
 | `org.openjdk.nashorn:nashorn-core` | 15.4 | JS scripting |
 | `dk.brics.automaton:automaton` | 1.11-8 | Regex automata |
 | `org.bouncycastle:bcpkix-jdk15on` | 1.70 | Crypto |
-| `de.ruedigermoeller:fst` | 2.57 | Serialização rápida |
 | `com.zaxxer:HikariCP` | 7.0.2 | Pool de conexões |
 | `com.h2database:h2` | 2.3.232 | DB embarcado (cache) |
 | `org.apache.commons:commons-compress` | 1.27.1 | ZIP, RAR, 7z, tar (#1068) |

@@ -19,7 +19,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 **Verificado por compilação (`mvn clean compile` → BUILD SUCCESS no JDK 21, 16 módulos):**
 - T001 emenda da constituição (Java 11→21, v1.2.0).
 - T002–T007 toolchain (`release=21`; compiler 3.13.0; surefire 3.5.4; jar 3.4.1; dependency 3.8.1; findbugs removido).
-- T014 FST removido do código (cache de regex via serialização JDK, leitura resiliente a cache antigo). **T015 (drop da dep no pom) ainda PENDENTE** — ver tasks abaixo.
+- T014–T015 FST totalmente removido: cache de regex via serialização JDK (T014) + dependência `de.ruedigermoeller:fst` dropada do `iped-engine/pom.xml` (T015, 2026-06-01, build verde + 136 testes).
 - T030 version check (`Util.MIN/MAX_JAVA_VER = 21`).
 - T009 `TelegramParser`: `parseBase64Binary` → `java.util.Base64` (o uso real era Base64, não Hex).
 - T011 `CachePersistance`: `printHexBinary` → `java.util.HexFormat` (uppercase; preserva nomes de cache).
@@ -93,7 +93,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 ### Remoção do FST
 
 - [X] T014 Substituir o cache FST por serialização JDK (`ObjectOutputStream`/`ObjectInputStream`) em `iped-engine/src/main/java/iped/engine/task/regex/RegexTask.java` (remover `FSTConfiguration`/`asByteArray`/`asObject`), confirmando que `Regex` e `dk.brics.automaton.Automaton` são `Serializable`.
-- [ ] T015 **PENDENTE (tracking corrigido 2026-06-01)** — Remover a dependência `de.ruedigermoeller:fst` de `iped-engine/pom.xml`. O bloco `fst:2.57` (linhas ~298-308) é **idêntico ao master** (`git diff master` vazio) — nunca foi removido; segue como dependência pendurada (nenhum código importa `org.nustaq`/`de.ruedigermoeller` em nenhum módulo, só resta um comentário em `RegexTask.java:257`). T014 (cache) está feito; falta só dropar a dep + revalidar build. FST 2.57 usa `sun.misc.Unsafe`/reflexão em internals — remover é higiene desejável no 21.
+- [X] T015 **FEITO (2026-06-01)** — Removida a dependência `de.ruedigermoeller:fst:2.57` de `iped-engine/pom.xml` (bloco + exclusão de jackson-core). Era dependência pendurada: T014 já movera o `RegexTask` p/ serialização JDK e nenhum módulo importava `org.nustaq`/`de.ruedigermoeller`. Validado: `mvn -pl iped-engine -am clean install -DskipTests` = BUILD SUCCESS (compila sem o fst em toda a cadeia) + `mvn -pl iped-engine test` = **136 run, 0 Failures, 0 Errors, 2 Skipped**. FST 2.57 abusava de `sun.misc.Unsafe`/reflexão em internals — uma fonte de risco a menos no 21.
 
 ### Bumps de dependências compilação-bloqueantes
 

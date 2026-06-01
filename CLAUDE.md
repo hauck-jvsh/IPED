@@ -59,7 +59,7 @@ IPED/
 | Scripting | Nashorn 15.4 (JS), JEP 4.0.3 (Python embarcado) |
 | Speech | Vosk 0.3.32, Microsoft Cognitive Speech 1.19, Google Cloud Speech 1.22 |
 | Logging | SLF4J 1.7.25 + Log4j 2.17.1 |
-| Cache/serial | Caffeine 3.2.2, FST 2.57, Zstd-JNI |
+| Cache/serial | Caffeine 3.2.2, Zstd-JNI (FST removido na migração Java 21) |
 | OCR | Tesseract 5 (via JEP) |
 | ML/IA | RandomForest (DIE), Yahoo OpenNSFW (Keras/TensorFlow), PhotoDNA (lib restrita) |
 
