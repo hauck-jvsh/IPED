@@ -133,7 +133,7 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 ### 4.6 Documentação
 - ✅ Baselines "Java 11 → 21" atualizados nos `CLAUDE.md` (raiz §3/§5, `iped-engine` §14, `iped-app` §1/§6/§12) + Jersey/JNA/zstd/FST — T049/T056 (commits `b13126ef6`/`934893ee4`/`30c542af9`/`7c6fdb56b`).
 - ✅ `ThirdParty.txt` (T055): Neo4j 5 (engine + driver), Jersey/Grizzly/HK2 (REST), ANTLR 4 Runtime (4.9.2 + 4.13.2), launch4j, + versões JNA/zstd. Apache 2.0/GPL 3 bundled em `licenses/`; EPL 2.0/BSD-3/MIT citadas por nome+URL (bundling estrito dos textos = follow-up opcional).
-- ⏳ `ReleaseNotes.txt`: entrada da migração Java 21 — T057 (pendente).
+- ✅ `ReleaseNotes.txt`: entrada `#spec/003-java21-migration` sob `TBD: IPED-4.4.0` — T057.
 
 ## 5. Caveats e riscos conhecidos
 

@@ -207,7 +207,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 - [X] T055 ✅ (2026-06-02) `ThirdParty.txt` atualizado p/ as deps distribuídas que a migração mexeu: **Neo4j Community 5.26 + Neo4j Java Driver** (já em `b13126ef6`), **Jersey/Grizzly/HK2** (stack REST, EPL 2.0/GPL2+CPE), **ANTLR 4 Runtime** (BSD-3; 4.9.2 em `lib/` + 4.13.2 em `lib/neo4j/`), **launch4j** (BSD-3/MIT; stub embutido nos `.exe`), + versões em **JNA 5.14.0** e **ZSTD-jni 1.5.6-9**. Licenças: Apache 2.0 e GPL 3 já em `licenses/` (Neo4j); EPL 2.0/BSD-3/MIT citadas por nome+URL (padrão já usado no arquivo). FST removido não constava. *Nota: bundling estrito dos textos EPL-2.0/BSD-3/MIT em `licenses/` fica como follow-up opcional.*
 - [X] T056 [P] ✅ Baselines/versões atualizadas: `CLAUDE.md` raiz (Java 21, Neo4j 5.26, Jersey 2.41, FST removido) `b13126ef6`+`934893ee4`+`30c542af9`; `iped-engine/CLAUDE.md` (Java 21+, neo4j-graphdb-api+driver, jersey/zstd, fst removido); `iped-parsers/CLAUDE.md` (jna 5.14); `iped-app/CLAUDE.md` (Java 21, copy-jre, launch4j).
-- [ ] T057 [P] Atualizar `ReleaseNotes.txt` com a entrada da migração para Java 21.
+- [X] T057 [P] ✅ (2026-06-02) Entrada `#spec/003-java21-migration` adicionada ao `ReleaseNotes.txt` sob `TBD: IPED-4.4.0` (release=21, SecurityManager/add-exports, FST removido, Neo4j 5 out-of-process Bolt, Cypher 5, bumps JNA/Jersey/zstd, JRE Liberica 21.0.11, launchers launch4j, CI Java 21; adiados Lucene/Tika/BC anotados).
 - [ ] T058 Sweep de regressão final por [quickstart.md](quickstart.md) §7 (todos os gates: build, testes, paridade, perf, Web API, viewers, distribuição, runtime limpo).
 
 ---
