@@ -82,35 +82,31 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 
 ## 7. Definition of Done (resumo dos gates)
 
-| Gate | Critério |
-|---|---|
-| Build | `mvn clean package` em Java 21, todos os módulos |
-| Testes | 100% passam (SC-001) |
-| Paridade | zero divergências em C1–C8 (SC-002) |
-| Performance | regressão ≤ 5% (SC-005) |
-| ~~Casos antigos~~ | **Fora de escopo (2026-06-01)** — casos autocontidos; release novo não abre casos antigos (FR-004/005/006/007 retirados) |
-| Distribuição | Win (embarcado) + Linux (sistema) iniciam e processam (SC-004) |
-| Runtime limpo | sem erro por incompat JDK (SC-006) |
-| Governança/Docs | constituição emendada; `ThirdParty.txt`/`licenses/`/CI/CLAUDE.md atualizados |
+| Gate | Critério | Estado (sweep T058, 2026-06-02) |
+|---|---|---|
+| Build | `mvn clean package` em Java 21, todos os módulos | ✅ **17 módulos BUILD SUCCESS** (vários runs full-clean) |
+| Testes | 100% passam (SC-001) | ⚠️ **engine 136/136 verde**; `iped-parsers` `OCRParserTest` (PSD/SVG) falha **só por ambiente local** (sem Tesseract/ImageMagick) → "100% todos os módulos" confirma no **CI** (T048) |
+| Paridade | zero divergências em C1–C8 (SC-002) | ⏳ **formal pendente** (precisa baseline Java 11). **Informal excelente**: 6 itens de diff em 781.246 (0,0008%); carving/Active Items/Parsing-Exceptions idênticos (§4.5 do report) |
+| Performance | regressão ≤ 5% (SC-005) | ⏳ benchmark formal pendente. **Informal dentro do gate**: mesmo caso 4692s (J11) → 4784s (J21) = **+1,96%** (não é benchmark controlado) |
+| ~~Casos antigos~~ | **Fora de escopo (2026-06-01)** — casos autocontidos; release novo não abre casos antigos (FR-004/005/006/007 retirados) | — |
+| Distribuição | Win (embarcado) + Linux (sistema) iniciam e processam (SC-004) | ✅ **Windows** (run real E01 ponta a ponta + launchers `.exe` validados); ⏳ **Linux** não testado (T053) |
+| Runtime limpo | sem erro por incompat JDK (SC-006) | ✅ run real + Web API + logs de paridade: **sem** `UnsupportedClassVersion`/`IllegalAccess`/reflexão em internals. Não-fatais residuais (numpy/JEP, thumb SVG/ImageMagick, "graph not found" benigno) **não** são incompat de JDK |
+| Governança/Docs | constituição emendada; `ThirdParty.txt`/`licenses/`/CI/CLAUDE.md atualizados | ✅ constituição v1.2.0; CI Java 21 (T047); CLAUDE.md (T049/T056); ThirdParty (T055); ReleaseNotes (T057) |
 
-## 8. Rodar o release no Java 21 — estado atual (Windows)
+**Resumo do sweep:** dos gates em escopo, **Build, Runtime-limpo e Governança/Docs estão ✅ fechados**; **Distribuição ✅ no Windows** (Linux pendente); **Testes/Paridade/Performance têm validação informal forte** e aguardam o fechamento **formal** (CI verde + baseline Java 11 do usuário). Nenhum gate **reprovou**.
 
-> Enquanto o artefato `java:jre:21.0.11` não é publicado e os launchers `.exe` não são rebuildados, use o caminho abaixo. Ver [implementation-report.md](implementation-report.md) §4 para o porquê.
+## 8. Rodar o release no Java 21 (Windows)
 
-1. **Build**: `mvn clean package` (com `JAVA_HOME` = Liberica Full 21). Gera o release completo (`iped.jar` + `lib/` + `jre/`).
-   - ⚠️ Se o `java:jre:21.0.11` ainda não foi publicado, o `package` **falha na `unpack-jre`**. Workaround: comente/pule a `unpack-jre` ou troque o `jre/` do release manualmente (passo 3).
-2. **Deploy**: copiar `target/release/iped-4.4.0-SNAPSHOT/` para a instalação (o usuário é dono do deploy).
-3. **JRE 21 no release** (se o artefato não foi publicado): substituir a pasta `jre/` por uma Liberica Full 21:
-   ```powershell
-   Remove-Item -Recurse -Force "<release>\jre"
-   Copy-Item -Recurse "H:\java\LibericaJDK-21-Full" "<release>\jre"
-   ```
-4. **Executar via `iped.bat`** (não o `iped.exe`, que pega Java 11 do registro):
+1. **Build**: `mvn clean package` com `JAVA_HOME` = Liberica Full 21. Gera o release completo (`iped.jar` + `lib/` + `lib/neo4j/` + `jre/` + launchers `.exe`).
+   - O JRE embarcado é **copiado da pasta local `iped-jre/jre-21.0.11-full/`** (Liberica Full 21 com JavaFX) pela execution `copy-jre` — o dev coloca essa pasta ali antes do build (está no `.gitignore`). Não é mais necessário publicar o artefato `java:jre`.
+   - No Windows, o perfil `windows-launchers` gera `iped.exe` (console) e `bin/IPED-SearchApp.exe` (GUI) via launch4j, já apontando para o `jre/` embarcado.
+2. **Deploy**: copiar `target/release/iped-4.4.0-SNAPSHOT/` para a instalação (o usuário é dono do deploy). Para a UI de análise (`IPED-SearchApp.exe`) localizar o config, a pasta do caso deve se chamar `iped` (convenção `<caso>/iped/`; `Main.setConfigPath` sobe de `iped/lib`→`iped`). O `iped.exe` de processamento não tem essa exigência.
+3. **Executar**:
    ```powershell
    cd <release>
-   .\iped.bat -profile forensic -d <fonte> -o <saida>
+   .\iped.exe -profile forensic -d <fonte> -o <saida>
    ```
-   O `iped.bat` usa o `jre/` embarcado e passa `-Djava.security.manager=allow` (propagado à JVM filha).
+   `iped.exe` usa o `jre/` embarcado (sem buscar Java no registro) e passa `-Djava.security.manager=allow`. `iped.bat` permanece como fallback equivalente.
 
 ## 9. Validação realizada (2026-05-30)
 
@@ -119,5 +115,5 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 - **Processamento real**: `iped.bat -profile forensic -d E:\hds\RockPi4\RockPi4.E01 -o F:\test`
   - Sleuthkit decodificou o E01; pipeline completo; índice; UI de análise navegável; 0 erros de SecurityManager.
   - Cache de regex reconstruído a partir do formato FST antigo (esperado).
-  - Não-fatais: `numpy` ausente (Python/JEP); NPE pré-existente no viewer de SVG.
-- **Pendente**: paridade formal (SC-002, requer baseline Java 11); grafo Neo4j 5 em runtime; smokes de distribuição "limpos" (após publicar o JRE e rebuildar os `.exe`).
+  - Não-fatais: `numpy` ausente (Python/JEP, não-regressão); timeout de thumb de SVG (ImageMagick externo, não-regressão — ver §5 do report).
+- **Atualização (até 2026-06-02)**: grafo Neo4j 5 em runtime ✅; JRE embarcado da pasta local + launchers `.exe` via launch4j ✅; Web API ✅; CI Java 21 ✅; docs/ThirdParty/ReleaseNotes ✅. **Ainda pendente**: paridade/perf formais (baseline Java 11), CI verde (push), smoke Linux. Ver §7 (sweep T058).
