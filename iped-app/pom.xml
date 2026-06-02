@@ -927,5 +927,102 @@
                 </configuration>
             </plugin>
         </plugins>
-    </build>    
+    </build>
+
+    <profiles>
+        <!-- Windows-only: (re)build the native .exe launchers for Java 21 with launch4j.
+             They wrap iped.jar (console) and lib/iped-search-app.jar (GUI) WITHOUT
+             bundling the jar (dontWrapJar), point at the bundled jre/ (no registry or
+             JAVA_HOME search) and pass -Djava.security.manager=allow (required on Java
+             18+). This replaces the old prebuilt Java-11 binaries, which selected a
+             Java 11 from the Windows registry and failed on a Java 21 build. The
+             profile auto-activates on Windows; on Linux it stays off (iped.bat / shell
+             launchers are used and a Windows .exe is irrelevant there). Java 21
+             migration (003). -->
+        <profile>
+            <id>windows-launchers</id>
+            <activation>
+                <os><family>windows</family></os>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.akathist.maven.plugins.launch4j</groupId>
+                        <artifactId>launch4j-maven-plugin</artifactId>
+                        <version>2.5.2</version>
+                        <executions>
+                            <!-- iped.exe : processing CLI (console), wraps iped.jar at the release root -->
+                            <execution>
+                                <id>l4j-iped</id>
+                                <phase>package</phase>
+                                <goals><goal>launch4j</goal></goals>
+                                <configuration>
+                                    <headerType>console</headerType>
+                                    <outfile>${release.dir}/iped.exe</outfile>
+                                    <dontWrapJar>true</dontWrapJar>
+                                    <jar>iped.jar</jar>
+                                    <chdir>.</chdir>
+                                    <icon>${resources.dir}/root/iped.ico</icon>
+                                    <jre>
+                                        <path>jre</path>
+                                        <requiresJdk>false</requiresJdk>
+                                        <opts>
+                                            <opt>-Djava.security.manager=allow</opt>
+                                        </opts>
+                                    </jre>
+                                    <versionInfo>
+                                        <fileVersion>4.4.0.0</fileVersion>
+                                        <txtFileVersion>${project.version}</txtFileVersion>
+                                        <fileDescription>IPED - Digital Evidence Processor and Indexer (processing)</fileDescription>
+                                        <copyright>Brazilian Federal Police</copyright>
+                                        <productVersion>4.4.0.0</productVersion>
+                                        <txtProductVersion>${project.version}</txtProductVersion>
+                                        <productName>IPED</productName>
+                                        <internalName>iped</internalName>
+                                        <originalFilename>iped.exe</originalFilename>
+                                    </versionInfo>
+                                </configuration>
+                            </execution>
+                            <!-- IPED-SearchApp.exe : analysis UI (GUI), in bin/, wraps lib/iped-search-app.jar -->
+                            <execution>
+                                <id>l4j-searchapp</id>
+                                <phase>package</phase>
+                                <goals><goal>launch4j</goal></goals>
+                                <configuration>
+                                    <headerType>gui</headerType>
+                                    <outfile>${release.dir}/bin/IPED-SearchApp.exe</outfile>
+                                    <dontWrapJar>true</dontWrapJar>
+                                    <!-- exe is in bin/; launch4j resolves BOTH the bundled jre <path>
+                                         and the <jar> relative to the exe dir, so both need ../ to reach
+                                         the release root (bin/..\jre, bin/..\lib). chdir=.. sets the app's
+                                         working dir to the release root. -->
+                                    <jar>../lib/iped-search-app.jar</jar>
+                                    <chdir>..</chdir>
+                                    <icon>${resources.dir}/root/iped.ico</icon>
+                                    <jre>
+                                        <path>../jre</path>
+                                        <requiresJdk>false</requiresJdk>
+                                        <opts>
+                                            <opt>-Djava.security.manager=allow</opt>
+                                        </opts>
+                                    </jre>
+                                    <versionInfo>
+                                        <fileVersion>4.4.0.0</fileVersion>
+                                        <txtFileVersion>${project.version}</txtFileVersion>
+                                        <fileDescription>IPED - Digital Evidence Processor and Indexer (analysis UI)</fileDescription>
+                                        <copyright>Brazilian Federal Police</copyright>
+                                        <productVersion>4.4.0.0</productVersion>
+                                        <txtProductVersion>${project.version}</txtProductVersion>
+                                        <productName>IPED</productName>
+                                        <internalName>IPED-SearchApp</internalName>
+                                        <originalFilename>IPED-SearchApp.exe</originalFilename>
+                                    </versionInfo>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

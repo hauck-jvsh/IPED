@@ -34,7 +34,7 @@ iped-app/
 │   │   └── regex_validators/
 │   ├── localization/                    # iped-app.properties + locales (pt_BR, es_AR, de_DE, fr_FR, it_IT)
 │   ├── plugins/                         # vazio por padrão (drop-in)
-│   ├── root/                            # bin/, help/, htmlreport/, iped.exe (launchers)
+│   ├── root/                            # bin/, help/, htmlreport/, iped.bat (fallback), iped.ico (os .exe são gerados no build via launch4j)
 │   └── checkstyle/                      # apenas para o build, não distribuído
 └── src/main/java/iped/app/
     ├── bootstrap/                       # Bootstrap, BootstrapUI
@@ -305,7 +305,7 @@ Estatísticas sobre valores únicos por campo (counts, ranges, money).
 
 ```
 ├── iped.jar                         (Bootstrap)
-├── iped.exe (Windows launcher)
+├── iped.exe (Windows launcher; gerado por launch4j → jre/ embarcado. Perfil `windows-launchers` no pom; `iped.bat` é fallback)
 ├── jre/                             (JRE embutido)
 ├── lib/
 │   ├── iped-search-app.jar          (BootstrapUI)

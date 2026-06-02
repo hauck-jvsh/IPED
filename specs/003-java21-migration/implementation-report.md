@@ -18,7 +18,7 @@ Descobriu-se que a migração de **código** é pequena (o reator compilou com a
 | Processamento real E01 (forensic) | ✅ rodou de ponta a ponta (Sleuthkit + pipeline + índice + UI) |
 | Neo4j 4.4 → 5.26 | ✅ migrado **out-of-process via Bolt** e **validado end-to-end** (build verde, isolamento de classpath, import Neo4j 5, post-import Cypher 5 e **aba de grafo na UI renderizando** após reprocessamento) — ver §2.5 |
 | JRE embarcada | ✅ agora copiada da pasta local `iped-jre/` (substitui o artefato `java:jre`) — ver §2.6 |
-| Distribuição (Windows) | ⚠️ funciona via workaround (`iped.bat`); rebuild dos `.exe` pendente |
+| Distribuição (Windows) | ✅ launchers `.exe` refeitos via launch4j (apontam p/ o `jre/` embarcado); `iped.bat` mantido como fallback |
 | Validação de paridade forense (SC-002) | ⏳ não executada (requer caso-baseline Java 11) |
 
 ## 2. Implementado e verificado
@@ -51,7 +51,7 @@ Descobriu-se que a migração de **código** é pequena (o reator compilou com a
 |---|---|---|
 | `iped.exe`: "Unable to access jarfile iped.jar"; `lib/` vazio | `maven-jar-plugin` 3.4.0+ proíbe execuções multi-jar sem classifier (`create-jar`/`create-search-jar`/…) → build abortava na `create-jar` | **Pin `iped-app` jar-plugin em 2.6**. Verificado: release completo (iped.jar + search/webapi/hashdb + 510 jars em `lib/`) |
 | `UnsupportedClassVersionError 65.0 vs 55.0` | JRE embarcado ainda era Liberica **11.0.13** | `unpack-jre` → **`java:jre:21.0.11`** (requer publicar o artefato; ver §4) |
-| `iped.exe` roda Java 11 mesmo com `jre/`=21 e `JAVA_HOME`=21 | `iped.exe`/`IPED-SearchApp.exe` são **binários pré-compilados** (launch4j) que pegam um Java 11 do **registro do Windows** e ignoram `jre/`/`JAVA_HOME` | **`iped.bat`** interino (usa o `jre/` embarcado). Verificado: `iped.jar` roda no Java 21 |
+| `iped.exe` roda Java 11 mesmo com `jre/`=21 e `JAVA_HOME`=21 | `iped.exe`/`IPED-SearchApp.exe` eram **binários pré-compilados** (launch4j) que pegavam um Java 11 do **registro do Windows** e ignoravam `jre/`/`JAVA_HOME` | **`.exe` refeitos via `launch4j-maven-plugin`** (perfil Windows em `iped-app/pom.xml`): apontam para o `jre/` embarcado (sem busca no registro) + `-Djava.security.manager=allow`. Verificado: `iped.exe` roda Bootstrap no JRE 21; `IPED-SearchApp.exe` sobe a UI completa (BootstrapUI→App child) no JRE 21. `iped.bat` mantido como fallback |
 
 ### 2.5 Grafo Neo4j 5 — migração para out-of-process via Bolt (sessão 2026-05-31)
 
@@ -98,7 +98,7 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 
 ### 4.1 Distribuição (Windows) — para o produto sair "redondo"
 - **Publicar `java:jre:21.0.11`** (zip com `jre/` no topo, Liberica Full 21 c/ JavaFX) em `java/jre/21.0.11/` no maven do projeto (`iped-maven`). O pom já aponta para essa versão (`0a602e6`). Até publicar, `mvn package` falha na `unpack-jre`; usar swap manual do `jre/`.
-- **Rebuildar os launchers `.exe`** (`iped.exe`, `IPED-SearchApp.exe`) para Java 21 (launch4j — config fora do repo). Interino: `iped.bat` (falta análogo `IPED-SearchApp.bat`).
+- ~~**Rebuildar os launchers `.exe`**~~ **FEITO (2026-06-02)**: `launch4j-maven-plugin` 2.5.2 num `<profile>` ativado no Windows (`iped-app/pom.xml`) gera `iped.exe` (console, wrappa `iped.jar`) e `bin/IPED-SearchApp.exe` (GUI, wrappa `lib/iped-search-app.jar`) a cada build, apontando para o `jre/` embarcado (`<path>` exe-relativo, sem `minVersion` → ignora o registro) + `-Djava.security.manager=allow`. Os binários Java-11 versionados foram removidos; ícone extraído p/ `resources/root/iped.ico`. Validado no Windows: `iped.exe`→Bootstrap no JRE 21; `IPED-SearchApp.exe`→UI completa no JRE 21 (testado em pasta `iped`).
 - **Embutir os fixes no jar**: novo `mvn clean package` embute `Bootstrap` (SecurityManager) e `StartUpControl` no `iped.jar` — aí o flag manual no `.bat` e o spam deixam de existir.
 
 ### 4.2 Ambiente Python (não-fatal — **não é regressão do 21**; diagnosticado 2026-06-01)
@@ -136,7 +136,7 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 
 - **SecurityManager é removido no Java 24+** (JEP 486). O `-Djava.security.manager=allow` funciona no 21, mas uma futura migração para 24+ exigirá outro mecanismo para bloquear rede dos HTML viewers. Registrado como dívida.
 - **NPE pré-existente** em `ExternalImageConverter.getDimension` ao abrir SVG (ImageMagick retorna dimensão nula) — **não é regressão do 21**; não-fatal (quebra só o preview daquele arquivo).
-- **Launchers `.exe`** dependem de rebuild externo (launch4j); enquanto isso, o `.bat` é o caminho suportado no Java 21.
+- **Launchers `.exe`** agora são gerados no build pelo `launch4j-maven-plugin` (perfil Windows); o `.bat` segue como fallback. A detecção de root do search app exige que a pasta de deploy se chame `iped` (`Main.setConfigPath` sobe de `iped/lib`→`iped`) — convenção de deploy já existente, não específica do launcher.
 
 ## 6. Commits da branch
 
