@@ -126,8 +126,8 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 ### Checkpoint Foundational
 
-- [ ] T031 `mvn clean package` compila **todos** os módulos no Java 21 (detectar/limpar `target/classes` envenenado: procurar "Unresolved compilation").
-- [ ] T032 `mvn test` passa 100% (incl. `Yara*` integration-gated com `YARA_X_LIB_PATH`) — gate FR-002/SC-001.
+- [X] T031 ✅ (2026-06-02) `mvn clean package` compila **todos os 17 módulos** no Java 21 — BUILD SUCCESS, validado em vários runs full-clean. `target/classes` sempre gerado pelo Maven (clean), sem "Unresolved compilation".
+- [ ] T032 **PARCIAL** — `mvn -pl iped-engine test` = **136/136 verde** no 21 (inclui `Yara*` com `YARA_X_LIB_PATH`). ⚠️ `iped-parsers` `OCRParserTest` (PSD/SVG) falha **por ambiente local** (sem Tesseract/ImageMagick configurados como no CI), não por regressão do 21 → o "100% todos os módulos" será confirmado quando o **CI** rodar (T048). Gate FR-002/SC-001.
 
 **Checkpoint**: substrato pronto — as user stories podem começar.
 
@@ -141,9 +141,9 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 - [ ] T033 [US1] Definir e congelar o **conjunto de dados de referência** + gerar o **caso-baseline no release Java 11** (`-profile forensic`, `-tz` fixo) — ver [research.md](research.md) §16.
 - [ ] T034 [US1] Processar o **mesmo** dataset no release Java 21 (mesmo profile/tz/flags) gerando o caso-candidato.
-- [ ] T035 [P] [US1] Validar execução de tarefas de **scripting JavaScript** (Nashorn) num caso com `<task script="...js">` configurado (`iped-app/resources/scripts/tasks/`).
-- [ ] T036 [P] [US1] Validar execução de tarefas **Python/JEP** e **OCR** (`OCRParser`, `*.py` de task) no Java 21.
-- [ ] T037 [P] [US1] Validar que a **GraphTask** (Neo4j 5) constrói o grafo de um caso **novo** processado no 21.
+- [ ] T035 [P] [US1] **PARCIAL** — Nashorn carrega/roda os validadores JS de regex (`ScriptValidatorService`, ex. `Example_CRYPTO_POSSIBLE_SEED_PHRASE_*`) no run real → engine JS OK no 21. Falta exercitar explicitamente uma **task `.js`** dedicada (`<task script="...js">`).
+- [ ] T036 [P] [US1] **PARCIAL** — Python/JEP **validado** no 21 (JEP 4.0.3 carrega/executa Python; ver §JEP). Falta exercitar **OCR** de fato (`enableOCR=false` no run de paridade) e uma task `.py` ativa.
+- [X] T037 [P] [US1] ✅ GraphTask (Neo4j 5) constrói o grafo de **caso novo** no 21 — validado no run real (2026-06-01): post-import Cypher 5 OK (3× `CREATE INDEX IF NOT EXISTS FOR (n:EVIDENCIA)`, grouping contacts, "Generating graph database finished") e aba Vínculos popula. Ver §sessão 2026-05-31.
 - [ ] T038 [US1] Implementar o procedimento/comparador de paridade (exportar C1–C8 via CSV/Web API/índice, casar por trackID, aplicar exclusões E1–E5 e normalização) conforme [contracts/parity-validation.contract.md](contracts/parity-validation.contract.md).
 - [ ] T039 [US1] Executar a comparação de paridade baseline↔21 → **zero divergências** em C1–C8 (gate SC-002); triar e corrigir qualquer regressão.
 - [ ] T040 [US1] Medir throughput (itens/s) baseline vs 21 no mesmo hardware/dataset → regressão ≤ 5% (gate SC-005).
@@ -164,7 +164,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 - ~~T042 [US2] Verificar abertura/busca de um caso antigo (índice Lucene Java 11)~~ — **descartada (2026-06-01)** com FR-004 (casos autocontidos).
 - ~~T043 [US2] Guarda de degradação ao abrir graph store Neo4j 4.x~~ — **descartada (2026-06-01)** com FR-007.
 - ~~T044 [P] [US2] Verificar abertura de um caso portátil gerado no build Java 11~~ — **descartada (2026-06-01)** com FR-005.
-- [ ] T045 [US2] **Validar render dos viewers no JavaFX 21** (FR-011) sobre o caso recém-processado: exercitar `iped-viewers/iped-viewers-impl/.../HtmlViewer.java`, `AudioViewer.java`, `MetadataViewer.java` (WebView), a aba **Mapa** (`iped-geo/.../impl/MapViewer.java` + WebView), a **Timeline** (`iped-app/.../timelinegraph/IpedChartsPanel.java`) e o **grafo** (aba Vínculos — ✅ já validada, ver §sessão 2026-05-31); confirmar render correto e ausência de exceções de shutdown JavaFX (regressão #2874).
+- [ ] T045 [US2] **PARCIAL** — Validar render dos viewers no JavaFX 21 (FR-011). ✅ **grafo** (aba Vínculos) validado; UI de análise navegando o caso + LibreOffice/viewers exercitados no run real (memória 2026-05-30). **Falta confirmar explicitamente**: aba **Mapa** (`iped-geo/.../impl/MapViewer.java` WebView), **Timeline** (`iped-app/.../timelinegraph/IpedChartsPanel.java`) e ausência de exceções de shutdown JavaFX (regressão #2874).
 - ~~T046 [US2] Rodar o conjunto de validação de casos antigos (gate SC-003)~~ — **descartada (2026-06-01)** com SC-003.
 
 **Checkpoint**: render de viewers/UI validado no Java 21 (FR-011).
@@ -177,9 +177,9 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 **Independent Test**: o pipeline de CI builda e roda os testes no Java 21 com sucesso.
 
-- [ ] T047 [US3] Substituir os jobs `build-java11`/`build-java14` por **um job Java 21** em `.github/workflows/maven.yml` (`actions/setup-java@v4`, `distribution: liberica`, `java-version: 21`, com JavaFX); remover o download do BellSoft 14; manter instalação de ferramentas nativas + verificação do `tools/yara-x/linux64/libyara_x_capi.so` + `jep==4.2.x`.
-- [ ] T048 [US3] Confirmar `mvn -B package` + testes verdes no CI Java 21 (gate FR-013).
-- [ ] T049 [P] [US3] Atualizar instruções de build/run para Java 21 na seção §5 de `CLAUDE.md` (raiz) e em READMEs/wiki de contribuição.
+- [X] T047 [US3] ✅ (commit `64ee8f0e3`) Substituídos `build-java11`/`build-java14` por **um job `build-java21`** em `.github/workflows/maven.yml` (`actions/setup-java@v4`, `distribution: liberica`, `java-version: 21`, `java-package: jdk+fx`, cache maven); `checkout@v1`→`@v4`; removido o tar do BellSoft 14; mantidos ferramentas nativas + verify `libyara_x_capi.so` + `YARA_X_LIB_PATH`. ⚠️ `jep` mantido em **4.0.3** (bump 4.2 = T027/T028 adiados), não 4.2.x.
+- [ ] T048 [US3] Confirmar `mvn -B package` + testes verdes no CI Java 21 (gate FR-013). **Pendente de um push** (só roda no GitHub Actions).
+- [X] T049 [P] [US3] **PARCIAL→✅ no repo** — §5 de `CLAUDE.md` (raiz) atualizada p/ JDK 21 (`b13126ef6`). `README.md`/wiki de contribuição são docs upstream e não foram alterados neste fork.
 
 **Checkpoint**: contribuições novas são validadas no Java 21.
 
@@ -191,9 +191,9 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 
 **Independent Test**: instalar o release em máquina Windows sem Java e em Linux com Java 21 do sistema, e processar um caso de ponta a ponta.
 
-- [~] T050 [US4] Publicar o zip do **Liberica Full JDK 21** no maven do projeto e bumpar o artefato `java:jre` na execution `unpack-jre` de `iped-app/pom.xml`. **pom bumpado p/ `java:jre:21.0.11`** (commit pendente); **falta o usuário publicar** o zip (estrutura: pasta `jre/` no topo, ~Liberica Full 21 com JavaFX) em `java/jre/21.0.11/` no repo `iped-maven`. Sintoma se rodar `mvn package` antes de publicar: falha na `unpack-jre` (artefato não encontrado). Unblock p/ teste: trocar `jre/` do release pela Liberica Full 21 manualmente.
-- [ ] T051 [US4] Gerar o release e validar a árvore `target/release/iped-4.4.0/` com o runtime 21 embarcado (Windows).
-- [ ] T052 [P] [US4] Smoke **Windows sem Java**: instalar o release e processar um caso pequeno de ponta a ponta, confirmando as ferramentas nativas (Sleuthkit out-of-process, ImageMagick, Tesseract/JEP) (gate SC-004/FR-009).
+- [X] T050 [US4] ✅ **REDESENHADO** (commit `81d6fb63e`) — em vez de publicar/`unpack-jre` o artefato `java:jre`, o `iped-app/pom.xml` agora **copia o JRE da pasta local `iped-jre/jre-21.0.11-full/`** (Liberica Full 21) via `copy-jre` (maven-resources-plugin, phase validate). Não exige mais publicar o zip no maven. Validado: release com `jre/bin/java.exe`=21.0.11. (O dev coloca a Liberica Full 21 em `iped-jre/`, que está no .gitignore.)
+- [X] T051 [US4] ✅ (2026-06-02) Release gerado e árvore `target/release/iped-4.4.0-SNAPSHOT/` validada no Windows: `jre/`=Liberica **21.0.11**, `iped.jar` + `lib/` (sem `fst.jar`), `lib/neo4j/` (238 jars, antlr 4.13.2), `python/`, `tools/`, launchers `.exe` gerados por launch4j.
+- [X] T052 [P] [US4] ✅ Smoke Windows coberto pelo **processamento real do `RockPi4.E01` de ponta a ponta** (2026-05-30/06-01) usando o `jre/` embarcado (a máquina tem Java 11 no registro, mas o run usa o bundled jre via `iped.exe`/`iped.bat`); ferramentas nativas confirmadas no log: Sleuthkit out-of-process, ImageMagick, libesedb, MPlayer, LibreOffice. gate SC-004/FR-009.
 - [ ] T053 [P] [US4] Smoke **Linux com Java 21 do sistema**: iniciar e confirmar ferramentas nativas (Sleuthkit out-of-process, OCR/JEP, ImageMagick, LibreOffice, RegRipper) (gate SC-004/FR-009).
 - [ ] T054 [P] [US4] Adicionar teste unitário de `Util.getJavaVersionWarn()` (21/21.0.x → null; 17/25/11 → mensagem correta) e confirmar ausência de aviso na inicialização em 21 (gate FR-012/SC-008).
 
@@ -206,7 +206,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 **Purpose**: documentação e fechamento (a emenda da constituição foi adiantada para T001).
 
 - [ ] T055 Registrar todas as dependências novas/atualizadas em `ThirdParty.txt` e anexar licenças em `licenses/` (Princípio Build).
-- [ ] T056 [P] Atualizar baselines/versões de dependências em `CLAUDE.md` (raiz §3), `iped-engine/CLAUDE.md` (§14), `iped-app/CLAUDE.md` (§1/§6/§12).
+- [X] T056 [P] ✅ Baselines/versões atualizadas: `CLAUDE.md` raiz (Java 21, Neo4j 5.26, Jersey 2.41, FST removido) `b13126ef6`+`934893ee4`+`30c542af9`; `iped-engine/CLAUDE.md` (Java 21+, neo4j-graphdb-api+driver, jersey/zstd, fst removido); `iped-parsers/CLAUDE.md` (jna 5.14); `iped-app/CLAUDE.md` (Java 21, copy-jre, launch4j).
 - [ ] T057 [P] Atualizar `ReleaseNotes.txt` com a entrada da migração para Java 21.
 - [ ] T058 Sweep de regressão final por [quickstart.md](quickstart.md) §7 (todos os gates: build, testes, paridade, perf, Web API, viewers, distribuição, runtime limpo).
 

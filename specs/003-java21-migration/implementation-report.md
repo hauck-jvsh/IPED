@@ -13,13 +13,14 @@ Descobriu-se que a migração de **código** é pequena (o reator compilou com a
 
 | Dimensão | Estado |
 |---|---|
-| Build (16 módulos) no JDK 21 | ✅ BUILD SUCCESS (`mvn clean package`) |
+| Build (17 módulos) no JDK 21 | ✅ BUILD SUCCESS (`mvn clean package`) |
 | Testes engine no JDK 21 | ✅ 136 testes, 0 falhas, 2 skips (YARA integration-gated) |
 | Processamento real E01 (forensic) | ✅ rodou de ponta a ponta (Sleuthkit + pipeline + índice + UI) |
 | Neo4j 4.4 → 5.26 | ✅ migrado **out-of-process via Bolt** e **validado end-to-end** (build verde, isolamento de classpath, import Neo4j 5, post-import Cypher 5 e **aba de grafo na UI renderizando** após reprocessamento) — ver §2.5 |
 | JRE embarcada | ✅ agora copiada da pasta local `iped-jre/` (substitui o artefato `java:jre`) — ver §2.6 |
 | Distribuição (Windows) | ✅ launchers `.exe` refeitos via launch4j (apontam p/ o `jre/` embarcado); `iped.bat` mantido como fallback |
-| Validação de paridade forense (SC-002) | ⏳ não executada (requer caso-baseline Java 11) |
+| CI Java 21 (FR-013) | ✅ job único `build-java21` no workflow; ⏳ confirmação verde pendente de um push |
+| Validação de paridade forense (SC-002) | ⏳ formal não executada (requer baseline Java 11); informal já excelente (6 itens de diff em 781k — §4.5) |
 
 ## 2. Implementado e verificado
 
@@ -125,17 +126,19 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 - Dois fixes no caminho de validação: (1) `GraphConfig.json` post-gen usava sintaxe de índice Cypher 4 → `CREATE INDEX IF NOT EXISTS FOR ...` + `GraphPostImport` endurecido (tx por statement, catch/continue); (2) `BoltNode.getDegree()` (stub que lançava, quebrando o sizing em `GraphModel.convert`) → carrega o degree como snapshot do `COUNT { (n)--() }`, nunca lança.
 - ~~**Guarda de store antigo (FR-007/T043)**~~: **descartada (2026-06-01)** — casos são autocontidos (JRE + libs empacotadas com o caso); o release novo não abre graph store de outra versão, então não há cenário de store 4.x a guardar.
 
-### 4.5 Validação formal de paridade (SC-002)
-- Gerar caso-baseline no build Java 11 e comparar os campos C1–C8 ([contracts/parity-validation.contract.md](contracts/parity-validation.contract.md)). Ainda não executado.
+### 4.5 Validação de paridade (SC-002)
+- **Formal (pendente)**: gerar caso-baseline no build Java 11 e comparar os campos C1–C8 ([contracts/parity-validation.contract.md](contracts/parity-validation.contract.md)). Ainda não executado (requer baseline + dataset de referência).
+- **Informal (FEITA, 2026-06-01) — excelente**: o usuário processou o mesmo caso (RockPi4.E01, forensic) nos releases 4.3.1/Java 11 e 4.4.0/Java 21. Diferença total **6 itens em 781.246 (0,0008%)**. IDÊNTICOS: Total Carved 4387, Active Items 267.186, Parsing Exceptions 2219, I/O errors 0, volume processado, ERRORs `SleuthkitReader` 331. Diff: Subitems/processed −6 (1 OLE carveado expandido no J11 e não no J21 + micro-variação na classificação de fragmentos carveados — dominada por não-determinismo `Processing Queue Random Order`+carving). NENHUM erro de classe novo no J21 (só 1 `LoadGraphDatabaseWorker` benigno). Não substitui a paridade formal C1–C8, mas é forte indício de equivalência.
 
 ### 4.6 Documentação
-- Atualizar baselines "Java 11 → 21" nos `CLAUDE.md` (raiz §3/§5, `iped-engine` §14, `iped-app` §1/§6/§12) — T049/T054/T056.
-- `ThirdParty.txt`/`licenses/` para deps novas/atualizadas — T052/T055.
+- ✅ Baselines "Java 11 → 21" atualizados nos `CLAUDE.md` (raiz §3/§5, `iped-engine` §14, `iped-app` §1/§6/§12) + Jersey/JNA/zstd/FST — T049/T056 (commits `b13126ef6`/`934893ee4`/`30c542af9`/`7c6fdb56b`).
+- ⏳ `ThirdParty.txt`/`licenses/`: Neo4j 5 (engine + driver) adicionado (`b13126ef6`); falta varrer outras deps novas/atualizadas — T055.
+- ⏳ `ReleaseNotes.txt`: entrada da migração Java 21 — T057 (pendente).
 
 ## 5. Caveats e riscos conhecidos
 
 - **SecurityManager é removido no Java 24+** (JEP 486). O `-Djava.security.manager=allow` funciona no 21, mas uma futura migração para 24+ exigirá outro mecanismo para bloquear rede dos HTML viewers. Registrado como dívida.
-- **NPE pré-existente** em `ExternalImageConverter.getDimension` ao abrir SVG (ImageMagick retorna dimensão nula) — **não é regressão do 21**; não-fatal (quebra só o preview daquele arquivo).
+- **Thumbs de SVG dão timeout** (`ImageThumbTask` → `ExternalImageConverter` → **ImageMagick** externo, `imgConvTimeout=20s`+2s/MB): o ImageMagick trava na rasterização de SVG — até SVGs de poucos bytes atingem o timeout. **Não é regressão do 21** — idêntico no J11 (9.865 vs 9.854 timeouts de SVG). Não-fatal (só não gera a thumb daquele item). Mitigação possível (delegate rsvg, renderizador Batik, ou excluir `image/svg+xml` da conversão externa) = follow-up. *(Obs.: uma nota anterior atribuía isto a `ExternalImageConverter.getDimension` retornando null — **não verificado** nesses logs; `getDimension` é outro caminho, usado pelo "Faces Similares" da UI. Investigação adiada p/ outro branch.)*
 - **Launchers `.exe`** agora são gerados no build pelo `launch4j-maven-plugin` (perfil Windows); o `.bat` segue como fallback. A detecção de root do search app exige que a pasta de deploy se chame `iped` (`Main.setConfigPath` sobe de `iped/lib`→`iped`) — convenção de deploy já existente, não específica do launcher.
 
 ## 6. Commits da branch
@@ -154,7 +157,14 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 | `8c8e339` | [Spec Kit] implementation-report + quickstart §8/§9 |
 | `81d6fb6` | JRE embarcada da pasta local `iped-jre/` (substitui `java:jre`) — §2.6 |
 | `e1c5e04` | `--add-exports` p/ o leitor de PNG embarcado (PNG2) — §2.6 |
-| _(esta sessão)_ | **Grafo Neo4j 5 out-of-process via Bolt** (módulo `iped-graph-server` + adapters + `GraphServiceImpl` driver + isolamento `lib/neo4j`) — §2.5 |
+| `9196ad8` | **Grafo Neo4j 5 out-of-process via Bolt** (módulo `iped-graph-server` + adapters + `GraphServiceImpl` driver + isolamento `lib/neo4j`) — §2.5 |
+| `3153a89` | Fix aba de grafo Neo4j 5: degree do nó via Bolt + post-import Cypher 5 |
+| `64ee8f0` | CI: matriz Java 11/14 → job único Java 21 (FR-013) |
+| `f3a17dd` | Doc: numpy/JEP como não-regressão; T027/T028 adiadas |
+| `b13126e` | Doc: baselines CLAUDE.md → Java 21 + Neo4j 5; ThirdParty Neo4j |
+| `934893e` | Doc: status dos bumps; flag da dep FST pendurada |
+| `30c542a` | Remove a dependência FST pendurada (T015) |
+| `7c6fdb5` | Refaz launchers `.exe` Windows p/ Java 21 via launch4j (T050) |
 
 ## 7. Cobertura de requisitos (resumo)
 
@@ -169,10 +179,11 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 | ~~FR-007~~ guarda store 4.x | ❌ **retirado (2026-06-01)** — release novo não abre graph store de outra versão |
 | FR-008 scripts JS/Python | ✅ JS/Python rodam no 21 (JEP 4.0.3 validado); numpy/ML instalados por-task pelo usuário — não-regressão (§4.2) |
 | FR-009 tools nativas | ✅ (Sleuthkit/MPlayer/libesedb/ImageMagick/LibreOffice/sqlite no run real) |
-| FR-011 viewers (incl. grafo) | ⚠️ LibreOffice/UI/**grafo (aba Vínculos ✅)** OK; NPE pré-existente em SVG |
+| FR-011 viewers (incl. grafo) | ⚠️ **grafo (aba Vínculos) ✅** + LibreOffice/UI exercitados; Mapa/Timeline a confirmar (T045). Thumbs de SVG dão timeout (`ImageThumbTask`+ImageMagick) — pré-existente, não-regressão (idêntico no J11) |
 | FR-012 version check | ✅ |
+| FR-013 CI Java 21 | ✅ job único `build-java21` (commit `64ee8f0e3`); confirmação verde pendente de um push (T048) |
 | FR-014 deps compatíveis | ✅ (no escopo migrado) |
-| FR-015 runtime embarcado (Win) | ✅ JRE 21 embarcada da pasta local `iped-jre/` (§2.6); rebuild dos `.exe` pendente |
+| FR-015 runtime embarcado (Win) | ✅ JRE 21 da pasta local `iped-jre/` (§2.6) + **launchers `.exe` refeitos via launch4j** (§4.1, commit `7c6fdb56b`) |
 | FR-017 Java 11 dropado | ✅ (release=21, MIN_JAVA_VER=21) |
 | FR-018 preservar comportamento | ✅ (nenhuma feature/recurso de linguagem novo) |
 | Governança (emenda constituição) | ✅ (v1.2.0) |
