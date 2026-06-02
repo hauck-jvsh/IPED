@@ -179,6 +179,7 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 | ~~FR-007~~ guarda store 4.x | ❌ **retirado (2026-06-01)** — release novo não abre graph store de outra versão |
 | FR-008 scripts JS/Python | ✅ JS/Python rodam no 21 (JEP 4.0.3 validado); numpy/ML instalados por-task pelo usuário — não-regressão (§4.2) |
 | FR-009 tools nativas | ✅ (Sleuthkit/MPlayer/libesedb/ImageMagick/LibreOffice/sqlite no run real) |
+| FR-010 Web API REST | ✅ validada no 21 sobre `F:\test` (sources/categories/search/docs/text/content/thumb/swagger; Jersey 2.41/Grizzly) — T041 |
 | FR-011 viewers (incl. grafo) | ⚠️ **grafo (aba Vínculos) ✅** + LibreOffice/UI exercitados; Mapa/Timeline a confirmar (T045). Thumbs de SVG dão timeout (`ImageThumbTask`+ImageMagick) — pré-existente, não-regressão (idêntico no J11) |
 | FR-012 version check | ✅ |
 | FR-013 CI Java 21 | ✅ job único `build-java21` (commit `64ee8f0e3`); confirmação verde pendente de um push (T048) |
