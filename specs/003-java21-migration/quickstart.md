@@ -85,7 +85,7 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 | Gate | Critério | Estado (sweep T058, 2026-06-02) |
 |---|---|---|
 | Build | `mvn clean package` em Java 21, todos os módulos | ✅ **17 módulos BUILD SUCCESS** (vários runs full-clean) |
-| Testes | 100% passam (SC-001) | ✅ **reator completo verde no Java 21 local** (`mvn clean test -fae`, 17/17 módulos): `iped-parsers-impl` 183/0/0 (1 skip = JEP local), `iped-engine` 146/0/0 (com YARA). As falhas de `OCRParserTest` PSD/SVG eram regressão **real** do Java 21 (png-reader/JEP 396), corrigidas no surefire `argLine` (§2.7 do report) + JaCoCo 0.8.12. CI verde pendente do push (T048). |
+| Testes | 100% passam (SC-001) | ✅ **CI verde no Java 21** (T048, run `26886502532`, 2026-06-03) + reator completo verde local (`mvn clean test -fae`, 17/17 módulos): `iped-parsers-impl` 183/0/0 (1 skip = JEP local), `iped-engine` 146/0/0 (com YARA). As falhas de `OCRParserTest` PSD/SVG eram regressão **real** do Java 21 (png-reader/JEP 396), corrigidas no surefire `argLine` (§2.7 do report) + JaCoCo 0.8.12. |
 | Paridade | zero divergências em C1–C8 (SC-002) | ⏳ **formal pendente** (precisa baseline Java 11). **Informal excelente**: 6 itens de diff em 781.246 (0,0008%); carving/Active Items/Parsing-Exceptions idênticos (§4.5 do report) |
 | Performance | regressão ≤ 5% (SC-005) | ⏳ benchmark formal pendente. **Informal dentro do gate**: mesmo caso 4692s (J11) → 4784s (J21) = **+1,96%** (não é benchmark controlado) |
 | ~~Casos antigos~~ | **Fora de escopo (2026-06-01)** — casos autocontidos; release novo não abre casos antigos (FR-004/005/006/007 retirados) | — |

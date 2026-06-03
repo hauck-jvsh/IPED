@@ -127,7 +127,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 ### Checkpoint Foundational
 
 - [X] T031 ✅ (2026-06-02) `mvn clean package` compila **todos os 17 módulos** no Java 21 — BUILD SUCCESS, validado em vários runs full-clean. `target/classes` sempre gerado pelo Maven (clean), sem "Unresolved compilation".
-- [ ] T032 **PARCIAL** — `mvn -pl iped-engine test` = **136/136 verde** no 21 (inclui `Yara*` com `YARA_X_LIB_PATH`). ⚠️ `iped-parsers` `OCRParserTest` (PSD/SVG) falha **por ambiente local** (sem Tesseract/ImageMagick configurados como no CI), não por regressão do 21 → o "100% todos os módulos" será confirmado quando o **CI** rodar (T048). Gate FR-002/SC-001.
+- [X] T032 ✅ (2026-06-03) **100% verde no Java 21, todos os módulos**: reator completo `mvn clean test -fae` no JDK 21 = **17/17 SUCCESS** (local) + **CI verde** (run `26886502532`). `iped-parsers-impl` 183/0/0 (1 skip = JEP/PythonParserTest local), `iped-engine` 146/0/0 (inclui `Yara*` com `YARA_X_LIB_PATH`). ⚠️ **Correção do registro anterior:** `OCRParserTest` PSD/SVG NÃO falhava "por ambiente local" — era **regressão real do Java 21** (png-reader/JEP 396 sem `--add-exports` na JVM de teste), corrigida em `d58cc50bf` (ver §2.7 do implementation-report + T048). Gate FR-002/SC-001.
 
 **Checkpoint**: substrato pronto — as user stories podem começar.
 
@@ -178,7 +178,7 @@ description: "Task list — Migração do IPED para Java 21 LTS"
 **Independent Test**: o pipeline de CI builda e roda os testes no Java 21 com sucesso.
 
 - [X] T047 [US3] ✅ (commit `64ee8f0e3`) Substituídos `build-java11`/`build-java14` por **um job `build-java21`** em `.github/workflows/maven.yml` (`actions/setup-java@v4`, `distribution: liberica`, `java-version: 21`, `java-package: jdk+fx`, cache maven); `checkout@v1`→`@v4`; removido o tar do BellSoft 14; mantidos ferramentas nativas + verify `libyara_x_capi.so` + `YARA_X_LIB_PATH`. ⚠️ `jep` mantido em **4.0.3** (bump 4.2 = T027/T028 adiados), não 4.2.x.
-- [ ] T048 [US3] Confirmar `mvn -B package` + testes verdes no CI Java 21 (gate FR-013). **Pendente de um push** (só roda no GitHub Actions).
+- [X] T048 [US3] Confirmar `mvn -B package` + testes verdes no CI Java 21 (gate FR-013). **VERDE (2026-06-03, run `26886502532`, 7m50s)** após o fix `d58cc50bf` (png-reader/JEP 396 no surefire `argLine` + JaCoCo 0.8.12). O CI vinha vermelho desde 2026-05-30 por `OCRParserTest` PSD/SVG (regressão Java 21, não ambiente — ver §2.7 do implementation-report).
 - [X] T049 [P] [US3] **PARCIAL→✅ no repo** — §5 de `CLAUDE.md` (raiz) atualizada p/ JDK 21 (`b13126ef6`). `README.md`/wiki de contribuição são docs upstream e não foram alterados neste fork.
 
 **Checkpoint**: contribuições novas são validadas no Java 21.
