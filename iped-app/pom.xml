@@ -992,15 +992,18 @@
                                     <headerType>gui</headerType>
                                     <outfile>${release.dir}/bin/IPED-SearchApp.exe</outfile>
                                     <dontWrapJar>true</dontWrapJar>
-                                    <!-- exe is in bin/; launch4j resolves BOTH the bundled jre <path>
-                                         and the <jar> relative to the exe dir, so both need ../ to reach
-                                         the release root (bin/..\jre, bin/..\lib). chdir=.. sets the app's
-                                         working dir to the release root. -->
-                                    <jar>../lib/iped-search-app.jar</jar>
-                                    <chdir>..</chdir>
+                                    <!-- This exe is built into release/bin/ but Manager.prepareOutputFolder
+                                         copies release/bin/* into the CASE ROOT (sibling of the case's iped/
+                                         folder). So at its real deploy location the bundled jre and search-app
+                                         jar live under iped/ (case/iped/jre, case/iped/lib). launch4j resolves
+                                         both <jar> and <jre><path> relative to the exe dir, so they must be
+                                         iped/... (NOT ../...). chdir=. keeps cwd at the case root, matching the
+                                         hand-written IPED-SearchApp.bat that this replaces. (003) -->
+                                    <jar>iped/lib/iped-search-app.jar</jar>
+                                    <chdir>.</chdir>
                                     <icon>${resources.dir}/root/iped.ico</icon>
                                     <jre>
-                                        <path>../jre</path>
+                                        <path>iped/jre</path>
                                         <requiresJdk>false</requiresJdk>
                                         <opts>
                                             <opt>-Djava.security.manager=allow</opt>
