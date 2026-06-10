@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; mvn -pl iped-engine -am install -DskipTests -B 2>&1 | Select-String -Pattern 'BUILD SUCCESS|BUILD FAILURE|ERROR' | Select-Object -Last 15)",
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; mvn -pl iped-engine test -B 2>&1 | Select-String -Pattern 'Tests run:|BUILD SUCCESS|BUILD FAILURE|FAIL|ERROR\\\\]|<<< ERROR|<<< FAILURE|Running iped' | Select-Object -Last 60)",
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; mvn clean compile -B 2>&1 | Select-String -Pattern 'BUILD SUCCESS|BUILD FAILURE|ERROR|cannot find symbol|does not exist' | Select-Object -Last 30)",
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; mvn -pl iped-engine -am install -DskipTests -B 2>&1 | Select-String -Pattern 'BUILD SUCCESS|BUILD FAILURE|ERROR' | Select-Object -Last 3; if \\($LASTEXITCODE -eq 0\\) { mvn -pl iped-engine test -B 2>&1 | Select-String -Pattern 'Tests run: \\\\d+, Fail|BUILD SUCCESS|BUILD FAILURE|<<< ERROR|<<< FAILURE' | Select-Object -Last 10 })",
+      "Bash(git add *)",
+      "Bash(git commit -q -m ' *)",
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; mvn -pl iped-engine compile -B 2>&1 | Select-String -Pattern 'BUILD SUCCESS|BUILD FAILURE|ERROR\\\\]|cannot find symbol|does not exist|package org.neo4j|incompatible|Could not resolve|Failure to find|\\\\.java:\\\\[' | Select-Object -First 50)",
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; mvn clean compile -B 2>&1 | Select-String -Pattern 'BUILD SUCCESS|BUILD FAILURE|ERROR\\\\]|cannot find symbol|does not exist|package org.neo4j|Could not resolve|Failure to find|\\\\.java:\\\\[' | Select-Object -First 40)",
+      "PowerShell($env:JAVA_HOME='H:\\\\java\\\\LibericaJDK-21-Full'; $o = mvn clean compile -B 2>&1; \\($o | Select-String -Pattern 'BUILD SUCCESS|BUILD FAILURE' | Select-Object -Last 1\\); \"ERROR count: $\\(\\($o | Select-String -Pattern 'ERROR'\\).Count\\)\")"
+    ]
+  }
+}

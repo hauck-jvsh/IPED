@@ -8,7 +8,7 @@ IPED é uma ferramenta open source de **forense digital** desenvolvida desde 201
 
 Capacidades centrais: hashing (MD5, SHA-1/256/512, Edonkey, PhotoDNA), bases de hash (NSRL, ProjectVic, ICSE), detecção de assinatura, parsing recursivo de containers, expansão de imagens embarcadas, OCR (Tesseract), detecção de idioma, NER (Stanford CoreNLP), regex com validação (CPF/CNPJ/cartões/cripto), gallery imagem/vídeo, georreferenciamento, transcrição de áudio (Vosk/Whisper/Google/Azure), similaridade visual, reconhecimento facial, detecção de nudez (DIE/Yahoo NSFW), graph analytics (Neo4j), relatórios HTML, casos portáteis e Web API REST.
 
-Build: **Java 11 + JavaFX**, Maven multi-módulo, distribuído com JRE embarcado + ferramentas externas (Sleuthkit, ImageMagick, Tesseract, LibreOffice, MPlayer, RegRipper, libpff, libesedb, evtxexport, rifiuti2, GraphViz, etc.).
+Build: **Java 21 LTS + JavaFX**, Maven multi-módulo, distribuído com JRE embarcado + ferramentas externas (Sleuthkit, ImageMagick, Tesseract, LibreOffice, MPlayer, RegRipper, libpff, libesedb, evtxexport, rifiuti2, GraphViz, etc.).
 
 ## 2. Estrutura do repositório
 
@@ -17,7 +17,7 @@ IPED/
 ├── pom.xml                                 # Parent POM (versão 4.4.0-SNAPSHOT)
 ├── README.md, LICENSE.txt, ThirdParty.txt, ReleaseNotes.txt
 ├── licenses/                                # licenças de terceiros distribuídas
-├── .github/workflows/maven.yml              # CI (Ubuntu 22.04, Java 11 e 14)
+├── .github/workflows/maven.yml              # CI (Ubuntu 22.04, Java 21 Liberica Full FX)
 │
 ├── iped-api/         → docs em [iped-api/CLAUDE.md](iped-api/CLAUDE.md)
 ├── iped-utils/       → docs em [iped-utils/CLAUDE.md](iped-utils/CLAUDE.md)
@@ -44,7 +44,7 @@ IPED/
 
 | Camada | Stack |
 |---|---|
-| Linguagem | Java 11 (Liberica/BellSoft Full JDK com JavaFX) |
+| Linguagem | Java 21 LTS (Liberica/BellSoft Full JDK com JavaFX) |
 | Build | Maven 3+ (multi-módulo, parent pom em `pom.xml`) |
 | Indexação/busca | Apache Lucene 9.2.0 |
 | Parsing | Apache Tika 2.4.0(-p1) + parsers customizados |
@@ -53,13 +53,13 @@ IPED/
 | PDF | Apache PDFBox 2.0.27, IcePDF 7.0.0 |
 | SQLite | xerial-sqlite-jdbc 3.41.2.2, libfqlite 1.57.05 (undelete) |
 | Office | LibreOffice 7.2.2 via UNO bridge + NOA-Libre |
-| Graph | Neo4j 4.4.4 |
-| Web API | Jersey 2.30 + Grizzly + Swagger |
+| Graph | Neo4j 5.26.0 (engine full embarcado **out-of-process via Bolt**, isolado em `lib/neo4j/` pelo módulo `iped-graph-server`; o engine consome só `neo4j-graphdb-api` + `neo4j-java-driver`) |
+| Web API | Jersey 2.41 + Grizzly + Swagger |
 | Storage opcional | MinIO 8.3.8, OpenSearch 2.1 |
 | Scripting | Nashorn 15.4 (JS), JEP 4.0.3 (Python embarcado) |
 | Speech | Vosk 0.3.32, Microsoft Cognitive Speech 1.19, Google Cloud Speech 1.22 |
 | Logging | SLF4J 1.7.25 + Log4j 2.17.1 |
-| Cache/serial | Caffeine 3.2.2, FST 2.57, Zstd-JNI |
+| Cache/serial | Caffeine 3.2.2, Zstd-JNI (FST removido na migração Java 21) |
 | OCR | Tesseract 5 (via JEP) |
 | ML/IA | RandomForest (DIE), Yahoo OpenNSFW (Keras/TensorFlow), PhotoDNA (lib restrita) |
 
@@ -67,7 +67,7 @@ Dependências de terceiros completas: [`ThirdParty.txt`](ThirdParty.txt).
 
 ## 4. Convenções globais
 
-- **Java 11** (`maven.compiler.source/target = 11`), `UTF-8` por todo o source.
+- **Java 21 LTS** (`maven.compiler.release = 21`), `UTF-8` por todo o source.
 - **Versão**: `4.4.0-SNAPSHOT` no parent; modules herdam.
 - **Branch padrão**: `master` (instável, dev). Releases nas tags.
 - **Locale**: detectado por `LocaleResolver` (lê system property `iped-locale`). Mensagens em PT-BR e EN; arquivos em `iped-app/resources/localization/`.
@@ -80,7 +80,7 @@ Dependências de terceiros completas: [`ThirdParty.txt`](ThirdParty.txt).
 ## 5. Como buildar
 
 Pré-requisitos:
-- Git, Maven 3.6+, JDK 11 com JavaFX (Liberica OpenJDK 11 Full, por exemplo).
+- Git, Maven 3.6+, JDK 21 com JavaFX (Liberica OpenJDK 21 Full, por exemplo).
 - Variável `JAVA_HOME` apontando para esse JDK.
 - No Linux, é necessário compilar/instalar libagdb + dependências (ver wiki "Linux").
 
@@ -287,5 +287,5 @@ A árvore de releases está em `ReleaseNotes.txt` (180 KB) — referência detal
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-[specs/001-yara-rules-engine/plan.md](specs/001-yara-rules-engine/plan.md).
+[specs/003-java21-migration/plan.md](specs/003-java21-migration/plan.md).
 <!-- SPECKIT END -->

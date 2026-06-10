@@ -8,7 +8,7 @@ O `iped-api` é o **módulo de contratos** do IPED (Indexador e Processador de E
 
 - Define o contrato central da plataforma (item de evidência, fonte de dados, busca, configuração, I/O).
 - É a base para plugins, extensões e isolamento de camadas (engine ↔ viewers ↔ parsers).
-- Empacotamento: `jar`. Compilado para **Java 11**.
+- Empacotamento: `jar`. Compilado para **Java 21**.
 - Versão: `4.4.0-SNAPSHOT` (parent `iped:iped-parent`).
 
 Qualquer mudança aqui propaga para todo o ecossistema. Trate como API pública: **prefira aditivo, evite breaking changes.**
