@@ -98,7 +98,7 @@ iped -d <DATASET_REF> -o <CASE_J21> -profile forensic -tz <TZ>
 ## 8. Rodar o release no Java 21 (Windows)
 
 1. **Build**: `mvn clean package` com `JAVA_HOME` = Liberica Full 21. Gera o release completo (`iped.jar` + `lib/` + `lib/neo4j/` + `jre/` + launchers `.exe`).
-   - O JRE embarcado é **copiado da pasta local `iped-jre/jre-21.0.11-full/`** (Liberica Full 21 com JavaFX) pela execution `copy-jre` — o dev coloca essa pasta ali antes do build (está no `.gitignore`). Não é mais necessário publicar o artefato `java:jre`.
+   - O JRE embarcado vem do artefato **`java:jre:21.0.11`** (zip Liberica Full 21 com JavaFX, `jre/` no topo), publicado no repo `iped-maven` e descompactado pela execution `unpack-jre` — sem passos manuais. (O workaround anterior, `copy-jre` da pasta local `iped-jre/`, foi removido em 2026-06-12 após a publicação do artefato.)
    - No Windows, o perfil `windows-launchers` gera `iped.exe` (console) e `bin/IPED-SearchApp.exe` (GUI) via launch4j, já apontando para o `jre/` embarcado.
 2. **Deploy**: copiar `target/release/iped-4.4.0-SNAPSHOT/` para a instalação (o usuário é dono do deploy). Para a UI de análise (`IPED-SearchApp.exe`) localizar o config, a pasta do caso deve se chamar `iped` (convenção `<caso>/iped/`; `Main.setConfigPath` sobe de `iped/lib`→`iped`). O `iped.exe` de processamento não tem essa exigência.
 3. **Executar**:
