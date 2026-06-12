@@ -17,7 +17,7 @@ Descobriu-se que a migração de **código** é pequena (o reator compilou com a
 | Testes engine no JDK 21 | ✅ 136 testes, 0 falhas, 2 skips (YARA integration-gated) |
 | Processamento real E01 (forensic) | ✅ rodou de ponta a ponta (Sleuthkit + pipeline + índice + UI) |
 | Neo4j 4.4 → 5.26 | ✅ migrado **out-of-process via Bolt** e **validado end-to-end** (build verde, isolamento de classpath, import Neo4j 5, post-import Cypher 5 e **aba de grafo na UI renderizando** após reprocessamento) — ver §2.5 |
-| JRE embarcada | ✅ agora copiada da pasta local `iped-jre/` (substitui o artefato `java:jre`) — ver §2.6 |
+| JRE embarcada | ✅ artefato **`java:jre:21.0.11` publicado no `iped-maven`** e descompactado via `unpack-jre` (workaround `copy-jre`/pasta local removido em 2026-06-12) — ver §2.6 e §4.1 |
 | Distribuição (Windows) | ✅ launchers `.exe` refeitos via launch4j (apontam p/ o `jre/` embarcado); `iped.bat` mantido como fallback |
 | CI Java 21 (FR-013) | ✅ job único `build-java21` no workflow; ⏳ confirmação verde pendente de um push |
 | Validação de paridade forense (SC-002) | ⏳ formal não executada (requer baseline Java 11); informal já excelente (6 itens de diff em 781k — §4.5) |
@@ -81,7 +81,7 @@ O bump 4.4 → 5.26 compila, mas **quebra em runtime** por dois motivos distinto
 - Gotcha resolvido de quebra: `CacheTimePeriodEntry` (timeline) usava `scala.Array.copy` que vinha **transitivo do Neo4j full**; com a exclusão wildcard o scala sumiu → trocado por `System.arraycopy` (equivalente).
 
 ### 2.6 JRE local e leitor de PNG (commits `81d6fb6`, `e1c5e042`)
-- **JRE embarcada da pasta local**: o `iped-app/pom.xml` substituiu o `unpack` do artefato `java:jre:21.0.11` (não publicado) por um `copy-jre` que copia uma Liberica Full 21 de `iped-jre/` (gitignored) → `release/jre`. Resolve o item de distribuição "publicar o artefato JRE".
+- **JRE embarcada da pasta local**: o `iped-app/pom.xml` substituiu o `unpack` do artefato `java:jre:21.0.11` (não publicado) por um `copy-jre` que copia uma Liberica Full 21 de `iped-jre/` (gitignored) → `release/jre`. Resolve o item de distribuição "publicar o artefato JRE". **⤷ Superado (2026-06-12)**: artefato publicado no `iped-maven` e pom revertido para `unpack-jre` — ver §4.1.
 - **`--add-exports` para o leitor de PNG**: o `png-reader-jdk11+28-p1.jar` (pacote `com.sun.imageio.plugins.png2`) acessa internos do `java.desktop` (`com.sun.imageio.plugins.common.*` e `sun.awt.image.ByteInterleavedRaster`). No Java 11 passava sob `--illegal-access=permit`; no 17+ vira `IllegalAccessError` (JEP 396) e quebra ícones do ProgressFrame + decodificação de PNG. Fix: dois `--add-exports` em `Bootstrap.getCustomJVMArgs()` (lista obtida via `jdeps -jdkinternals`). **Verificado em runtime** (log limpo).
 
 ### 2.7 CI Java 21: mesmo `--add-exports` no surefire + bump do JaCoCo (T048)
@@ -115,7 +115,7 @@ Validado em **WSL2 Ubuntu-26.04** com **Liberica Full 21.0.11+11** do sistema (i
 ## 4. Pendências
 
 ### 4.1 Distribuição (Windows) — para o produto sair "redondo"
-- **Publicar `java:jre:21.0.11`** (zip com `jre/` no topo, Liberica Full 21 c/ JavaFX) em `java/jre/21.0.11/` no maven do projeto (`iped-maven`). O pom já aponta para essa versão (`0a602e6`). Até publicar, `mvn package` falha na `unpack-jre`; usar swap manual do `jre/`.
+- ~~**Publicar `java:jre:21.0.11`**~~ **FEITO (2026-06-12)**: zip (com `jre/` no topo, Liberica Full 21 c/ JavaFX, ~92 MB) publicado em `java/jre/21.0.11/` no maven do projeto (`iped-maven`). O `iped-app/pom.xml` voltou à execution `unpack-jre` (artefato `java:jre:21.0.11`) e o workaround `copy-jre`/pasta local `iped-jre/` (§2.6, `81d6fb6`) foi removido. Resolução validada via `mvn dependency:get`.
 - ~~**Rebuildar os launchers `.exe`**~~ **FEITO (2026-06-02)**: `launch4j-maven-plugin` 2.5.2 num `<profile>` ativado no Windows (`iped-app/pom.xml`) gera `iped.exe` (console, wrappa `iped.jar`) e `bin/IPED-SearchApp.exe` (GUI, wrappa `lib/iped-search-app.jar`) a cada build, apontando para o `jre/` embarcado (`<path>` exe-relativo, sem `minVersion` → ignora o registro) + `-Djava.security.manager=allow`. Os binários Java-11 versionados foram removidos; ícone extraído p/ `resources/root/iped.ico`. Validado no Windows: `iped.exe`→Bootstrap no JRE 21; `IPED-SearchApp.exe`→UI completa no JRE 21 (testado em pasta `iped`).
 - **Embutir os fixes no jar**: novo `mvn clean package` embute `Bootstrap` (SecurityManager) e `StartUpControl` no `iped.jar` — aí o flag manual no `.bat` e o spam deixam de existir.
 
