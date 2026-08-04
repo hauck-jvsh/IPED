@@ -45,6 +45,8 @@ Duas alternativas foram avaliadas a pedido e rejeitadas, ambas detalhadas em [re
 - Custo de consulta proporcional ao resultado, não ao acervo (exceto panorama e agregações, conscientemente)
 - Somente-leitura por padrão; nenhuma escrita sem registro prévio em auditoria
 - Nenhuma modificação nos arquivos de evidência original, em qualquer modo
+- Ajustes do servidor em `Configurable<T>` carregado de `conf/`, nunca em constantes de código (Princípio IV)
+- Charset explícito em toda serialização; logging por SLF4J, sem `System.out`/`System.err` (Princípio V)
 - Ferramentas precisam ser acionáveis por modelo local (FR-065): erros carregam a informação necessária à correção, sem exigir dedução
 
 **Scale/Scope**: até ~10 milhões de itens por caso; múltiplos casos abertos por sessão, consulta sobre um caso por vez
@@ -53,19 +55,40 @@ Duas alternativas foram avaliadas a pedido e rejeitadas, ambas detalhadas em [re
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-**Status: NÃO AVALIÁVEL — sem princípios ratificados.**
+**Status: PASSA, com duas correções aplicadas ao desenho.**
 
-`.specify/memory/constitution.md` está com o template de origem não preenchido: os nomes de princípio permanecem como `[PRINCIPLE_1_NAME]`, as seções como `[SECTION_2_CONTENT]`, e a versão como `[CONSTITUTION_VERSION]`. Não há portas a avaliar.
+Avaliado contra a Constituição v1.0.0, ratificada em 2026-08-04 — depois deste plano ter sido escrito. O bloco anterior registrava "não avaliável" porque o portão ainda não existia; esta é a reavaliação que aquele registro previa.
 
-Isto **não é uma aprovação** — é a constatação de que o portão não existe. Registro para que não seja lido depois como "passou":
+| Princípio | Resultado |
+|---|---|
+| **I — Integridade da evidência é inviolável** | **Passa.** FR-031 proíbe modificar evidência original em qualquer modo; FR-025 fixa somente-leitura por padrão; FR-033 exige estado anterior em operação destrutiva; SC-003 verifica. A trilha de auditoria excede o exigido pelo princípio. |
+| **II — Caso processado é contrato permanente** | **Passa.** O desenho lê nomes de campo via `LoadIndexFields` e nunca os define; não toca `BasicProps`, `IndexItem` nem `AppAnalyzer`; não altera método algum de `iped-api`. Nenhuma classe existente é modificada. |
+| **III — Estender antes de modificar** | **Passa com folga.** Módulo novo consumindo apenas API pública. R3 rejeitou explicitamente alterar `IPEDSearcher`, apesar de ser a correção mais direta, justamente por ser API central usada pela UI — é este princípio aplicado antes de existir. Os dois arquivos tocados (parent `pom.xml`, `iped-app/pom.xml`) são aditivos. |
+| **IV — Comportamento configurável vive em configuração** | **Corrigido.** Ver abaixo. |
+| **V — Nada implícito no que varia por ambiente** | **Corrigido.** Ver abaixo. |
 
-- Nenhum princípio do projeto foi verificado contra este plano.
-- As decisões de desenho foram justificadas contra o spec e contra o código, não contra governança ratificada.
-- Esta feature tem requisitos de auditoria, integridade de evidência e reprodutibilidade (FR-031 a FR-037) — exatamente o tipo de restrição que uma constituição normalmente fixaria e que, aqui, está fixado apenas no spec.
+### Correção sob o Princípio IV
 
-**Recomendação**: executar `/speckit-constitution` antes de `/speckit-implement`. Se princípios forem ratificados depois deste plano, reavaliar este bloco — em particular R1 (módulo novo), R2 (protocolo próprio) e R7 (formato da trilha).
+A lacuna era real: o servidor é externamente configurável — área de auditoria, modo de escrita, política de egresso, teto de página e de conteúdo — e nem o plano nem as tarefas mencionavam `Configurable<T>`.
 
-**Re-checagem pós-Phase 1**: sem alteração. O desenho da Phase 1 não introduziu dependência, processo ou superfície além do que o Technical Context declara, e continua sem portão contra o qual ser avaliado.
+A hipótese de desvio justificado (que `Configurable<T>` fosse específico do pipeline de tasks e não coubesse a um processo servidor) **não se sustenta**, e a verificação foi conclusiva em dois pontos:
+
+- `Configurable<T>` vive em `iped-api` e é genérico — filtro de lookup de recurso e processamento de arquivos de configuração. `AbstractTaskConfig<T>` é que é a especialização para tasks.
+- `ConfigurationManager` se instancia a partir de um `IConfigurationDirectory` e não depende de `Manager`, `Worker` ou de processamento em curso.
+
+E o custo é praticamente nulo, porque `IPEDSource` **já** chama `Configuration.getInstance().loadConfigurables(...)` e `ConfigurationManager.get().findObject(...)`: o servidor terá de inicializar o sistema de configuração só para abrir um caso.
+
+**Decisão**: os ajustes do servidor MUST viver em `Configurable<T>` carregado de `conf/`, como o restante do IPED. Acrescentada a tarefa T088.
+
+### Correção sob o Princípio V
+
+Charset e logging não estavam explicitados em lugar nenhum — nem no Technical Context, nem nas tarefas de `JsonRpcCodec`, `AuditTrail` ou diagnóstico. São exatamente os pontos onde o padrão herdado da plataforma vira defeito na máquina de outra pessoa.
+
+**Decisão**: charset explícito em toda serialização (JSON-RPC sobre stdio e trilha em JSON Lines) e logging via SLF4J, sem `System.out`/`System.err`. Aplicado ao Technical Context e às tarefas T008, T017 e T067.
+
+### Nota sobre a ordem
+
+As duas correções custaram poucas linhas porque nenhum código existia ainda. Se a constituição tivesse sido ratificada depois da implementação, o Princípio IV significaria reescrever a camada de configuração do módulo. É argumento para ratificar governança antes de planejar, não depois.
 
 ## Project Structure
 
@@ -93,6 +116,8 @@ iped-mcp/                                    # NOVO módulo Maven (Java 11)
     ├── main/
     │   ├── java/iped/mcp/
     │   │   ├── McpServerMain.java           # entry point stdio; inicialização programática (FR-064)
+    │   │   ├── config/
+    │   │   │   └── McpServerConfig.java      # Configurable<T> lido de conf/ (Princípio IV)
     │   │   ├── protocol/                    # JSON-RPC 2.0 + handshake MCP (R2)
     │   │   │   ├── JsonRpcCodec.java
     │   │   │   ├── McpDispatcher.java       # initialize, tools/list, tools/call

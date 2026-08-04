@@ -14,7 +14,7 @@ description: "Task list for IPED ↔ LLM integration (MCP server + agent skill)"
 
 **Escopo**: a US5 (preparo de evidência) é **fase 2** por decisão D1 e **não** aparece aqui. Os FR-058 a FR-061 ficam fora desta entrega.
 
-**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007) e aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
+**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007) e T088 na reavaliação contra a Constituição v1.0.0. Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -53,16 +53,17 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 
 - [ ] T006 Construir o **caso de referência pequeno** e versionar sua receita reprodutível em `iped-mcp/src/test/resources/reference-case/README.md`, com conteúdo conhecido e não sensível cobrindo: documentos, imagens com GPS, e-mails, mensagens, itens deletados, itens recuperados por carving e hits de regex
 - [x] T007 Reabrir a decisão provisória de durabilidade da trilha de auditoria e registrar o desfecho em `specs/001-iped-llm-integration/research.md` (seção R7) antes de escrever `AuditTrail` — **concluída em 2026-08-04**: estação vira buffer write-ahead, pasta do caso vira o lar da trilha; SC-003 reescrito e FR-071 a FR-074 acrescentados
-- [ ] T008 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/JsonRpcCodec.java` (JSON-RPC 2.0 sobre Jackson: request, response, notification, erro)
+- [ ] T008 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/JsonRpcCodec.java` (JSON-RPC 2.0 sobre Jackson: request, response, notification, erro), com **charset UTF-8 explícito** na leitura e escrita de stdio — sem herdar o padrão da plataforma (Princípio V)
 - [ ] T009 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/McpError.java` com o envelope comum `{code, message, remedy, details}` de [contracts/mcp-tools.md](./contracts/mcp-tools.md) — `remedy` é obrigatório, é o que sustenta FR-065
 - [ ] T010 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/ToolDescriptor.java` e o registro de ferramentas com esquema de entrada
 - [ ] T011 Implementar `iped-mcp/src/main/java/iped/mcp/protocol/McpDispatcher.java` tratando `initialize`, `tools/list` e `tools/call`, declarando a versão de protocolo suportada (depende de T008, T009, T010)
 - [ ] T012 Implementar `iped-mcp/src/main/java/iped/mcp/McpServerMain.java` como entry point stdio, iniciável programaticamente por processo hospedeiro (FR-064)
-- [ ] T013 [P] Implementar `iped-mcp/src/main/java/iped/mcp/session/Session.java` com operador da estação, modo de acesso `READ_ONLY` por padrão e política de egresso vigente (FR-025)
+- [ ] T088 Implementar `iped-mcp/src/main/java/iped/mcp/config/McpServerConfig.java` como `Configurable<T>` de `iped-api`, carregado por `ConfigurationManager` a partir de `conf/`, cobrindo área de auditoria, modo de acesso, política de egresso e tetos de página e de conteúdo. Nenhum desses valores MUST viver em constante de código (Princípio IV)
+- [ ] T013 [P] Implementar `iped-mcp/src/main/java/iped/mcp/session/Session.java` com operador da estação, modo de acesso `READ_ONLY` por padrão e política de egresso vigente, lendo os valores de `McpServerConfig` (FR-025, depende de T088)
 - [ ] T014 [P] Implementar `iped-mcp/src/main/java/iped/mcp/session/CaseValidator.java` validando integridade do caso e faixa de versão 4.x, com diagnósticos `NOT_A_CASE`, `CASE_INCOMPLETE`, `CASE_IN_PROCESSING`, `VERSION_UNSUPPORTED` (FR-001, FR-002, FR-054)
 - [ ] T015 Implementar `iped-mcp/src/main/java/iped/mcp/session/CaseRegistry.java` com abertura idempotente, `caseId` estável derivado do caminho canônico + identidade do índice, e liberação sem trava pendente (FR-003, FR-004, FR-005)
 - [ ] T016 [P] Implementar `iped-mcp/src/main/java/iped/mcp/audit/AuditRecord.java` com `seq`, `operation`, `parameters`, `resultVolume`, `outcome`, `priorState`, `prevHash`, `hash`
-- [ ] T017 Implementar `iped-mcp/src/main/java/iped/mcp/audit/AuditTrail.java` em JSON Lines append-only encadeado por hash, gravado na área de auditoria da estação com escrita e `fsync` a cada operação, recusando a operação quando não for possível registrar, e carregando vínculo forte com o caso (caminho canônico + identidade do índice) para reassociação (FR-032, FR-034, FR-035, FR-071, R7)
+- [ ] T017 Implementar `iped-mcp/src/main/java/iped/mcp/audit/AuditTrail.java` em JSON Lines append-only encadeado por hash, com **charset UTF-8 explícito** (Princípio V), gravado na área de auditoria da estação com escrita e `fsync` a cada operação, recusando a operação quando não for possível registrar, e carregando vínculo forte com o caso (caminho canônico + identidade do índice) para reassociação (FR-032, FR-034, FR-035, FR-071, R7)
 - [ ] T083 Implementar a sincronização automática da trilha para a subpasta de auditoria dentro da pasta do caso, no encerramento e periodicamente durante a sessão, em `iped-mcp/src/main/java/iped/mcp/audit/AuditSync.java` — sem ação manual do perito (FR-072)
 - [ ] T084 Implementar a degradação para mídia não gravável em `iped-mcp/src/main/java/iped/mcp/audit/AuditSync.java`: cópia da estação torna-se autoritativa e a sessão adverte na abertura que a trilha não poderá ser co-localizada (FR-073)
 - [ ] T085 Implementar a detecção de trilha órfã na abertura do caso em `iped-mcp/src/main/java/iped/mcp/session/CaseRegistry.java`, reportando ao perito trilha anterior existente na estação sem correspondente na pasta do caso (FR-074)
@@ -183,7 +184,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 ### Implementation for User Story 4
 
 - [ ] T066 [US4] Implementar a verificação de diagnóstico em `iped-mcp/src/main/java/iped/mcp/Diagnostics.java`, validando todos os pré-requisitos e reportando o que falta e como corrigir (FR-053)
-- [ ] T067 [US4] Registrar o diagnóstico operacional do próprio servidor em log separado da trilha pericial, em `iped-mcp/src/main/java/iped/mcp/Diagnostics.java` (FR-056)
+- [ ] T067 [US4] Registrar o diagnóstico operacional do próprio servidor **via SLF4J**, em log separado da trilha pericial, em `iped-mcp/src/main/java/iped/mcp/Diagnostics.java`. `System.out` e `System.err` MUST NOT aparecer — em transporte stdio eles corromperiam o próprio protocolo (FR-056, Princípio V)
 - [ ] T068 [US4] Empacotar `iped-mcp` no release, alterando `iped-app/pom.xml` de forma aditiva (FR-054)
 - [ ] T069 [US4] Implementar a geração dos invólucros por harness a partir da fonte canônica, no build de `iped-mcp/pom.xml`, com saída em `iped-app/resources/skills/` — conteúdo canônico único, sem duplicação (FR-063)
 - [ ] T070 [P] [US4] Escrever o guia de instalação para Claude Code em `iped-mcp/src/main/resources/skill/install/claude-code.md`
