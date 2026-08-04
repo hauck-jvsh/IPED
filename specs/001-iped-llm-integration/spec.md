@@ -20,6 +20,18 @@ Esta feature entrega a versão de produção dessa integração: uma superfície
 
 ---
 
+## Clarifications
+
+### Session 2026-08-04
+
+- Q: Onde a trilha de auditoria deve ser gravada — dentro da pasta do caso, ou em um local separado fora dela? → A: Fora da pasta do caso por padrão, em área de auditoria da estação, com exportação opcional para dentro do caso ao encerrar a sessão (opção C). **Decisão provisória**: aceita para destravar o planejamento, mas a durabilidade da trilha precisa de solução melhor antes da implementação — ver "Risco em aberto" no bloco de auditoria.
+- Q: Qual é o maior tamanho de caso que a integração precisa atender bem, em número de itens? → A: Até ~10 milhões de itens — operação com vários dispositivos apreendidos. Metas de desempenho passam a ser medidas nessa escala.
+- Q: Quais aplicações-cliente de agente a integração precisa atender na primeira entrega? → A: Múltiplos harnesses de linha de comando/IDE — Claude Code, Codex e OpenCode —, sendo OpenCode o preferido por executar LLMs locais. O servidor não pode depender de recurso exclusivo de nenhum cliente e a skill não pode existir apenas no formato de um deles. A UI do IPED é consumidora futura do mesmo MCP e da mesma skill, via harness acionado em segundo plano; não faz parte desta entrega.
+- Q: Quais versões do IPED devem ter seus casos abertos pela integração? → A: Toda a linha 4.x como faixa declarada e testada. Fora dela, tenta abrir e recusa com diagnóstico claro, sem leitura parcial apresentada como completa.
+- Q: Em quais formatos a integração precisa entregar os artefatos de saída da US3? → A: xlsx, CSV e JSON — perito, intercâmbio e automação. Markdown fica de fora por só servir a volumes que já cabem na própria conversa. Requisitos FR-066 a FR-070 criados para cobrir a US3, que até então não tinha nenhum.
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Interrogar um caso processado em linguagem natural (Priority: P1)
@@ -186,12 +198,14 @@ O perito pede ao assistente que processe uma evidência bruta (imagem forense, e
 #### Integridade e auditoria
 
 - **FR-031**: O sistema MUST NOT modificar, sob nenhuma circunstância, os arquivos de evidência original.
-- **FR-032**: O sistema MUST registrar em trilha de auditoria toda operação executada — leitura e escrita — com data/hora, operador da estação, caso, operação, parâmetros, volume de resultado e desfecho.
+- **FR-032**: O sistema MUST registrar em trilha de auditoria toda operação executada — leitura e escrita — com data/hora, operador da estação, caso, operação, parâmetros, volume de resultado e desfecho. A trilha MUST ser gravada **fora da pasta do caso**, em área de auditoria da estação, vinculada ao caso de forma que permita reassociação posterior sem depender do caminho da pasta.
 - **FR-033**: O sistema MUST registrar, para operações de escrita, o estado anterior suficiente para reconstituir o que existia antes.
 - **FR-034**: A trilha de auditoria MUST ser somente-acréscimo, com adulteração detectável, e MUST NOT ser alterável por meio das ferramentas expostas ao agente.
 - **FR-035**: O sistema MUST recusar operações quando não for possível registrá-las na trilha de auditoria.
-- **FR-036**: O sistema MUST permitir exportar a trilha de auditoria de uma sessão em formato legível por humano e processável por máquina.
+- **FR-036**: O sistema MUST permitir exportar a trilha de auditoria de uma sessão em formato legível por humano e processável por máquina, e MUST oferecer como destino de exportação a própria pasta do caso, para quando o perito quiser anexá-la ao acervo entregue.
 - **FR-037**: A trilha de auditoria MUST conter informação suficiente para que um segundo examinador reproduza a sequência de consultas e chegue ao mesmo conjunto de itens.
+
+> **Risco em aberto — durabilidade da trilha.** Gravar fora da pasta do caso preserva a imutabilidade exigida por SC-003, mas cria um risco que ainda não tem solução: se a exportação para o caso é ação manual de fim de sessão, a trilha se perde em encerramento anormal (crash, queda de energia, sessão simplesmente fechada), em reimagem da estação, ou quando o caso é entregue sem que alguém lembre de anexá-la. O cenário em que a auditoria mais importa é justamente o que mais tende a destruí-la. A decisão atual é provisória e deve ser reaberta no planejamento; se for mantida, a exportação precisa ser automática no encerramento normal e recuperável após encerramento anormal.
 
 #### Confidencialidade e egresso de conteúdo
 
@@ -219,10 +233,29 @@ Por decisão de escopo, **não há restrição de conteúdo por padrão**: metad
 #### Instalação e diagnóstico
 
 - **FR-053**: O sistema MUST oferecer uma verificação de diagnóstico que valide todos os pré-requisitos e reporte especificamente o que estiver faltando e como corrigir.
-- **FR-054**: O sistema MUST ser distribuído junto com o IPED e MUST declarar com quais versões de caso é compatível, recusando explicitamente as incompatíveis.
+- **FR-054**: O sistema MUST ser distribuído junto com o IPED e MUST suportar casos produzidos por qualquer versão da linha **4.x**, que é a faixa declarada e testada. Para casos fora dessa faixa, o sistema MUST tentar abrir, declarar o que conseguiu interpretar e recusar com diagnóstico específico quando não for possível — nunca falhando de forma obscura nem apresentando leitura parcial como completa.
 - **FR-055**: A configuração MUST NOT exigir a inclusão de caminhos específicos de máquina ou credenciais em arquivos versionados.
 - **FR-056**: O sistema MUST registrar seu próprio diagnóstico operacional de forma separada da trilha de auditoria pericial.
 - **FR-057**: O sistema MUST operar como componente local da estação de trabalho, sem expor sua superfície de ferramentas à rede na configuração padrão.
+
+#### Portabilidade entre harnesses
+
+A integração é consumida por mais de um harness de agente e, no futuro, por um painel de conversa dentro da própria UI do IPED, que acionará um harness em segundo plano. Nada aqui pode presumir um cliente específico nem um humano configurando um aplicativo de desktop.
+
+- **FR-062**: O servidor MUST aderir ao protocolo padrão de ferramentas de agente e MUST NOT depender de recurso exclusivo de um cliente. A entrega MUST ser verificada funcionando com Claude Code, Codex e OpenCode.
+- **FR-063**: O conteúdo instrucional da skill MUST ter fonte canônica única, com empacotamento fino por harness. Conteúdo duplicado entre formatos MUST NOT ser mantido em paralelo, para que a orientação não divirja entre harnesses.
+- **FR-064**: O servidor MUST poder ser iniciado e conectado de forma programática, por um processo hospedeiro, sem depender de edição manual de configuração por um humano.
+- **FR-065**: A integração MUST permanecer funcional quando acionada por um harness executando um modelo de linguagem local, e MUST NOT depender de capacidade disponível apenas em modelos de provedores externos.
+
+#### Geração de artefatos de saída
+
+Requisitos que sustentam a US3, que até a clarificação de 2026-08-04 não tinha nenhum.
+
+- **FR-066**: O sistema MUST gerar artefatos de saída a partir de um conjunto de itens definido por marcador, por resultado de consulta ou por lista explícita, nos formatos **xlsx**, **CSV** e **JSON**.
+- **FR-067**: O artefato MUST conter o conjunto **completo** de itens, sem paginação nem truncamento, e MUST ser produzido sem trafegar os itens pela conversa — a conversa recebe apenas contagem, amostra e o caminho do arquivo gerado.
+- **FR-068**: O destino do artefato MUST ser escolhido pelo perito e MUST NOT ser, por padrão, a pasta do caso, para preservar a garantia de SC-003.
+- **FR-069**: Para conjuntos de mensagens, o sistema MUST produzir artefato agrupado por conversa e ordenado cronologicamente, identificando remetente e destinatário.
+- **FR-070**: Sobre um conjunto vazio, o sistema MUST informar a ausência de itens e MUST NOT gerar artefato vazio. Toda geração de artefato MUST ser registrada na trilha de auditoria com a definição do conjunto, a contagem e o destino, de modo que o artefato seja reproduzível.
 
 #### Preparo de evidência *(fase 2 — fora da entrega inicial, ver US5)*
 
@@ -242,7 +275,7 @@ Por decisão de escopo, **não há restrição de conteúdo por padrão**: metad
 - **Vocabulário de campos**: conjunto de nomes de campos efetivamente presentes no índice de um caso. Varia por versão do IPED, parsers executados e configuração; é a base para montar consultas válidas.
 - **Marcador**: rótulo aplicado a itens para agrupar achados. Persistido no caso e visível na UI do IPED e nos relatórios.
 - **Seleção**: estado de marcação de itens, distinto de marcador, usado como conjunto de trabalho e base de exportação.
-- **Trilha de auditoria**: registro cronológico, somente-acréscimo e com adulteração detectável, de todas as operações da sessão. Base da cadeia de custódia e da reprodutibilidade da análise.
+- **Trilha de auditoria**: registro cronológico, somente-acréscimo e com adulteração detectável, de todas as operações da sessão. Reside fora da pasta do caso, na área de auditoria da estação, vinculada ao caso por identificador; pode ser exportada para dentro do caso quando o perito quiser anexá-la ao acervo. Base da cadeia de custódia e da reprodutibilidade da análise.
 - **Política de egresso**: conjunto de regras que determina quais classes de conteúdo de evidência podem ser devolvidas ao agente. Aplicada pelo sistema, consultável pelo perito e registrada na auditoria quando bloqueia conteúdo.
 - **Sessão**: contexto de trabalho que associa um operador, os casos abertos, o modo de acesso (somente-leitura ou escrita habilitada), a política de egresso vigente e a trilha de auditoria correspondente.
 
@@ -252,20 +285,21 @@ Por decisão de escopo, **não há restrição de conteúdo por padrão**: metad
 
 ### Measurable Outcomes
 
-- **SC-001**: Em um caso com 1 milhão de itens, o perito obtém resposta fundamentada e com itens citados para uma pergunta de investigação típica em menos de 2 minutos, contra 15 minutos ou mais de navegação manual equivalente.
-- **SC-002**: 95% das consultas sobre um caso de 1 milhão de itens retornam a primeira página de resultados em menos de 5 segundos.
-- **SC-003**: Em modo somente-leitura, o conteúdo da pasta do caso permanece bit a bit idêntico após uma sessão completa de análise, e os arquivos de evidência original permanecem inalterados em qualquer modo.
+- **SC-001**: Em um caso com 10 milhões de itens, o perito obtém resposta fundamentada e com itens citados para uma pergunta de investigação típica em menos de 2 minutos, contra 15 minutos ou mais de navegação manual equivalente.
+- **SC-002**: 95% das consultas sobre um caso de 10 milhões de itens retornam a primeira página de resultados em menos de 5 segundos.
+- **SC-003**: Em modo somente-leitura, o conteúdo da pasta do caso permanece bit a bit idêntico após uma sessão completa de análise, e os arquivos de evidência original permanecem inalterados em qualquer modo. A trilha de auditoria é gravada fora da pasta do caso (FR-032), portanto registrá-la não viola esta garantia; exportá-la para dentro do caso é ação deliberada do perito e ocorre fora da sessão de leitura.
 - **SC-004**: 100% das operações executadas na sessão constam da trilha de auditoria, e 100% das operações de escrita registram o estado anterior; a completude é verificável por reconciliação entre trilha e estado final do caso.
 - **SC-005**: Um segundo examinador, partindo apenas da trilha de auditoria exportada, reproduz a análise e chega ao mesmo conjunto de itens em 100% dos casos de teste.
 - **SC-006**: Menos de 5% das consultas emitidas pelo agente retornam zero resultados por nome de campo inexistente, contra a linha de base medida nas provas de conceito.
 - **SC-007**: Nenhuma resposta a consulta excede o limite de volume definido, mesmo para consultas que correspondem a milhões de itens; a sessão nunca é interrompida por esgotamento de contexto causado por uma única resposta de ferramenta.
 - **SC-008**: Em uma bateria de 30 perguntas de investigação sobre um caso de referência com conteúdo conhecido, o assistente atinge no mínimo 90% de acerto sem nenhum falso positivo apresentado como conclusão.
 - **SC-009**: Nenhuma afirmação conclusiva do assistente aparece sem os itens que a sustentam, em 100% das respostas avaliadas.
-- **SC-010**: Um perito sem experiência prévia com integrações de agente instala, conecta e obtém a primeira resposta em menos de 15 minutos seguindo apenas a documentação fornecida.
+- **SC-010**: Um perito sem experiência prévia com integrações de agente instala, conecta e obtém a primeira resposta em menos de 15 minutos seguindo apenas a documentação fornecida, e isso é verificado em **cada** harness suportado (Claude Code, Codex, OpenCode) — não apenas naquele usado durante o desenvolvimento.
 - **SC-011**: Nenhuma configuração incorreta ou pré-requisito ausente produz erro técnico opaco: 100% das falhas de configuração testadas resultam em diagnóstico acionável.
-- **SC-012**: A geração de um artefato de saída sobre um marcador de 5.000 itens conclui integralmente sem trafegar os itens pela conversa.
-- **SC-013**: A integração funciona sem reconfiguração sobre casos produzidos por qualquer versão declarada como compatível, e recusa explicitamente as demais em 100% das tentativas.
+- **SC-012**: A geração de um artefato de saída sobre um marcador de 5.000 itens conclui integralmente, nos três formatos suportados (xlsx, CSV, JSON), sem trafegar os itens pela conversa e com os 5.000 registros presentes e corretos no arquivo.
+- **SC-013**: A integração abre e consulta, sem reconfiguração, casos produzidos por qualquer versão da linha 4.x do IPED — verificado sobre ao menos um caso da versão mais antiga e um da mais recente da linha. Casos fora da linha 4.x que não puderem ser interpretados são recusados com diagnóstico específico em 100% das tentativas, sem leitura parcial apresentada como completa.
 - **SC-014**: Com a política de egresso ativada, nenhum conteúdo por ela bloqueado alcança o agente em 100% das tentativas de contorno testadas; com a política inativa, o perito é advertido na abertura da sessão sobre o conteúdo que poderá ser transmitido, em 100% das sessões.
+- **SC-015**: Em um caso de 10 milhões de itens, a abertura do caso com o panorama inicial (FR-006) conclui em menos de 30 segundos, e uma agregação sobre o acervo completo (FR-016) conclui em menos de 15 segundos. Estas são as operações cujo custo cresce com o acervo e não com o resultado, e portanto as que determinam se o teto de escala é real.
 
 ---
 
@@ -277,7 +311,15 @@ Resolvidas com o solicitante em 2026-08-04.
 - **D2 — Implantação em estação de trabalho individual.** Um operador, componente local, sem exposição de rede na configuração padrão (FR-057). Dispensa autenticação, isolamento entre operadores e controle de concorrência entre sessões remotas; a detecção de concorrência se limita a outros processos na mesma máquina, tipicamente a UI do IPED (FR-028). A trilha de auditoria identifica o operador da estação (FR-032).
 - **D3 — Sem restrição de conteúdo por padrão; política de egresso opcional.** Metadados, texto, miniatura e binário ficam disponíveis ao agente por padrão (FR-038), sujeitos apenas aos limites de volume. A política de egresso existe como recurso ativável (FR-039 a FR-042) e o perito é advertido na abertura da sessão sobre o que poderá ser transmitido na configuração vigente (FR-043). A responsabilidade sobre o que sai do ambiente pericial é de quem opera a estação.
 
-**Consequência a observar no planejamento**: D3 significa que conteúdo de evidência — potencialmente incluindo material ilícito, dados pessoais e material sob sigilo — é transmitido ao provedor do modelo de linguagem por padrão. A escolha do provedor e do modo de operação (local, on-premises ou serviço externo) passa a ser a principal salvaguarda de confidencialidade desta feature, e deve ser tratada explicitamente no plano.
+- **D4 — Múltiplos harnesses, com LLM local como caminho preferencial.** A integração é consumida por Claude Code, Codex e OpenCode (FR-062 a FR-065), sendo OpenCode o preferido por executar modelos locais. Servidor aderente ao protocolo padrão, skill com fonte canônica única e inicialização programática.
+
+**Consequência a observar no planejamento**: D3 significa que conteúdo de evidência — potencialmente incluindo material ilícito, dados pessoais e material sob sigilo — é transmitido ao modelo de linguagem por padrão. D4 é o que torna isso aceitável: com um harness executando modelo **local**, o conteúdo não sai da estação, e a política de egresso opcional deixa de ser a única salvaguarda. A recomendação de operação padrão (modelo local) deve ser explícita no plano e na documentação de instalação; usar provedor externo passa a ser a escolha que exige ativar a política de egresso.
+
+## Direção futura *(fora do escopo desta entrega)*
+
+O objetivo de longo prazo é um painel de conversa dentro da UI do IPED — no estilo do chat do VS Code — em que o analista "conversa com a evidência". Esse painel não implementa lógica de análise própria: ele aciona um harness em segundo plano, que consome exatamente este mesmo servidor MCP e esta mesma skill.
+
+Nada disso é construído aqui, e o plano não deve cobri-lo. Está registrado porque restringe o desenho atual de três formas concretas, já refletidas em FR-062 a FR-065: o consumidor pode ser um processo e não uma pessoa, o harness não é conhecido de antemão, e a skill precisa sobreviver a mais de um formato de empacotamento.
 
 ---
 
@@ -285,13 +327,14 @@ Resolvidas com o solicitante em 2026-08-04.
 
 Suposições adotadas na ausência de definição explícita. Cada uma é um ponto de reversão barato se contrariada.
 
-- **Localização do artefato**: a integração vive neste repositório do IPED e é distribuída com o release, versionando junto com o produto. Isso é o que dá a garantia de compatibilidade declarada em FR-051 e evita a deriva entre versões que as provas de conceito, mantidas fora do repositório, já apresentam.
+- **Localização do artefato**: a integração vive neste repositório do IPED e é distribuída com o release, versionando junto com o produto. Isso é o que dá a garantia de compatibilidade declarada em FR-054 e evita a deriva entre versões que as provas de conceito, mantidas fora do repositório, já apresentam.
 - **Público**: peritos e analistas forenses, com domínio do IPED como ferramenta mas sem familiaridade com sintaxe de consulta de índice, protocolos de agente ou configuração de servidores.
 - **Estado das evidências**: os casos analisados já foram processados e estão íntegros. Análise de casos em processamento está fora de escopo.
+- **Escala alvo**: até ~10 milhões de itens por caso, o que cobre uma operação com vários dispositivos apreendidos. O IPED suporta acervos maiores; acima desse teto a integração deve continuar funcionando, mas os alvos de desempenho (SC-001, SC-002, SC-015) não são garantidos. O desenho não deve criar barreiras que impeçam elevar esse teto depois — em especial, operações cujo custo cresça com o acervo devem ficar confinadas a panorama e agregações.
 - **Escopo de consulta**: consultas operam sobre um caso por vez. Ter vários casos abertos na mesma sessão é suportado; busca federada com resultado unificado entre casos fica fora desta entrega.
 - **Idioma**: as instruções da skill e a documentação técnica são escritas em inglês, conforme a convenção do repositório para material novo; o assistente conversa com o perito no idioma que o perito usar. Mensagens de diagnóstico voltadas ao perito são localizadas em português e inglês.
 - **Modo padrão**: somente-leitura. A habilitação de escrita é decisão de quem opera o ambiente, tomada fora do alcance do agente.
-- **Retenção da auditoria**: a trilha de auditoria acompanha o caso e é retida pelo mesmo prazo do caso, seguindo a política já vigente para o acervo pericial.
+- **Retenção da auditoria**: a trilha reside na área de auditoria da estação (FR-032) e é retida pelo mesmo prazo do caso a que se refere, seguindo a política já vigente para o acervo pericial. Como ela não acompanha o caso automaticamente, a retenção depende de a área de auditoria da estação estar coberta por essa política — ponto a confirmar no planejamento, junto com o risco de durabilidade já registrado.
 - **Aproveitamento das provas de conceito**: as POCs são referência de escopo funcional e de aprendizado — em especial o mapeamento de campos e os fluxos periciais documentados — mas não são base de código. As lacunas que motivam esta feature (ausência de paginação, de auditoria, de proteção de escrita e de política de egresso) são estruturais e não se resolvem por incremento sobre elas.
 - **Ambiente de execução**: estação de trabalho pericial individual (D2), com o IPED instalado e o caso em armazenamento local ou de rede acessível. A integração em si não depende de conectividade externa; o modelo de linguagem que a consome pode depender, conforme o provedor escolhido.
 - **Identidade do operador**: por ser implantação individual (D2), a identidade registrada na auditoria é a do operador da estação, obtida do ambiente. Não há autenticação própria da integração.
