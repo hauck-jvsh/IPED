@@ -99,16 +99,40 @@ FR-008 (sugerir campos próximos quando o nome não existe) é acréscimo pequen
 
 ## R7 — Trilha de auditoria: formato, local e durabilidade
 
-**Decisão**: registro **append-only** encadeado por hash (cada registro carrega o hash do anterior), gravado em **JSON Lines** na área de auditoria da estação, fora da pasta do caso, com **escrita e flush imediatos a cada operação**.
+**Status**: decisão **reaberta e fechada em 2026-08-04**, conforme mandava T007. Substitui a resolução provisória da clarificação (opção C).
 
-**Rationale**:
+**Decisão**: registro **append-only** encadeado por hash, em **JSON Lines**. A **área de auditoria da estação é buffer write-ahead**, não o lar da trilha — o lar é a **pasta do caso**, para onde a trilha é sincronizada **automaticamente**, com degradação explícita quando o caso está em mídia somente-leitura.
+
+**Rationale — o formato**:
 - Append-only com encadeamento de hash dá a detecção de adulteração de FR-034 sem infraestrutura externa: alterar ou remover um registro quebra a cadeia a partir dali.
 - JSON Lines satisfaz FR-036 nos dois eixos — legível por humano e processável por máquina — e é naturalmente append-only.
-- Fora da pasta do caso por decisão registrada na clarificação, o que preserva SC-003.
 
-**Sobre o risco em aberto do spec**: a formulação original ("exportar ao encerrar a sessão") é o que cria a perda em encerramento anormal. A decisão de **escrever e sincronizar a cada operação**, em vez de acumular em memória e despejar no fim, elimina a maior parte desse risco: o que foi feito já está em disco quando a sessão morre. Resta a reassociação — por isso cada trilha carrega identificação forte do caso, permitindo reencontrá-la depois mesmo que a pasta tenha mudado de lugar. A exportação para dentro do caso passa a ser conveniência de entrega, não o mecanismo de durabilidade. **Isso reduz o risco; não o encerra** — a trilha ainda vive em disco local e depende da política de retenção da estação, ponto que o spec manda confirmar.
+**Rationale — o local**. A resolução anterior conflacionava duas propriedades distintas:
+
+| Propriedade | O que protege | Mecanismo |
+|---|---|---|
+| **Durabilidade contra crash** | Encerramento anormal no meio da sessão | Escrita e `fsync` por operação na área da estação |
+| **Sobrevivência a handoff e reimagem** | Caso entregue ou estação formatada | Co-localização com o caso |
+
+A escrita com `fsync` por operação resolve a primeira e não toca a segunda. Sob a decisão D2 — estação isolada, sem rede — **a pasta do caso é o único armazenamento durável disponível**, porque é ela que é arquivada e entregue. Logo a co-localização não é conveniência de entrega: é o mecanismo de durabilidade.
+
+**Por que a objeção original a colocar a trilha no caso não se sustenta.** A recomendação anterior invocou a imutabilidade da pasta como "a propriedade forense mais forte". Isso confundiu **a evidência e o estado de análise não podem ser alterados** — que é a garantia real — com **a pasta não pode mudar como objeto de sistema de arquivos**, que é apenas um proxy conveniente por ser testável com um hash. A analogia física é direta: o formulário de cadeia de custódia viaja dentro do saco de evidência, e ninguém considera o saco adulterado por isso. O formulário não é a evidência; é o registro sobre o exame dela.
+
+**Por que a trilha também não pode viver só dentro do caso.** Casos periciais ficam com frequência em mídia protegida contra escrita ou em compartilhamento somente-leitura. Se a pasta do caso fosse o único destino possível, FR-035 recusaria toda operação nesse cenário e a ferramenta ficaria inutilizável num caso de uso comum. Daí o desenho em dois níveis.
+
+**Desenho resultante**:
+
+1. Escrita na área de auditoria da estação com `fsync` a cada operação — durabilidade contra crash.
+2. Sincronização **automática** para subpasta de auditoria dentro do caso, no encerramento e periodicamente durante a sessão. Não é ação manual do perito.
+3. Caso em mídia somente-leitura: a cópia da estação é autoritativa e a sessão **avisa na abertura** que a trilha não poderá ser co-localizada.
+4. Cada registro carrega vínculo forte com o caso — caminho canônico mais identidade do índice — permitindo reassociar uma trilha órfã.
+5. Na abertura, se existe trilha anterior daquele caso na estação mas não na pasta do caso, a sessão **reporta**. É o item de maior valor do conjunto: os demais reduzem a chance de perder, este garante que uma perda seja percebida em vez de descoberta no momento em que a trilha seria necessária.
+
+**Consequência sobre SC-003**: o critério passa a garantir que **evidência, índice e estado de análise** (marcadores, seleção) permanecem bit a bit idênticos em modo somente-leitura, com a subpasta de auditoria excluída **por nome**. A exclusão é estreita e o teste continua verificável: tudo fora dela é hasheado, de modo que uma escrita indevida em qualquer outro lugar ainda reprova.
 
 **Falha ao registrar** (FR-035): a operação é recusada antes de executar, não depois. Registro primeiro, ação em seguida.
+
+**O que continua não resolvido, e não deve ser apresentado como resolvido**: se o caso não for arquivado corretamente, ou se a política de retenção do acervo não cobrir o que foi entregue, a trilha se perde com ele. Isso é organizacional, não técnico, e permanece registrado nas suposições do spec.
 
 ---
 

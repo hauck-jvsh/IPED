@@ -198,10 +198,10 @@ Unidade da trilha. **Append-only, encadeada por hash.**
 
 **Invariantes**
 - Somente-acréscimo; MUST NOT ser alterável por ferramenta exposta ao agente (FR-034).
-- Gravada e sincronizada em disco **a cada operação**, não acumulada em memória (R7) — é o que reduz a perda em encerramento anormal.
+- Gravada e sincronizada em disco **a cada operação**, não acumulada em memória (FR-071, R7) — é o que elimina a perda em encerramento anormal.
 - Se não for possível registrar, a operação MUST ser recusada antes de executar (FR-035).
 - Adulteração detectável: alterar ou remover um registro quebra a cadeia a partir dali.
-- Reside **fora da pasta do caso** (FR-032), com vínculo forte ao caso para reassociação posterior.
+- Carrega vínculo forte com o caso — caminho canônico mais identidade do índice — para reassociação posterior (FR-032).
 
 ---
 
@@ -211,10 +211,18 @@ Unidade da trilha. **Append-only, encadeada por hash.**
 |---|---|
 | `sessionId` | UUID |
 | `caseBinding` | identificação forte do caso (caminho canônico + identidade do índice) |
-| `location` | caminho na área de auditoria da estação |
+| `stagingLocation` | caminho na área de auditoria da estação — **buffer write-ahead** |
+| `homeLocation` | subpasta de auditoria dentro da pasta do caso — **lar durável** |
+| `coLocated` | booleano; `false` quando o caso está em mídia não gravável |
 | `records` | sequência de `AuditRecord` |
 
-**Invariante**: MUST conter informação suficiente para um segundo examinador reproduzir a sequência de consultas e chegar ao mesmo conjunto de itens (FR-037). Formato JSON Lines — legível por humano e processável por máquina (FR-036).
+**Estados de sincronização**: `STAGED` (só na estação) → `SYNCED` (co-localizada no caso). Um caso em mídia somente-leitura permanece em `STAGED` com `coLocated = false`.
+
+**Invariantes**
+- MUST conter informação suficiente para um segundo examinador reproduzir a sequência de consultas e chegar ao mesmo conjunto de itens (FR-037). Formato JSON Lines (FR-036).
+- MUST ser sincronizada automaticamente para `homeLocation` no encerramento e periodicamente durante a sessão, sem ação manual do perito (FR-072).
+- Caso não gravável: `stagingLocation` é autoritativa e o perito MUST ser advertido na abertura (FR-073).
+- Na abertura, uma trilha anterior em `stagingLocation` sem correspondente em `homeLocation` MUST ser reportada ao perito (FR-074).
 
 ---
 

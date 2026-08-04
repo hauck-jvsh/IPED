@@ -14,6 +14,8 @@ description: "Task list for IPED ↔ LLM integration (MCP server + agent skill)"
 
 **Escopo**: a US5 (preparo de evidência) é **fase 2** por decisão D1 e **não** aparece aqui. Os FR-058 a FR-061 ficam fora desta entrega.
 
+**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007) e aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: pode rodar em paralelo (arquivos diferentes, sem dependência pendente)
@@ -50,7 +52,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 **⚠️ CRITICAL**: nenhuma user story pode começar antes desta fase terminar. Em particular, FR-035 exige que **nenhuma operação execute sem registro prévio em auditoria**, o que torna a trilha bloqueante até para leitura.
 
 - [ ] T006 Construir o **caso de referência pequeno** e versionar sua receita reprodutível em `iped-mcp/src/test/resources/reference-case/README.md`, com conteúdo conhecido e não sensível cobrindo: documentos, imagens com GPS, e-mails, mensagens, itens deletados, itens recuperados por carving e hits de regex
-- [ ] T007 Reabrir a decisão provisória de durabilidade da trilha de auditoria e registrar o desfecho em `specs/001-iped-llm-integration/research.md` (seção R7) antes de escrever `AuditTrail` — ver "Riscos herdados do spec" em [plan.md](./plan.md)
+- [x] T007 Reabrir a decisão provisória de durabilidade da trilha de auditoria e registrar o desfecho em `specs/001-iped-llm-integration/research.md` (seção R7) antes de escrever `AuditTrail` — **concluída em 2026-08-04**: estação vira buffer write-ahead, pasta do caso vira o lar da trilha; SC-003 reescrito e FR-071 a FR-074 acrescentados
 - [ ] T008 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/JsonRpcCodec.java` (JSON-RPC 2.0 sobre Jackson: request, response, notification, erro)
 - [ ] T009 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/McpError.java` com o envelope comum `{code, message, remedy, details}` de [contracts/mcp-tools.md](./contracts/mcp-tools.md) — `remedy` é obrigatório, é o que sustenta FR-065
 - [ ] T010 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/ToolDescriptor.java` e o registro de ferramentas com esquema de entrada
@@ -60,7 +62,10 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [ ] T014 [P] Implementar `iped-mcp/src/main/java/iped/mcp/session/CaseValidator.java` validando integridade do caso e faixa de versão 4.x, com diagnósticos `NOT_A_CASE`, `CASE_INCOMPLETE`, `CASE_IN_PROCESSING`, `VERSION_UNSUPPORTED` (FR-001, FR-002, FR-054)
 - [ ] T015 Implementar `iped-mcp/src/main/java/iped/mcp/session/CaseRegistry.java` com abertura idempotente, `caseId` estável derivado do caminho canônico + identidade do índice, e liberação sem trava pendente (FR-003, FR-004, FR-005)
 - [ ] T016 [P] Implementar `iped-mcp/src/main/java/iped/mcp/audit/AuditRecord.java` com `seq`, `operation`, `parameters`, `resultVolume`, `outcome`, `priorState`, `prevHash`, `hash`
-- [ ] T017 Implementar `iped-mcp/src/main/java/iped/mcp/audit/AuditTrail.java` em JSON Lines append-only encadeado por hash, **fora da pasta do caso**, com escrita e sincronização em disco a cada operação e recusa quando não for possível registrar (FR-032, FR-034, FR-035, R7)
+- [ ] T017 Implementar `iped-mcp/src/main/java/iped/mcp/audit/AuditTrail.java` em JSON Lines append-only encadeado por hash, gravado na área de auditoria da estação com escrita e `fsync` a cada operação, recusando a operação quando não for possível registrar, e carregando vínculo forte com o caso (caminho canônico + identidade do índice) para reassociação (FR-032, FR-034, FR-035, FR-071, R7)
+- [ ] T083 Implementar a sincronização automática da trilha para a subpasta de auditoria dentro da pasta do caso, no encerramento e periodicamente durante a sessão, em `iped-mcp/src/main/java/iped/mcp/audit/AuditSync.java` — sem ação manual do perito (FR-072)
+- [ ] T084 Implementar a degradação para mídia não gravável em `iped-mcp/src/main/java/iped/mcp/audit/AuditSync.java`: cópia da estação torna-se autoritativa e a sessão adverte na abertura que a trilha não poderá ser co-localizada (FR-073)
+- [ ] T085 Implementar a detecção de trilha órfã na abertura do caso em `iped-mcp/src/main/java/iped/mcp/session/CaseRegistry.java`, reportando ao perito trilha anterior existente na estação sem correspondente na pasta do caso (FR-074)
 - [ ] T018 [P] Implementar `iped-mcp/src/main/java/iped/mcp/egress/EgressPolicy.java` inativa por padrão e consultável mesmo inativa (FR-038, FR-042)
 - [ ] T019 Ligar a auditoria ao despacho em `iped-mcp/src/main/java/iped/mcp/protocol/McpDispatcher.java`, de modo que **toda** chamada seja registrada antes de executar, leitura inclusive, e recusada se o registro falhar (depende de T011, T017)
 - [ ] T020 Emitir na abertura da sessão a advertência sobre qual conteúdo de evidência poderá ser transmitido na configuração vigente, em `iped-mcp/src/main/java/iped/mcp/session/Session.java` (FR-043)
@@ -118,12 +123,14 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 
 ### Tests for User Story 2
 
-- [ ] T044 [P] [US2] Teste de invariante somente-leitura em `iped-mcp/src/test/java/iped/mcp/integration/ReadOnlyInvariantTest.java`: hash recursivo da pasta do caso idêntico após sessão completa de análise, e `WRITE_NOT_ENABLED` ao tentar criar marcador (Cenário 6, SC-003)
+- [ ] T044 [P] [US2] Teste de invariante somente-leitura em `iped-mcp/src/test/java/iped/mcp/integration/ReadOnlyInvariantTest.java`: hash recursivo da pasta do caso **excluindo a subpasta de auditoria por nome** idêntico após sessão completa, `WRITE_NOT_ENABLED` ao tentar criar marcador, e verificação de que **nenhuma escrita ocorreu fora** da subpasta excluída (Cenário 6, SC-003)
 - [ ] T045 [P] [US2] Teste de ciclo de escrita em `iped-mcp/src/test/java/iped/mcp/integration/BookmarkWriteTest.java`: criar, associar, renomear e remover, verificando persistência ao reabrir o caso (Cenário 7, FR-030)
 - [ ] T046 [P] [US2] Teste unitário de integridade da trilha em `iped-mcp/src/test/java/iped/mcp/unit/AuditChainTest.java`: `seq` monotônico sem lacunas, cadeia de hash íntegra, e adulteração de um registro detectada (Cenário 8, FR-034)
 - [ ] T047 [P] [US2] Teste de durabilidade em `iped-mcp/src/test/java/iped/mcp/integration/AuditDurabilityTest.java`: **matar o processo no meio da sessão** e confirmar que as operações concluídas até ali estão na trilha — é o teste que valida a decisão de R7 (Cenário 8, passo 5)
 - [ ] T048 [P] [US2] Teste de auditoria indisponível em `iped-mcp/src/test/java/iped/mcp/integration/AuditFailClosedTest.java`: área de auditoria não gravável faz a operação ser recusada **antes** de executar (FR-035)
 - [ ] T049 [P] [US2] Teste de concorrência em `iped-mcp/src/test/java/iped/mcp/integration/ConcurrentAccessTest.java`: com o caso aberto por outro processo local, escrita recusada com `CONCURRENT_ACCESS` e leitura preservada (FR-028)
+- [ ] T086 [P] [US2] Teste de co-localização em `iped-mcp/src/test/java/iped/mcp/integration/AuditSyncTest.java`: a trilha aparece na subpasta de auditoria do caso sem qualquer ação manual, e continua íntegra e encadeada após a sincronização (FR-072)
+- [ ] T087 [P] [US2] Teste de degradação e trilha órfã em `iped-mcp/src/test/java/iped/mcp/integration/AuditOrphanTest.java`: caso em mídia não gravável mantém a cópia da estação autoritativa e adverte na abertura; e uma trilha anterior na estação sem correspondente no caso é reportada ao abrir (FR-073, FR-074)
 
 ### Implementation for User Story 2
 

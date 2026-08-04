@@ -193,9 +193,13 @@ Conjunto **completo**, sem truncamento; a conversa recebe apenas contagem, amost
 |---|---|---|
 | `destination` | caminho | sim |
 
-Exporta a trilha da sessão em JSON Lines (FR-036). Aceita a pasta do caso como destino, para anexar ao acervo entregue — ação deliberada do perito, fora do caminho de leitura (FR-036, SC-003).
+Exporta uma cópia da trilha da sessão em JSON Lines, para destino escolhido pelo perito (FR-036).
+
+**Isto não é o mecanismo de durabilidade.** A trilha é gravada na área da estação a cada operação e sincronizada **automaticamente** para dentro da pasta do caso (FR-071, FR-072). Esta ferramenta serve a entregas avulsas — anexar a trilha a um laudo, mandar para um segundo examinador — e não a preservação, que já acontece sem intervenção.
 
 **Não existe ferramenta de escrita na trilha.** A trilha é somente-acréscimo pelo próprio servidor e não é alterável pelo agente (FR-034).
+
+`iped_session_info` reporta o estado de sincronização (`STAGED` / `SYNCED`), a advertência de caso não gravável (FR-073) e qualquer trilha órfã detectada na abertura (FR-074).
 
 ---
 

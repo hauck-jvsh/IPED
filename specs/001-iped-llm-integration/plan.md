@@ -30,7 +30,7 @@ Duas alternativas foram avaliadas a pedido e rejeitadas, ambas detalhadas em [re
 **Storage**:
 - Leitura: índice Lucene do caso, via `IPEDSource` (`{caseDir}/iped/{index,data,lib}`)
 - Escrita no caso: marcadores e seleção, via `Bookmarks.saveState` (somente com escrita habilitada)
-- Trilha de auditoria: JSON Lines append-only, encadeado por hash, **fora da pasta do caso**
+- Trilha de auditoria: JSON Lines append-only encadeado por hash, gravado com `fsync` por operação na área da estação (buffer write-ahead) e sincronizado automaticamente para subpasta de auditoria **dentro da pasta do caso**, que é seu lar durável
 
 **Testing**: JUnit 4.13.2 (declarado no parent pom). Três níveis — contrato do protocolo MCP, integração sobre caso de referência, unidade para paginação/agregação/auditoria.
 
@@ -154,5 +154,5 @@ Não há violações de constituição a justificar, porque não há constituiç
 
 Dois pontos chegam ao plano deliberadamente abertos e não devem ser tratados como resolvidos:
 
-1. **Durabilidade da trilha de auditoria.** A decisão de gravar fora da pasta do caso é provisória no spec. R7 reduz o risco ao exigir escrita e sincronização a cada operação, em vez de despejo no encerramento — mas não o encerra. Revisitar antes da implementação da camada de auditoria.
+1. **Durabilidade da trilha de auditoria — RESOLVIDO em 2026-08-04.** A decisão provisória foi reaberta e fechada antes de qualquer código: a área da estação vira buffer write-ahead com `fsync` por operação, e a pasta do caso vira o lar da trilha, por sincronização automática. SC-003 foi reescrito para garantir evidência, índice e estado de análise, com a subpasta de auditoria excluída por nome. Detalhe e fundamentação em R7 de [research.md](./research.md); requisitos em FR-071 a FR-074. Permanece aberto apenas o ponto organizacional: se o caso não for arquivado corretamente, a trilha se perde com ele.
 2. **Egresso de conteúdo sem restrição por padrão (D3).** A salvaguarda passa a ser operacional, não técnica: rodar com harness de modelo local (D4, FR-065). Isso precisa estar na documentação de instalação como configuração recomendada, e não como nota de rodapé.

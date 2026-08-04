@@ -97,12 +97,14 @@ Este é o cenário que separa a entrega da POC.
 
 ## Cenário 6 — Somente-leitura é real *(SC-003)*
 
-1. Registrar hash recursivo da pasta do caso.
+1. Registrar hash recursivo da pasta do caso, **excluindo a subpasta de auditoria por nome**.
 2. Sessão completa em modo padrão: abrir, panorama, buscas, inspeção de itens, texto, miniatura, binário.
 3. Tentar `iped_create_bookmark` → `WRITE_NOT_ENABLED`.
-4. Fechar o caso; recalcular o hash recursivo.
+4. Fechar o caso; recalcular o hash com a mesma exclusão.
 
-**Esperado**: hash **idêntico**. A trilha de auditoria existe e está fora da pasta do caso — é o que permite este cenário passar (FR-032).
+**Esperado**: hash **idêntico** — evidência, índice e estado de análise intactos. A subpasta de auditoria terá crescido, e isso é correto: é registro sobre o exame, não parte do acervo examinado (FR-072, SC-003).
+
+**Verificação que não pode faltar**: confirmar também que **nenhuma escrita ocorreu fora** da subpasta excluída. A exclusão é estreita de propósito — se ela virasse uma licença geral para escrever no caso, o critério perderia o sentido.
 
 ---
 
@@ -126,9 +128,12 @@ Com `accessMode = READ_WRITE`:
 3. Alterar um registro no arquivo exportado e revalidar → **adulteração detectada**.
 4. Tornar a área de auditoria não gravável; tentar qualquer operação → recusada **antes** de executar (FR-035).
 5. **Matar o processo do servidor no meio de uma sessão**; reabrir a trilha → operações concluídas até ali estão presentes.
-6. Entregar a trilha a um segundo examinador; reproduzir a sequência de consultas.
+6. Encerrar uma sessão normalmente e conferir que a trilha apareceu na subpasta de auditoria **dentro do caso**, íntegra e encadeada, **sem nenhuma ação manual** (FR-072).
+7. Abrir o caso a partir de mídia protegida contra escrita → a sessão funciona, a cópia da estação é autoritativa, e a advertência de não co-localização aparece na abertura (FR-073).
+8. Apagar a subpasta de auditoria do caso deixando a trilha na estação; reabrir o caso → a sessão **reporta a trilha órfã** (FR-074).
+9. Entregar a trilha a um segundo examinador; reproduzir a sequência de consultas.
 
-**Esperado**: passo 5 é o que valida a decisão de R7 (escrita e sincronização a cada operação, não despejo no encerramento). Passo 6 chega ao mesmo conjunto de itens.
+**Esperado**: o passo 5 valida a durabilidade contra crash, e o 6 valida a durabilidade contra handoff — são falhas diferentes com mecanismos diferentes, e passar em um não implica passar no outro. O passo 8 é o que garante que uma perda seja **percebida**; sem ele, todos os demais apenas reduzem a probabilidade de perder sem nunca avisar quando acontece. O passo 9 chega ao mesmo conjunto de itens.
 
 ---
 
