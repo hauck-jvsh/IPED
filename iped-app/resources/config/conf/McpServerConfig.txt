@@ -1,0 +1,110 @@
+########################################################################
+# MCP server configuration (iped-mcp)
+#
+# Exposes processed IPED cases to LLM agents over the MCP protocol.
+# Every externally configurable behaviour of the server lives here, never
+# in code constants.
+########################################################################
+
+########################################################################
+# Audit trail
+########################################################################
+
+# Write-ahead buffer on the workstation. Written and fsynced on every
+# operation, which is what protects the trail against an abnormal
+# termination in the middle of a session.
+# Empty means ${user.home}/.iped/mcp-audit
+auditArea =
+
+# Name of the audit subfolder created inside the case folder. The case
+# folder is the durable home of the trail: it is what gets archived and
+# handed over. This name is what the read-only invariant check excludes.
+auditFolderNameInCase = mcp-audit
+
+# How often, in seconds, the trail is synchronized from the workstation
+# buffer into the case folder during a session. It is also synchronized
+# on close. No manual action by the examiner is ever required.
+auditSyncIntervalSeconds = 60
+
+########################################################################
+# Access mode
+########################################################################
+
+# READ_ONLY (default) or READ_WRITE. Read-only refuses every curation
+# tool without touching the case. This value is deliberately outside the
+# agent's reach: no exposed tool can change it.
+accessMode = READ_ONLY
+
+########################################################################
+# Egress policy
+#
+# Inactive by default (scope decision D3). With it inactive, evidence
+# content reaches the language model provider. The operational safeguard
+# is running against a local model - see the OpenCode install guide.
+########################################################################
+
+egressPolicyActive = false
+
+# Content classes the agent may receive when the policy is active.
+# Any subset of: metadata, text, thumbnail, binary
+egressAllowedClasses = metadata, text, thumbnail, binary
+
+# Categories whose content is blocked when the policy is active.
+# Comma-separated, matched case-insensitively against item categories.
+egressRestrictedCategories =
+
+# Extra attribute values marking sensitivity assigned during processing.
+# Comma-separated; an item carrying any of them has its content blocked
+# when the policy is active.
+egressRestrictedSensitivity =
+
+########################################################################
+# Query volume ceilings
+#
+# The cost of a query must be proportional to the result, not to the
+# collection. These ceilings are what keep a broad query on a 10 M item
+# case from materializing the whole match set.
+########################################################################
+
+defaultPageSize = 50
+maxPageSize = 200
+
+# Ceiling for a single batch item lookup (iped_get_items).
+maxBatchSize = 200
+
+# Time budget for one query. On exhaustion the result comes back flagged
+# as partial rather than truncated silently.
+queryTimeoutMs = 30000
+
+########################################################################
+# Content volume ceilings
+#
+# Truncation is always signalled, and the real size is always reported.
+########################################################################
+
+maxTextBytes = 100000
+maxContentBytes = 262144
+maxThumbnailBytes = 262144
+
+# Characters of context around a match in a search result snippet.
+snippetLength = 300
+
+# A snippet costs a text extraction, because the indexed content field is
+# not stored. These three keep that cost bounded so a page still comes
+# back fast: items past the ceiling, past the per-item text budget, or
+# past the page time budget come back with the snippet declared absent
+# and the reason given, never silently blank.
+snippetMaxItemsPerPage = 25
+snippetMaxTextBytes = 20000
+snippetBudgetMs = 3000
+
+########################################################################
+# Compatibility and export
+########################################################################
+
+# Declared supported case version range. A case outside it is refused
+# with a diagnostic naming the supported range.
+supportedVersionPrefix = 4.
+
+# Output artifacts must not be written into the case folder by default.
+allowExportIntoCaseFolder = false

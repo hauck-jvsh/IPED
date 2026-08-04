@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>iped</groupId>
+        <artifactId>iped-parent</artifactId>
+        <version>4.3.1</version>
+    </parent>
+
+    <artifactId>iped-mcp</artifactId>
+    <packaging>jar</packaging>
+
+    <name>iped-mcp</name>
+    <description>MCP server exposing processed IPED cases to LLM agents over stdio.</description>
+
+    <properties>
+        <!-- Aligned with the version Tika 2.4.0 brings transitively; see plan.md. -->
+        <poi.version>5.2.2</poi.version>
+        <jackson.core.version>2.13.2</jackson.core.version>
+        <jackson.databind.version>2.13.4.2</jackson.databind.version>
+        <!-- Canonical skill source and the per-harness wrappers generated from it (T069). -->
+        <skill.source.dir>${basedir}/src/main/resources/skill</skill.source.dir>
+        <skill.wrapper.dir>${basedir}/../iped-app/resources/skills</skill.wrapper.dir>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>iped</groupId>
+            <artifactId>iped-engine</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>iped</groupId>
+            <artifactId>iped-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>iped</groupId>
+            <artifactId>iped-utils</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-core</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-highlighter</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.lucene</groupId>
+            <artifactId>lucene-queryparser</artifactId>
+            <version>${lucene.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-core</artifactId>
+            <version>${jackson.core.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson.databind.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                T069 - generate the per-harness skill wrappers from the canonical source.
+                The wrappers carry only packaging metadata; the instructional body is
+                copied verbatim, so no guidance is ever duplicated by hand (FR-063).
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>generate-skill-wrappers</id>
+                        <!-- Before test, so SkillParityTest checks the wrappers this build
+                             produced rather than whatever a previous build left behind. -->
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <!-- Wipe first: a wrapper must mirror the canonical source
+                                     exactly, and a leftover file from a previous build is
+                                     divergent guidance by another name. -->
+                                <delete dir="${skill.wrapper.dir}" />
+                                <mkdir dir="${skill.wrapper.dir}/claude-code/iped-forensics" />
+                                <mkdir dir="${skill.wrapper.dir}/codex/iped-forensics" />
+                                <mkdir dir="${skill.wrapper.dir}/opencode/iped-forensics" />
+                                <copy todir="${skill.wrapper.dir}/claude-code/iped-forensics">
+                                    <fileset dir="${skill.source.dir}" />
+                                </copy>
+                                <copy todir="${skill.wrapper.dir}/codex/iped-forensics">
+                                    <fileset dir="${skill.source.dir}" />
+                                </copy>
+                                <copy todir="${skill.wrapper.dir}/opencode/iped-forensics">
+                                    <fileset dir="${skill.source.dir}" />
+                                </copy>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

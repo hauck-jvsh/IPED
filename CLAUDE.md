@@ -35,6 +35,7 @@ IPED/
 │   └── iped-carvers-impl/
 ├── iped-geo/         → docs em [iped-geo/CLAUDE.md](iped-geo/CLAUDE.md)
 ├── iped-engine/      → docs em [iped-engine/CLAUDE.md](iped-engine/CLAUDE.md)
+├── iped-mcp/         → docs em [iped-mcp/CLAUDE.md](iped-mcp/CLAUDE.md)   # servidor MCP + skill
 └── iped-app/         → docs em [iped-app/CLAUDE.md](iped-app/CLAUDE.md)   # binário final
     ├── src/main/java/iped/app/{bootstrap,config,processing,ui,graph,timelinegraph,metadata}
     └── resources/{config,scripts,localization,plugins,root,checkstyle}
@@ -172,6 +173,7 @@ Tudo configurável por `conf/IPEDConfig.txt`, `conf/TaskInstaller.xml`, `conf/*.
 | `iped-carvers` | Data carving (recuperação por assinatura) usando Aho-Corasick. | [iped-carvers/CLAUDE.md](iped-carvers/CLAUDE.md) |
 | `iped-geo` | Georreferenciamento e visualização cartográfica (Leaflet/Google Maps em JavaFX WebView, parsing KML/GPX). | [iped-geo/CLAUDE.md](iped-geo/CLAUDE.md) |
 | `iped-engine` | **Core**: orquestração, workers, indexação, busca, Sleuthkit out-of-process, configs, Web API, graph (Neo4j), scripting. | [iped-engine/CLAUDE.md](iped-engine/CLAUDE.md) |
+| `iped-mcp` | Servidor MCP (JSON-RPC 2.0 sobre stdio) que expõe casos processados a agentes de LLM, com consulta paginada, auditoria encadeada por hash e a skill que ensina disciplina pericial. | [iped-mcp/CLAUDE.md](iped-mcp/CLAUDE.md) |
 | `iped-app` | Empacotamento final + UI Swing principal: `Bootstrap`/`BootstrapUI`, `App` (JFrame singleton), gallery, bookmarks, filtros, AppGraphAnalytics (Neo4j+Kharon), timeline (JFreeChart), recursos de release. | [iped-app/CLAUDE.md](iped-app/CLAUDE.md) |
 
 ## 9. Onde editar configurações (não código)
