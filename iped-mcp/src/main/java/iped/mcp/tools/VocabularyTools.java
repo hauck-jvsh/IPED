@@ -128,11 +128,18 @@ public class VocabularyTools {
         }
         List<String> similar = vocabulary.similar(field, 8);
         result.put("similar", similar);
+        // An empty 'similar' has to be readable as a searched-and-found-nothing, not as a feature
+        // that did not run. Without the count, an examiner validating an absence cannot tell the
+        // two apart — and telling them apart is the whole point of calling this tool.
+        result.put("fields_searched", vocabulary.getFields().size());
         if (!similar.isEmpty()) {
             result.put("query_form", queryForms(similar));
         }
         result.put("remedy", similar.isEmpty()
-                ? "No near name was found. Call iped_list_fields for the full vocabulary of this case."
+                ? "All " + vocabulary.getFields().size() + " field names in this case were compared and none is "
+                        + "close to '" + field + "'. This case has no field by that name and none resembling it, "
+                        + "so an absence you were about to attribute to it is a property of the index. Call "
+                        + "iped_list_fields to inspect the full vocabulary."
                 : "Retry with '" + similar.get(0) + "', the closest name this case actually has. Inside a query "
                         + "expression write it as '" + FieldNames.toQueryForm(similar.get(0)) + "'.");
         return result;

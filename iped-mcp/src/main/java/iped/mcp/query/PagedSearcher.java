@@ -1,9 +1,7 @@
 package iped.mcp.query;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -59,8 +57,8 @@ import iped.mcp.session.OpenCase;
  */
 public class PagedSearcher {
 
-    /** Score first, document order as the stable tiebreaker. */
-    private static final Sort DETERMINISTIC_SORT = new Sort(SortField.FIELD_SCORE, SortField.FIELD_DOC);
+    /** Score first, document order as the stable tiebreaker. Owned by {@link Cursor}. */
+    private static final Sort DETERMINISTIC_SORT = Cursor.SORT;
 
     private final McpServerConfig config;
     private final ContentAccess contentAccess;
@@ -214,7 +212,7 @@ public class PagedSearcher {
         Query parsed = plan.getQuery();
         Query query = forItems(openCase, parsed);
         int size = clampPageSize(pageSize);
-        FieldDoc after = decodeCursor(cursor);
+        FieldDoc after = Cursor.decode(cursor);
         long budget = timeoutMs == null || timeoutMs <= 0 ? config.getQueryTimeoutMs() : timeoutMs;
 
         long totalMatches;
@@ -430,30 +428,11 @@ public class PagedSearcher {
      * A cursor is issued only when the page came back full. A short page is the last one, so no
      * cursor is offered and the caller cannot walk past the end.
      */
-    private String nextCursor(TopDocs top, int size) {
+    private static String nextCursor(TopDocs top, int size) {
         if (top.scoreDocs.length < size) {
             return null;
         }
-        ScoreDoc last = top.scoreDocs[top.scoreDocs.length - 1];
-        return Base64.getUrlEncoder().withoutPadding()
-                .encodeToString((last.doc + ":" + last.score).getBytes(StandardCharsets.UTF_8));
-    }
-
-    private FieldDoc decodeCursor(String cursor) {
-        if (cursor == null || cursor.isEmpty()) {
-            return null;
-        }
-        try {
-            String decoded = new String(Base64.getUrlDecoder().decode(cursor), StandardCharsets.UTF_8);
-            int separator = decoded.lastIndexOf(':');
-            int doc = Integer.parseInt(decoded.substring(0, separator));
-            float score = Float.parseFloat(decoded.substring(separator + 1));
-            return new FieldDoc(doc, score, new Object[] { score, doc });
-        } catch (RuntimeException e) {
-            throw new McpError(McpError.INVALID_CURSOR, "The cursor is not one this server produced.",
-                    "Use the next_cursor value from the previous page verbatim, or omit it to start over from "
-                            + "the first page.").with("cursor", cursor);
-        }
+        return Cursor.encode(top.scoreDocs[top.scoreDocs.length - 1]);
     }
 
     private static String rootMessage(Throwable e) {

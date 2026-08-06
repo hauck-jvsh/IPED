@@ -26,7 +26,7 @@ iped/mcp/
 ├── config/McpServerConfig   # Configurable<UTF8Properties> lido de conf/McpServerConfig.txt
 ├── protocol/                # JsonRpcCodec, McpError, ToolDescriptor, McpDispatcher
 ├── session/                 # Session, CaseRegistry, CaseValidator, OpenCase, ConcurrencyGuard
-├── query/                   # PagedSearcher, Aggregator, SnippetBuilder, FieldVocabulary
+├── query/                   # PagedSearcher, Aggregator, SnippetBuilder, FieldVocabulary, FieldNames, Cursor
 ├── item/                    # ItemView, ContentAccess
 ├── curation/BookmarkWriter  # marcadores e seleção sobre Bookmarks/saveState
 ├── audit/                   # AuditRecord, AuditTrail, AuditSync
@@ -93,7 +93,7 @@ Nenhum artefato novo entra no release além do próprio `iped-mcp.jar`: POI e Ja
 ## 7. Testes
 
 ```bash
-mvn -pl iped-mcp test                                            # sem caso: 92 testes efetivos
+mvn -pl iped-mcp test                                            # sem caso: 99 testes efetivos
 mvn -pl iped-mcp test -Diped.mcp.test.referenceCase=<path>       # + suítes de integração
 mvn -pl iped-mcp test -Diped.mcp.test.largeCase=<path>           # + SC-002 e SC-015
 ```
@@ -116,6 +116,7 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | `ConcurrencyGuard` | A UI do IPED 4.3.1 não trava o caso. A detecção é cooperativa entre processos `iped-mcp` e best-effort para a UI — ausência de conflito **não** prova ausência de outro leitor. |
 | `ItemView.storedFields` | Lê do documento armazenado, não do `IItem`. Acrescentar campo aqui é barato; trocar por reconstrução de item custa a latência da página. |
 | `FieldNames.escapeKnownFieldNames` | Só reescreve nome que **este caso tem**, fora de aspas e seguido de `:`. Afrouxar qualquer uma das três condições faz o servidor inventar restrição de campo ou alterar a frase que o perito procurava. |
+| `Cursor` | A posição vem de `FieldDoc.fields[0]`, **nunca** de `ScoreDoc.score` — o `TopFieldCollector` deixa `NaN` ali. O formato do cursor decorre de `Cursor.SORT`: mudar a ordenação sem mudar o cursor faz a paginação reiniciar em silêncio. |
 
 ## 10. Limitações conhecidas
 

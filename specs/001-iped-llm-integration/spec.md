@@ -38,6 +38,13 @@ Dois defeitos vieram do primeiro deploy usado por perito fora da bancada de dese
 - Q: O servidor deve reescrever a expressão do perito quando ela falha só por colon não escapado em nome de campo? → A: **Por padrão não.** O diagnóstico passa a carregar a grafia corrigida já verificada contra o caso, e o agente acerta na segunda tentativa; a expressão registrada e respondida continua sendo a que foi pedida. Reescrita automática existe como opção de configuração (`autoEscapeFieldNames`, desligada por padrão) para modelos locais mais fracos, e quando ligada o reparo é **declarado** no resultado (`query_normalized`), nunca silencioso. Requisitos **FR-075 a FR-078** criados — FR-071 a FR-074 já pertenciam à revisão de durabilidade da auditoria.
 - Q: A dimensão de agregação deve aceitar campo arbitrário? → A: **Fora de escopo por ora.** `iped_aggregate` mantém o conjunto fechado (categoria, tipo de conteúdo, período, evidência, marcador) do FR-016. Agregar por campo arbitrário com DocValues é viável e vira feature própria se a demanda se confirmar em campo.
 
+### Session 2026-08-06 — cobertura completa das 25 ferramentas
+
+Teste de cobertura sobre caso real de 781.246 itens e 455 campos indexados, exercitando as 25 ferramentas com caminhos de erro e parâmetros opcionais. Um defeito funcional encontrado.
+
+- Q: O que fazer quando o servidor não consegue produzir um cursor de continuação utilizável? → A: **Não emitir cursor.** `iped_search` devolvia `next_cursor` cuja posição de ordenação era `NaN`, e retomar dali reiniciava da primeira página — laço de paginação que nunca terminava nem avançava, **sem sinal de erro**. Corrigido na origem (a posição vem do valor que o coletor comparou, não de `ScoreDoc.score`), e a regra vira requisito: cursor inutilizável é ausência declarada, não valor devolvido. FR-079 criado.
+- Q: `similar: []` em `iped_check_field` significa "nenhum nome próximo" ou "sugestão não implementada"? → A: **Precisa ser distinguível na resposta.** O relatório registrou não conseguir separar as duas leituras — e é exatamente sobre essa resposta que se apoia uma afirmação de ausência. A resposta passa a declarar quantos nomes foram comparados. Coberto por FR-008, sem requisito novo.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -180,6 +187,7 @@ O perito pede ao assistente que processe uma evidência bruta (imagem forense, e
 - **FR-011**: O sistema MUST executar consultas sobre o índice do caso usando a mesma sintaxe de consulta suportada pela UI do IPED, sem exigir que o perito a conheça.
 - **FR-012**: O sistema MUST retornar, para toda consulta, a contagem total de correspondências independentemente de quantos resultados sejam devolvidos.
 - **FR-013**: O sistema MUST paginar resultados, com tamanho de página limitado e navegação determinística, e MUST nunca devolver o conjunto completo de uma consulta ampla em uma única resposta.
+- **FR-079**: Um cursor de continuação devolvido MUST avançar: percorrer as páginas de uma consulta MUST visitar cada item uma vez e terminar. Quando o sistema não conseguir produzir um cursor utilizável, MUST omiti-lo em vez de devolver um que não avança — cursor que reinicia em silêncio faz o consumidor reprocessar a mesma página indefinidamente sem sinal de erro, que é falha pior do que a paginação indisponível.
 - **FR-014**: O sistema MUST devolver resultados já enriquecidos com as propriedades essenciais de cada item (identificador, nome, caminho, tamanho, datas, categoria, hash, indicadores de deletado/recuperado/subitem), evitando uma consulta adicional por item.
 - **FR-015**: O sistema MUST devolver, para consultas textuais, um trecho de contexto por item evidenciando o motivo da correspondência.
 - **FR-016**: O sistema MUST permitir obter contagens agregadas por dimensões relevantes (categoria, tipo de conteúdo, período, evidência de origem, marcador) sem materializar os itens correspondentes.

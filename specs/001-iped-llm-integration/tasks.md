@@ -14,14 +14,29 @@ description: "Task list for IPED ↔ LLM integration (MCP server + agent skill)"
 
 **Escopo**: a US5 (preparo de evidência) é **fase 2** por decisão D1 e **não** aparece aqui. Os FR-058 a FR-061 ficam fora desta entrega.
 
-**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007), T088 na reavaliação contra a Constituição v1.0.0 e T089 a T093 na correção dos dois defeitos do primeiro teste de campo (2026-08-06). Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
+**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007), T088 na reavaliação contra a Constituição v1.0.0, T089 a T093 na correção dos dois defeitos do primeiro teste de campo e T094 a T095 na do segundo (2026-08-06). Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
 
 ---
 
 ## Estado da implementação — 2026-08-06
 
-O módulo `iped-mcp` está implementado, compila em Java 11, empacota no release e roda **144 testes
-com 0 falhas**. Dos 144, **52 pulam** por falta do caso de referência.
+O módulo `iped-mcp` está implementado, compila em Java 11, empacota no release e roda **151 testes
+com 0 falhas**. Dos 151, **52 pulam** por falta do caso de referência.
+
+### Segundo teste de campo — cobertura das 25 ferramentas
+
+Teste de cobertura sobre caso real de 781.246 itens e 455 campos, exercitando as 25 ferramentas com
+caminhos de erro e parâmetros opcionais, e devolvendo o caso ao estado inicial. **Um** defeito
+funcional encontrado, corrigido em T094:
+
+`iped_search` devolvia `next_cursor`, mas retomar dali repetia a mesma página com o mesmo cursor. A
+posição de ordenação vinha de `ScoreDoc.score`, que o `TopFieldCollector` do Lucene 9 deixa `NaN`;
+toda comparação *search-after* contra `NaN` é falsa, então a coleta reiniciava do topo. Um laço de
+paginação nunca terminava e nunca passava da primeira página — **sem sinal de erro**, que é o que
+torna o defeito grave apesar de contornável por `iped_export_artifact`.
+
+O teste também registrou que `similar: []` em `iped_check_field` não era distinguível de "sugestão
+não implementada" (T095).
 
 ### Primeiro teste de campo — dois defeitos corrigidos
 
@@ -149,6 +164,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T030 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/FieldVocabulary.java` sobre `LoadIndexFields.getFields(...)`, com verificação de existência e sugestão de campos próximos por distância de edição (FR-007, FR-008, R6)
 - [X] T031 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/PagedSearcher.java` usando `QueryBuilder.getQuery`/`rewriteQuery` para a semântica do IPED e `IndexSearcher.searchAfter` para colher só a página, com contagem exata por `IndexSearcher.count`, ordenação estável e limite de tempo. **Não usar `IPEDSearcher`** — `searchAll()` materializa todo o conjunto (R3, FR-011 a FR-013, FR-018, FR-019)
 - [X] T090 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/FieldNames.java` com a grafia de consulta de nome de campo (`p2p:fileType` → `p2p\:fileType`) e o reparo de expressão limitado ao vocabulário do caso, fora de aspas e seguido de `:` (FR-075). Coberto por `unit/FieldNamesTest`, que exercita o parser Lucene real — asserção sobre a string sozinha passaria com uma forma que não parseia — **concluída em 2026-08-06**
+- [X] T094 [US1] Extrair a continuação de página para `iped-mcp/src/main/java/iped/mcp/query/Cursor.java`, lendo a posição de ordenação de `FieldDoc.fields[0]` em vez de `ScoreDoc.score`, que o `TopFieldCollector` deixa `NaN`, e recusando cursor inutilizável tanto na emissão quanto na leitura (FR-013, FR-079). Coberto por `unit/CursorPaginationTest` sobre índice Lucene em memória — **concluída em 2026-08-06**, defeito encontrado no teste de cobertura das 25 ferramentas: `next_cursor` era devolvido mas não avançava, e um laço de paginação repetia a primeira página para sempre sem sinal de erro
 - [X] T092 [US1] Quebrar o laço `UNKNOWN_FIELD` ⇄ `QUERY_SYNTAX` em `PagedSearcher`: `plan()` verifica a correção contra o caso antes de sugeri-la, `checkFields` reconhece nome namespaced por `FieldVocabulary.namesUnder` em vez de tratá-lo como erro de digitação, e o reparo automático opcional (`autoEscapeFieldNames`, desligado por padrão) declara `query_normalized` em busca, agregação e exportação (FR-076, FR-077) — **concluída em 2026-08-06**. Era o defeito de maior impacto: o remedy mandava o agente reescrever a grafia que acabara de falhar, e o modelo concluía que o mecanismo de consulta era limitado
 - [X] T032 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/SnippetBuilder.java` sobre `lucene-highlighter`, devolvendo trecho ausente e declarado quando o item não tem conteúdo textual indexado (FR-015, R5)
 - [X] T033 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/Aggregator.java` sobre `SortedSetDocValues`, sem materializar itens, seguindo o padrão de `TimelineResults` (FR-016, R4)
@@ -156,6 +172,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T035 [US1] Implementar navegação de hierarquia (contêiner pai e itens contidos) em `iped-mcp/src/main/java/iped/mcp/item/ContentAccess.java` (FR-023)
 - [X] T036 [US1] Implementar as ferramentas de sessão e caso em `iped-mcp/src/main/java/iped/mcp/tools/SessionTools.java`: `iped_session_info`, `iped_open_case`, `iped_case_overview`, `iped_close_case` (FR-006)
 - [X] T037 [P] [US1] Implementar as ferramentas de vocabulário em `iped-mcp/src/main/java/iped/mcp/tools/VocabularyTools.java`: `iped_list_fields`, `iped_check_field`, `iped_item_fields` (FR-009)
+- [X] T095 [US1] Declarar em `iped_check_field` quantos nomes foram comparados quando `similar` volta vazio, para que "nenhum nome próximo" seja distinguível de "sugestão não implementada" — é sobre essa resposta que se apoia uma afirmação de ausência (FR-008) — **concluída em 2026-08-06**
 - [X] T091 [US1] Devolver a grafia de consulta junto do nome cru nas ferramentas de vocabulário: `query_form` em `iped_check_field` e `iped_item_fields`, e nota com a regra e um exemplo do próprio caso em `iped_list_fields` (FR-075) — **concluída em 2026-08-06**
 - [X] T038 [US1] Implementar as ferramentas de consulta em `iped-mcp/src/main/java/iped/mcp/tools/QueryTools.java`: `iped_search` e `iped_aggregate`, com erros `QUERY_SYNTAX` indicando a posição e `UNKNOWN_FIELD` trazendo sugestões (FR-017)
 - [X] T039 [US1] Implementar as ferramentas de item em `iped-mcp/src/main/java/iped/mcp/tools/ItemTools.java`: `iped_get_items` com teto de lote, `iped_item_metadata`, `iped_item_text`, `iped_item_thumbnail`, `iped_item_content`, `iped_item_tree` (FR-024)
