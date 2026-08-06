@@ -21,6 +21,15 @@ página é registrar **o que ficou de fora e por quê**, não celebrar o que pas
 > marcava como a mais séria; o Cenário 3 contra o caso grande deixa de ser hipótese. Ver a seção do
 > Cenário 3 abaixo, reescrita com as medições.
 
+> **Encerramento em 2026-08-06.** A feature foi encerrada por decisão do perito com **T006, T073 e
+> T079 dispensadas e não executadas**. Este relatório existe para registrar o que ficou de fora, e
+> é isso que fica: o caso de referência nunca foi construído, então **47 dos 151 testes seguem
+> pulando** e os Cenários 2, 4, 5, 7, 9 e 12 nunca rodaram sob automação — foram exercitados à mão,
+> em campo, sobre casos reais de 781 mil e 15 milhões de itens. A diferença importa para o futuro:
+> o que foi verificado à mão não impede regressão, porque uma alteração que quebre qualquer uma
+> dessas garantias passa no `mvn test`. Os Cenários 10 e 11 continuam sem execução, deixando SC-010
+> e FR-065 não verificados.
+
 ## Situação por cenário
 
 ### Cenário 1 — Handshake do protocolo ✅

@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-04
 
-**Status**: Draft
+**Status**: Entregue e encerrada em 2026-08-06, com três verificações **dispensadas por decisão do perito** e não realizadas — T006, T073 e T079. O que fica não verificado está nominado na clarificação de encerramento abaixo e em [tasks.md](./tasks.md); encerrar a spec não converte nada disso em verificado.
 
 **Input**: User description: "Vamos criar um MCP e uma Skill para a integrar o IPED as ferramentas de LLM. Já fiz alguns POCS sobre isso, mas agora vamos fazer algo mais sério. A POC de MCP está em C:\Users\joaopaulo_jpva\Documents\python-projects\AI\codex-iped-mcp. A POC de Skill está em C:\Users\joaopaulo_jpva\Desktop\iped-skill. Essas POCs são para você se inspirar. Não precisa necessariamente aproveitá-las. Quero que, se possível, você faça algo melhor."
 
@@ -44,6 +44,14 @@ Teste de cobertura sobre caso real de 781.246 itens e 455 campos indexados, exer
 
 - Q: O que fazer quando o servidor não consegue produzir um cursor de continuação utilizável? → A: **Não emitir cursor.** `iped_search` devolvia `next_cursor` cuja posição de ordenação era `NaN`, e retomar dali reiniciava da primeira página — laço de paginação que nunca terminava nem avançava, **sem sinal de erro**. Corrigido na origem (a posição vem do valor que o coletor comparou, não de `ScoreDoc.score`), e a regra vira requisito: cursor inutilizável é ausência declarada, não valor devolvido. FR-079 criado.
 - Q: `similar: []` em `iped_check_field` significa "nenhum nome próximo" ou "sugestão não implementada"? → A: **Precisa ser distinguível na resposta.** O relatório registrou não conseguir separar as duas leituras — e é exatamente sobre essa resposta que se apoia uma afirmação de ausência. A resposta passa a declarar quantos nomes foram comparados. Coberto por FR-008, sem requisito novo.
+
+### Session 2026-08-06 — encerramento da feature
+
+- Q: T006, T073 e T079 continuam abertas. Encerrar a feature ou executá-las? → A: **Encerrar.** Decisão do perito, tomada com o escopo entregue e verificado em campo. As três **não foram executadas** e são registradas como dispensadas, não como concluídas. O que fica sem verificação, nominalmente:
+  - **T006** — caso de referência não construído. **47 dos 151 testes continuam pulando**, e com eles 7 cenários do quickstart. As garantias que esses testes protegem estão exercitadas em campo sobre casos reais, mas não estão sob regressão automatizada: uma alteração futura que as quebre passa no `mvn test`.
+  - **T073** — instalação nunca cronometrada em máquina limpa nos três harnesses. **SC-010 não verificado.**
+  - **T079** — nunca executada contra harness de modelo local. **FR-065 não verificado** e, com ele, a salvaguarda operacional da decisão D3: como a política de egresso é inativa por padrão (FR-039), rodar contra modelo local é o que mantém conteúdo de evidência na estação. Enquanto isso não for verificado, o material de um caso trafega para o provedor do modelo em uso — o que o servidor declara na abertura de toda sessão, como manda FR-043.
+- Q: Encerrar altera algum requisito? → A: **Não.** Nenhum FR foi removido ou relaxado. O escopo entregue é o que as tarefas marcadas concluídas descrevem; o que não foi verificado permanece escrito como não verificado.
 
 ---
 

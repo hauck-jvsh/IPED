@@ -95,20 +95,27 @@ clarificação de 2026-08-06 em [spec.md](./spec.md).
 **Verificado em campo** no teste de cobertura seguinte, sobre um caso com **455 campos, 386 deles
 exigindo escape**: `iped_list_fields` anuncia a contagem e a regra, `iped_check_field` e
 `iped_item_fields` devolvem `query_form` pronto, e consultas como `Regex\:BR_CPF:*` executam. A
-lacuna que restava era vocabulário sintético, e ela está fechada — os 52 testes de integração
+lacuna que restava era vocabulário sintético, e ela está fechada — os 47 testes de integração
 continuam pulando por outro motivo, a ausência do caso de referência de T006.
 
-**Um teste pulado não é um teste que passou.** Três tarefas continuam abertas, todas por dependerem
-de recurso que não existe nesta bancada, e são a diferença entre "implementado" e "verificado":
+### Encerramento — 2026-08-06
 
-| Tarefa | O que falta | Consequência |
+**A feature foi encerrada por decisão do perito**, com T006, T073 e T079 **dispensadas e não
+executadas**. Elas permanecem `[ ]` de propósito: encerrar a spec não as converte em verificadas, e
+marcá-las concluídas seria registrar como feito o que não foi feito.
+
+| Tarefa dispensada | O que não foi verificado | O que isso significa na prática |
 |---|---|---|
-| **T006** | Construir o caso de referência pequeno | Bloqueia 47 testes e 7 cenários do quickstart |
-| **T073** | Cronometrar instalação em máquina limpa, nos 3 harnesses | SC-010 não verificado |
-| **T079** | Rodar com harness de modelo local | FR-065 não verificado, e com ele a salvaguarda da decisão D3 |
+| **T006** | Caso de referência não construído | **47 dos 151 testes continuam pulando**, com 7 cenários do quickstart. As garantias que eles protegem foram exercitadas em campo sobre casos reais de 781 mil e 15 milhões de itens, mas **não estão sob regressão automatizada**: uma alteração futura que as quebre passa no `mvn test` |
+| **T073** | Instalação nunca cronometrada em máquina limpa, nos 3 harnesses | SC-010 não verificado |
+| **T079** | Nunca executada contra harness de modelo local | FR-065 não verificado e, com ele, a salvaguarda operacional de D3 — a política de egresso é inativa por padrão, então conteúdo de evidência trafega para o provedor do modelo em uso. O servidor declara isso na abertura de toda sessão (FR-043), mas declarar não é conter |
 
-**T028 saiu desta lista em 2026-08-06**: rodou sobre caso real de 15.061.999 itens e SC-002 e
-SC-015 estão verificados. Era a lacuna que o quickstart marcava como inegociável.
+**T028 saiu desta lista em 2026-08-06**, executada: caso real de 15.061.999 itens, SC-002 e SC-015
+verificados. Era a lacuna que o quickstart marcava como inegociável, e é a única das quatro que foi
+fechada por medição em vez de por decisão.
+
+Estado final da suíte, no JRE 11 do release, com o caso grande configurado:
+**151 testes, 0 falhas, 47 pulados**.
 
 Além disso, **SC-008 e SC-009 não são automatizáveis**: são propriedades do que o agente escreve,
 não do que a ferramenta devolve. `InvestigationBatteryTest` cobre a metade de recuperação e diz
@@ -152,7 +159,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 
 **⚠️ CRITICAL**: nenhuma user story pode começar antes desta fase terminar. Em particular, FR-035 exige que **nenhuma operação execute sem registro prévio em auditoria**, o que torna a trilha bloqueante até para leitura.
 
-- [ ] T006 Construir o **caso de referência pequeno** e versionar sua receita reprodutível em `iped-mcp/src/test/resources/reference-case/README.md`, com conteúdo conhecido e não sensível cobrindo: documentos, imagens com GPS, e-mails, mensagens, itens deletados, itens recuperados por carving e hits de regex — **receita e scripts versionados; caso NÃO construído.** `README.md` mais `build-reference-case.{sh,ps1}` produzem o material determinístico; fotos com EXIF GPS e a imagem de sistema de arquivos com item apagado e item carveado exigem passo manual
+- [ ] T006 Construir o **caso de referência pequeno** e versionar sua receita reprodutível em `iped-mcp/src/test/resources/reference-case/README.md`, com conteúdo conhecido e não sensível cobrindo: documentos, imagens com GPS, e-mails, mensagens, itens deletados, itens recuperados por carving e hits de regex — **receita e scripts versionados; caso NÃO construído.** `README.md` mais `build-reference-case.{sh,ps1}` produzem o material determinístico; fotos com EXIF GPS e a imagem de sistema de arquivos com item apagado e item carveado exigem passo manual **DISPENSADA em 2026-08-06 por decisão do perito, no encerramento da feature — não executada.**
 - [x] T007 Reabrir a decisão provisória de durabilidade da trilha de auditoria e registrar o desfecho em `specs/001-iped-llm-integration/research.md` (seção R7) antes de escrever `AuditTrail` — **concluída em 2026-08-04**: estação vira buffer write-ahead, pasta do caso vira o lar da trilha; SC-003 reescrito e FR-071 a FR-074 acrescentados
 - [X] T008 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/JsonRpcCodec.java` (JSON-RPC 2.0 sobre Jackson: request, response, notification, erro), com **charset UTF-8 explícito** na leitura e escrita de stdio — sem herdar o padrão da plataforma (Princípio V)
 - [X] T089 Fazer de mensagem malformada um evento não-fatal: `JsonRpcCodec.readMessage` converte a falha do Jackson em `McpError.MALFORMED_MESSAGE` e o laço de `McpServerMain.start` responde `-32700` e continua servindo (FR-078). Coberto por `contract/MalformedMessageTest` — **concluída em 2026-08-06**, defeito encontrado no primeiro teste de campo: a exceção escapava do laço de leitura e derrubava o processo, então uma consulta mal escrita custava a sessão e todos os casos abertos nela
@@ -299,7 +306,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T070 [P] [US4] Escrever o guia de instalação para Claude Code em `iped-mcp/src/main/resources/skill/install/claude-code.md`
 - [X] T071 [P] [US4] Escrever o guia de instalação para Codex em `iped-mcp/src/main/resources/skill/install/codex.md`
 - [X] T072 [P] [US4] Escrever o guia de instalação para OpenCode em `iped-mcp/src/main/resources/skill/install/opencode.md`, apresentando a operação com **modelo local como configuração recomendada** — é a salvaguarda que sustenta a decisão D3 (D4, FR-065)
-- [ ] T073 [US4] Cronometrar SC-010 em máquina limpa nos três harnesses e registrar os resultados em `iped-mcp/src/test/resources/evaluation/install-timings.md` (Cenário 10) — **registro preparado; medição NÃO executada.** Exige três máquinas limpas e alguém que não escreveu os guias: quem escreveu bate os 15 minutos e não aprende nada com isso
+- [ ] T073 [US4] Cronometrar SC-010 em máquina limpa nos três harnesses e registrar os resultados em `iped-mcp/src/test/resources/evaluation/install-timings.md` (Cenário 10) — **registro preparado; medição NÃO executada.** Exige três máquinas limpas e alguém que não escreveu os guias: quem escreveu bate os 15 minutos e não aprende nada com isso **DISPENSADA em 2026-08-06 por decisão do perito, no encerramento da feature — não executada.**
 
 **Checkpoint**: todas as user stories da entrega inicial estão independentes e verificáveis.
 
@@ -314,7 +321,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T076 [P] Teste de contorno da política em `iped-mcp/src/test/java/iped/mcp/integration/EgressPolicyTest.java`: com a política ativa, nenhum conteúdo bloqueado alcança o agente em nenhuma tentativa testada; com ela inativa, a advertência de abertura de sessão ocorre sempre (SC-014)
 - [X] T077 [P] Acrescentar a `iped-mcp/src/main/resources/skill/SKILL.md` a orientação de tratar material de evidência como sensível ao apresentá-lo, evitando reprodução desnecessária de conteúdo que a própria consulta indica ser ilícito ou sob sigilo (FR-052)
 - [X] T078 Verificar em `iped-mcp/src/test/java/iped/mcp/integration/NoNetworkExposureTest.java` que o servidor não abre porta de rede na configuração padrão (FR-057)
-- [ ] T079 Executar a verificação funcional com harness de modelo local (Cenário 11) e registrar o resultado em `iped-mcp/src/test/resources/evaluation/local-model.md`, confirmando que os erros são autocorrigíveis pelo modelo sem depender de capacidade de modelo de fronteira (FR-065) — **registro preparado; execução NÃO realizada.** Exige OpenCode com runtime local
+- [ ] T079 Executar a verificação funcional com harness de modelo local (Cenário 11) e registrar o resultado em `iped-mcp/src/test/resources/evaluation/local-model.md`, confirmando que os erros são autocorrigíveis pelo modelo sem depender de capacidade de modelo de fronteira (FR-065) — **registro preparado; execução NÃO realizada.** Exige OpenCode com runtime local **DISPENSADA em 2026-08-06 por decisão do perito, no encerramento da feature — não executada.**
 - [X] T080 Verificar a faixa de compatibilidade 4.x em `iped-mcp/src/test/java/iped/mcp/integration/VersionRangeTest.java`, sobre ao menos um caso da versão mais antiga e um da mais recente da linha, com recusa diagnosticada fora dela (SC-013)
 - [X] T081 Executar a validação completa de [quickstart.md](./quickstart.md) e registrar as lacunas encontradas
 - [X] T082 [P] Criar `iped-mcp/CLAUDE.md` documentando o módulo no padrão dos demais, e acrescentar a linha correspondente na tabela de módulos do `CLAUDE.md` da raiz
