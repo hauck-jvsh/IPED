@@ -73,6 +73,45 @@ public class PagedSearcher {
     }
 
     /**
+     * A parsed query together with the expression that actually produced it.
+     *
+     * <p>
+     * The two differ only when the server repaired an unescaped field name and
+     * {@code autoEscapeFieldNames} is in force. Keeping both is what lets the result declare the
+     * repair instead of quietly answering a question nobody asked.
+     */
+    public static final class QueryPlan {
+
+        private final Query query;
+        private final String expression;
+        private final String requestedExpression;
+
+        QueryPlan(Query query, String expression, String requestedExpression) {
+            this.query = query;
+            this.expression = expression;
+            this.requestedExpression = requestedExpression;
+        }
+
+        public Query getQuery() {
+            return query;
+        }
+
+        /** The expression that was parsed. */
+        public String getExpression() {
+            return expression;
+        }
+
+        /** The expression as the caller wrote it. */
+        public String getRequestedExpression() {
+            return requestedExpression;
+        }
+
+        public boolean isNormalized() {
+            return !expression.equals(requestedExpression);
+        }
+    }
+
+    /**
      * Parses a query expression, producing an actionable diagnostic when it cannot.
      *
      * @throws McpError
@@ -80,15 +119,68 @@ public class PagedSearcher {
      *             with near field names
      */
     public Query parse(OpenCase openCase, String expression) {
+        return plan(openCase, expression).getQuery();
+    }
+
+    /**
+     * Parses a query expression and, when it fails, checks whether escaping this case's own field
+     * names repairs it.
+     *
+     * <p>
+     * A repair that is proven to work is never withheld: it comes back either applied, when
+     * {@code autoEscapeFieldNames} is enabled, or named in {@code details.suggested_query} so the
+     * next attempt succeeds. What must not happen — and what did happen — is a failure whose remedy
+     * sends the agent back to the spelling that just failed.
+     */
+    public QueryPlan plan(OpenCase openCase, String expression) {
+        String requested = expression == null ? "" : expression;
+        try {
+            return new QueryPlan(build(openCase, requested), requested, requested);
+        } catch (McpError failure) {
+            if (!isRepairable(failure)) {
+                throw failure;
+            }
+            String repaired = FieldNames.escapeKnownFieldNames(requested, openCase.getVocabulary());
+            if (repaired.equals(requested)) {
+                throw failure;
+            }
+            Query query;
+            try {
+                query = build(openCase, repaired);
+            } catch (McpError stillFailing) {
+                // The escaping was not what stood in the way; the original diagnostic is the one
+                // that describes what the agent actually asked.
+                throw failure;
+            }
+            if (config.isAutoEscapeFieldNames()) {
+                return new QueryPlan(query, repaired, requested);
+            }
+            throw failure.with("suggested_query", repaired)
+                    .withRemedy("Retry with this expression, which this server verified against the case: "
+                            + repaired + " — field names in this index carry colons, and a colon inside a name "
+                            + "has to be escaped as \\: so the parser does not read it as the separator between "
+                            + "field and value. In JSON the backslash itself is escaped, so the argument reads "
+                            + "\\\\:. Quoting the name instead does not work.");
+        }
+    }
+
+    /** Only a syntax or unknown-field failure can be a missing escape. */
+    private static boolean isRepairable(McpError failure) {
+        return McpError.QUERY_SYNTAX.equals(failure.getCode()) || McpError.UNKNOWN_FIELD.equals(failure.getCode());
+    }
+
+    private Query build(OpenCase openCase, String expression) {
         Query query;
         try {
-            query = new QueryBuilder(openCase.getSource()).getQuery(expression == null ? "" : expression);
+            query = new QueryBuilder(openCase.getSource()).getQuery(expression);
         } catch (Exception e) {
             throw new McpError(McpError.QUERY_SYNTAX, "The query could not be parsed: " + rootMessage(e),
                     "Fix the expression and retry. Quote phrases with double quotes, escape the special "
                             + "characters + - && || ! ( ) { } [ ] ^ \" ~ * ? : \\ with a backslash, and use "
-                            + "field:value for a field restriction.").with("query", expression)
-                                    .with("position", positionOf(e));
+                            + "field:value for a field restriction. If the field name itself contains a colon "
+                            + "— p2p:fileType, ufed:UserID, dc:title — that colon must be escaped too: write "
+                            + "p2p\\:fileType:\"mp3\". Call iped_check_field to get the exact spelling.")
+                                    .with("query", expression).with("position", positionOf(e));
         }
         checkFields(openCase, query, expression);
         return query;
@@ -118,7 +210,8 @@ public class PagedSearcher {
         IPEDSource source = openCase.getSource();
         IndexSearcher searcher = source.getSearcher();
 
-        Query parsed = parse(openCase, expression);
+        QueryPlan plan = plan(openCase, expression);
+        Query parsed = plan.getQuery();
         Query query = forItems(openCase, parsed);
         int size = clampPageSize(pageSize);
         FieldDoc after = decodeCursor(cursor);
@@ -173,6 +266,7 @@ public class PagedSearcher {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("case_id", openCase.getCaseId());
         result.put("query", expression);
+        declareNormalization(result, plan);
         result.put("total_matches", totalMatches);
         result.put("page_size", size);
         result.put("items", items);
@@ -262,17 +356,67 @@ public class PagedSearcher {
             if (IndexItem.CONTENT.equals(field) || IndexItem.TREENODE.equals(field) || vocabulary.exists(field)) {
                 continue;
             }
+            // A name that exists *under* the asked-for one is not a near miss: it is proof that the
+            // parser ate the colon of a namespaced field name as its own separator. Saying
+            // "unknown field p2p" and offering "p2p:fileType" as a near name is what sent agents
+            // into a loop — they retried with a spelling that cannot parse.
+            List<String> namespaced = vocabulary.namesUnder(field);
+            if (!namespaced.isEmpty()) {
+                List<String> queryForms = new ArrayList<>();
+                for (String name : namespaced.subList(0, Math.min(namespaced.size(), 12))) {
+                    queryForms.add(FieldNames.toQueryForm(name));
+                }
+                throw new McpError(McpError.UNKNOWN_FIELD,
+                        "There is no field named '" + field + "' in this case, but " + namespaced.size()
+                                + " field name(s) begin with '" + field + ":'. The colon inside the name was read "
+                                + "as the separator between field and value.",
+                        "Escape the colon that belongs to the name: write " + FieldNames.toQueryForm(namespaced.get(0))
+                                + ":value, not " + namespaced.get(0) + ":value. In JSON the backslash is itself "
+                                + "escaped, so the argument carries \\\\:. The spellings ready to paste are in "
+                                + "details.query_form.").with("field", field).with("namespaced_fields", namespaced)
+                                        .with("query_form", queryForms).with("query", expression);
+            }
             List<String> similar = vocabulary.similar(field, 8);
             throw new McpError(McpError.UNKNOWN_FIELD,
                     "The field '" + field + "' does not exist in this case's index.",
                     similar.isEmpty()
                             ? "Call iped_list_fields to see the field names this case actually has. Field names "
                                     + "vary between cases and versions; the index is the source of truth."
-                            : "Retry with one of the near names in details.similar — '" + similar.get(0)
-                                    + "' is the closest. Call iped_list_fields for the full vocabulary of this "
-                                    + "case.").with("field", field).with("similar", similar).with("query",
-                                            expression);
+                            : "Retry with one of the near names in details.similar — write it as '"
+                                    + FieldNames.toQueryForm(similar.get(0))
+                                    + "', which is the closest. Call iped_list_fields for the full vocabulary of "
+                                    + "this case.").with("field", field).with("similar", similar)
+                                            .with("similar_query_form", queryForms(similar)).with("query",
+                                                    expression);
         }
+    }
+
+    /**
+     * States, in the result itself, that the expression run was not the expression asked for.
+     *
+     * <p>
+     * A repaired query is answered, never silently: what was counted has to be readable from the
+     * answer alone, because the answer is what ends up in a report.
+     */
+    public static void declareNormalization(Map<String, Object> result, QueryPlan plan) {
+        if (!plan.isNormalized()) {
+            return;
+        }
+        result.put("query_normalized", plan.getExpression());
+        result.put("query_normalized_note", "The expression asked for could not be parsed as written: a colon "
+                + "belonging to a field name was read as the separator between field and value. The server "
+                + "escaped the field names this case actually has and ran the result shown in "
+                + "query_normalized. This is what autoEscapeFieldNames does; cite the normalized expression "
+                + "when reporting these counts.");
+    }
+
+    /** The same names, spelled the way an expression needs them. */
+    private static List<String> queryForms(List<String> names) {
+        List<String> forms = new ArrayList<>(names.size());
+        for (String name : names) {
+            forms.add(FieldNames.toQueryForm(name));
+        }
+        return forms;
     }
 
     private int clampPageSize(Integer requested) {

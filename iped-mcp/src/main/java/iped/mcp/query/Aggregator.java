@@ -82,9 +82,10 @@ public class Aggregator {
 
         IPEDSource source = openCase.getSource();
         BitSet matching = null;
+        PagedSearcher.QueryPlan plan = null;
         if (expression != null && !expression.trim().isEmpty()) {
-            matching = matchingDocs(openCase, pagedSearcher.forItems(openCase, pagedSearcher.parse(openCase,
-                    expression)));
+            plan = pagedSearcher.plan(openCase, expression);
+            matching = matchingDocs(openCase, pagedSearcher.forItems(openCase, plan.getQuery()));
         }
 
         Map<String, Long> counts = dim == Dimension.bookmark ? countBookmarks(source, matching)
@@ -109,6 +110,9 @@ public class Aggregator {
         result.put("case_id", openCase.getCaseId());
         result.put("dimension", dim.name());
         result.put("query", expression);
+        if (plan != null) {
+            PagedSearcher.declareNormalization(result, plan);
+        }
         result.put("buckets", buckets);
         result.put("distinct_values", counts.size());
         result.put("summed_count", total);

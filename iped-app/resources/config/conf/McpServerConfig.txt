@@ -76,6 +76,18 @@ maxBatchSize = 200
 # as partial rather than truncated silently.
 queryTimeoutMs = 30000
 
+# Much of a case's vocabulary is namespaced with colons - p2p:fileType,
+# ufed:UserID, dc:title. Inside a query expression that colon has to be
+# escaped (p2p\:fileType:"mp3") or the parser reads it as the separator
+# between field and value. Left false, the server never alters the
+# expression: it refuses the query and names the corrected spelling, and
+# what runs is always what was asked. Set true and an expression that
+# fails only for that reason is repaired against the case's real field
+# names and run, with the repair declared in the result as
+# query_normalized. Turn it on for weaker local models, which otherwise
+# spend the session looping on the escape.
+autoEscapeFieldNames = false
+
 ########################################################################
 # Content volume ceilings
 #

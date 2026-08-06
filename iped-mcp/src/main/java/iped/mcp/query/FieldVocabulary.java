@@ -58,6 +58,43 @@ public class FieldVocabulary {
     }
 
     /**
+     * Field names of this case that are namespaced under the given one, as {@code p2p:fileType} is
+     * under {@code p2p}.
+     *
+     * <p>
+     * This is what identifies the missing-escape case with certainty rather than by guess. When a
+     * query asks for the unknown field {@code p2p}, the parser did not misread a typo: it consumed
+     * the colon of {@code p2p:fileType} as its own separator. A name that exists under the asked-for
+     * one is the proof, and it turns a vague "unknown field" into the exact spelling to retry with.
+     *
+     * @return the names found, in vocabulary order; empty when the name is not a namespace here
+     */
+    public List<String> namesUnder(String field) {
+        List<String> found = new ArrayList<>();
+        if (field == null || field.isEmpty()) {
+            return found;
+        }
+        String prefix = field + ":";
+        for (String candidate : fields) {
+            if (candidate.startsWith(prefix)) {
+                found.add(candidate);
+            }
+        }
+        return found;
+    }
+
+    /** Names that cannot be written into a query expression as they stand. */
+    public List<String> namesNeedingEscape() {
+        List<String> found = new ArrayList<>();
+        for (String candidate : fields) {
+            if (FieldNames.needsEscaping(candidate)) {
+                found.add(candidate);
+            }
+        }
+        return found;
+    }
+
+    /**
      * Field names close to the one given, ranked by edit distance then alphabetically.
      *
      * <p>

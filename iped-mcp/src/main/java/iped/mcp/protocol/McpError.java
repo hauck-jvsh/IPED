@@ -54,6 +54,7 @@ public class McpError extends RuntimeException {
 
     // Protocol diagnostics.
     public static final String UNKNOWN_TOOL = "UNKNOWN_TOOL";
+    public static final String MALFORMED_MESSAGE = "MALFORMED_MESSAGE";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";
 
     private final String code;
@@ -79,6 +80,20 @@ public class McpError extends RuntimeException {
     public McpError with(String key, Object value) {
         details.put(key, value);
         return this;
+    }
+
+    /**
+     * The same failure carrying guidance a later stage was able to make specific.
+     *
+     * <p>
+     * Used when the layer that detects a failure cannot yet say how to fix it, and the layer above
+     * can — a query that fails to parse, for instance, becomes an error naming the exact corrected
+     * expression once the server has verified that correction against the case.
+     */
+    public McpError withRemedy(String newRemedy) {
+        McpError reworded = new McpError(code, getMessage(), newRemedy, getCause());
+        reworded.details.putAll(details);
+        return reworded;
     }
 
     public String getCode() {

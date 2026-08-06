@@ -33,6 +33,41 @@ Escape these with a backslash when you mean them literally:
 A bare term with no field prefix searches **name** and **content**. Name matches are boosted, so a
 file called `contract.pdf` ranks above a file that merely mentions the word.
 
+## Field names that contain a colon
+
+**Read this before writing any query against parser-produced metadata.** Most of a case's vocabulary
+beyond the basic properties is namespaced with a colon: `p2p:fileType`, `ufed:UserID`, `image:Width`,
+`dc:title`, `hashDb:status`, and script-produced names like `ai:csamDetector:status` carrying two.
+
+The parser reads a colon as the separator between field and value, so a name has to be written with
+its own colons escaped:
+
+| Write | Not |
+|---|---|
+| `p2p\:fileType:"mp3"` | `p2p:fileType:"mp3"` — syntax error |
+| `ufed\:UserID:12345` | `ufed:UserID:12345` — syntax error |
+| `ai\:csamDetector\:status:done` | `ai:csamDetector:status:done` — syntax error |
+| `p2p\:shared:true` | `p2p:shared:true` — syntax error |
+
+Three things that trip agents here, in the order they cause trouble:
+
+- **Quoting the name does not work.** `"p2p:fileType":"mp3"` is a syntax error, not an alternative.
+  The backslash is the only form the parser accepts.
+- **In JSON the backslash is itself escaped.** The tool argument has to carry `p2p\\:fileType` so the
+  server receives `p2p\:fileType`. Emitting a bare `\:` inside a JSON string is invalid JSON and the
+  call is rejected before it reaches the case.
+- **The escape belongs only inside a query expression.** `iped_check_field`, the keys returned by
+  `iped_item_fields` and the `dimension` argument of `iped_aggregate` all take the plain name.
+
+`iped_list_fields` and `iped_item_fields` return the plain names and, when any of them need it, a
+`query_form` with the spelling to paste into a query. `iped_check_field` returns `query_form` for a
+single name. Use it rather than escaping by hand.
+
+If a query fails, read the error: `QUERY_SYNTAX` and `UNKNOWN_FIELD` both carry the corrected
+expression when the server can verify one against this case. **Retry with what the error gives you.**
+An `UNKNOWN_FIELD` naming a field like `p2p` on a case that has `p2p:fileType` means exactly this —
+the colon was eaten as the separator — and the error's `details.query_form` has the fix.
+
 Diacritics are folded during indexing on most cases, so `Jose` matches `José`. Do not rely on it
 without checking — it is a processing-time setting.
 
@@ -106,6 +141,7 @@ zero rather than an error.
 | `date`, `timestamp` | `created` / `modified` / `accessed`, or `timeStamp` |
 | `isDeleted` | `deleted` |
 | `label`, `tag` | bookmarks are not a query field; use `iped_list_bookmarks` |
+| `p2p:fileType:"mp3"` | `p2p\:fileType:"mp3"` — see the colon section above |
 
 **Whenever a field-restricted query returns zero, call `iped_check_field` before drawing any
 conclusion from that zero.** It returns `similar` with the names this case actually has.

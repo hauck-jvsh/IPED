@@ -10,6 +10,7 @@ import org.apache.lucene.index.IndexableField;
 
 import iped.mcp.protocol.McpError;
 import iped.mcp.protocol.ToolDescriptor;
+import iped.mcp.query.FieldNames;
 import iped.mcp.query.FieldVocabulary;
 import iped.mcp.session.OpenCase;
 import iped.mcp.session.Session;
@@ -72,6 +73,7 @@ public class VocabularyTools {
 
     private Map<String, Object> listFields(OpenCase openCase) {
         FieldVocabulary vocabulary = openCase.getVocabulary();
+        List<String> needingEscape = vocabulary.namesNeedingEscape();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("case_id", openCase.getCaseId());
         result.put("fields", vocabulary.getFields());
@@ -79,6 +81,19 @@ public class VocabularyTools {
         result.put("note", "'content' is the full text of items. It is searchable but is not listed here, "
                 + "because it is the text itself rather than a property to filter on. A bare term with no "
                 + "field prefix searches name and content.");
+        if (!needingEscape.isEmpty()) {
+            // The names are listed raw because that is what every other tool takes. Saying so here
+            // is what keeps an agent from pasting one straight into a query, where it would be read
+            // as a field and a value rather than as one name.
+            result.put("names_needing_escape", needingEscape.size());
+            result.put("escaping_note", "The names above are listed as the index holds them, which is the form "
+                    + "iped_check_field, iped_item_fields and aggregation dimensions take. " + needingEscape.size()
+                    + " of them contain a colon, and inside a query expression that colon must be escaped or the "
+                    + "parser reads it as the separator between field and value: write "
+                    + FieldNames.toQueryForm(needingEscape.get(0)) + ":value, not " + needingEscape.get(0)
+                    + ":value. In JSON the backslash is itself escaped, so the argument carries \\\\:. Quoting "
+                    + "the name instead does not work. Call iped_check_field for a name's exact query form.");
+        }
         return result;
     }
 
@@ -89,14 +104,47 @@ public class VocabularyTools {
         result.put("case_id", openCase.getCaseId());
         result.put("field", field);
         result.put("exists", exists);
-        if (!exists) {
-            List<String> similar = vocabulary.similar(field, 8);
-            result.put("similar", similar);
-            result.put("remedy", similar.isEmpty()
-                    ? "No near name was found. Call iped_list_fields for the full vocabulary of this case."
-                    : "Retry with '" + similar.get(0) + "', the closest name this case actually has.");
+        if (exists) {
+            result.put("query_form", FieldNames.toQueryForm(field));
+            if (FieldNames.needsEscaping(field)) {
+                result.put("query_form_note", "This name carries a character the query parser reads as syntax. "
+                        + "Use query_form inside an expression — " + FieldNames.toQueryForm(field)
+                        + ":value — and the plain name everywhere else.");
+            }
+            return result;
         }
+        // Asking for 'p2p' on a case that has 'p2p:fileType' is not a typo: it is the colon of a
+        // namespaced name having been read as the field separator. Answering with near names alone
+        // sends the agent back to a spelling that cannot parse.
+        List<String> namespaced = vocabulary.namesUnder(field);
+        if (!namespaced.isEmpty()) {
+            result.put("namespaced_fields", namespaced);
+            result.put("query_form", queryForms(namespaced));
+            result.put("remedy", "There is no field named '" + field + "', but " + namespaced.size()
+                    + " name(s) are namespaced under it. Inside a query the colon that belongs to the name must "
+                    + "be escaped: write " + FieldNames.toQueryForm(namespaced.get(0)) + ":value. The spellings "
+                    + "ready to paste are in query_form.");
+            return result;
+        }
+        List<String> similar = vocabulary.similar(field, 8);
+        result.put("similar", similar);
+        if (!similar.isEmpty()) {
+            result.put("query_form", queryForms(similar));
+        }
+        result.put("remedy", similar.isEmpty()
+                ? "No near name was found. Call iped_list_fields for the full vocabulary of this case."
+                : "Retry with '" + similar.get(0) + "', the closest name this case actually has. Inside a query "
+                        + "expression write it as '" + FieldNames.toQueryForm(similar.get(0)) + "'.");
         return result;
+    }
+
+    /** The same names, spelled the way a query expression needs them. */
+    private static List<String> queryForms(List<String> names) {
+        List<String> forms = new ArrayList<>(names.size());
+        for (String name : names) {
+            forms.add(FieldNames.toQueryForm(name));
+        }
+        return forms;
     }
 
     private Map<String, Object> itemFields(OpenCase openCase, int itemId) {
@@ -133,12 +181,24 @@ public class VocabularyTools {
             throw new McpError(McpError.INTERNAL_ERROR, "The item's fields could not be read: " + e.getMessage(),
                     "Report this with the server log attached.", e);
         }
+        Map<String, String> queryForms = new LinkedHashMap<>();
+        for (String name : fields.keySet()) {
+            if (FieldNames.needsEscaping(name)) {
+                queryForms.put(name, FieldNames.toQueryForm(name));
+            }
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("case_id", openCase.getCaseId());
         result.put("item_id", itemId);
         result.put("fields", fields);
         result.put("note", "These are the stored fields of this one item. A field absent here may still exist "
                 + "in the index for other items — call iped_list_fields for the case-wide vocabulary.");
+        if (!queryForms.isEmpty()) {
+            result.put("query_form", queryForms);
+            result.put("query_form_note", "These field names contain a colon, which a query expression reads as "
+                    + "the separator between field and value. Inside a query use the spelling in query_form; the "
+                    + "keys of 'fields' are the plain names every other tool takes.");
+        }
         return result;
     }
 }

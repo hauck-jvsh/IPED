@@ -14,14 +14,37 @@ description: "Task list for IPED ↔ LLM integration (MCP server + agent skill)"
 
 **Escopo**: a US5 (preparo de evidência) é **fase 2** por decisão D1 e **não** aparece aqui. Os FR-058 a FR-061 ficam fora desta entrega.
 
-**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007) e T088 na reavaliação contra a Constituição v1.0.0. Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
+**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007), T088 na reavaliação contra a Constituição v1.0.0 e T089 a T093 na correção dos dois defeitos do primeiro teste de campo (2026-08-06). Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
 
 ---
 
-## Estado da implementação — 2026-08-04
+## Estado da implementação — 2026-08-06
 
-O módulo `iped-mcp` está implementado, compila em Java 11, empacota no release e roda **128 testes
-com 0 falhas**. Dos 128, **52 pulam** por falta do caso de referência.
+O módulo `iped-mcp` está implementado, compila em Java 11, empacota no release e roda **144 testes
+com 0 falhas**. Dos 144, **52 pulam** por falta do caso de referência.
+
+### Primeiro teste de campo — dois defeitos corrigidos
+
+O primeiro deploy usado por perito fora da bancada de desenvolvimento encontrou o que nenhuma suíte
+tinha pego, porque as duas falhas dependiam de vocabulário namespaced que o caso sintético não tem.
+Aos olhos de quem testava, as duas eram a mesma coisa: "o MCP não consulta campo de metadado".
+
+| Defeito | Efeito observado | Correção |
+|---|---|---|
+| Mensagem JSON malformada derrubava o processo | O cliente via o servidor MCP morrer no meio da sessão. Gatilho: `\:` cru dentro de string JSON — escape inválido, e exatamente o que um agente escreve ao tentar escapar nome de campo | T089 |
+| Vocabulário devolvia nome que não se pode colar numa consulta | O agente entrava em laço entre `QUERY_SYNTAX` e `UNKNOWN_FIELD` e relatava ao perito que o mecanismo de consulta era limitado — **conclusão falsa sobre a ferramenta, no meio de uma análise** | T090 a T093 |
+
+O segundo é o mais grave dos dois pela natureza do erro que produz, e sua raiz estava na própria
+auto-correção: o remedy de `UNKNOWN_FIELD` sugeria `p2p:fileType`, grafia que não parseia. A
+verificação da correção contra o caso antes de sugeri-la (FR-076) é o que impede que isso volte.
+
+Escopo deliberadamente deixado de fora: dimensão de agregação por campo arbitrário — ver a
+clarificação de 2026-08-06 em [spec.md](./spec.md).
+
+**Verificação pendente**: as suítes de integração continuam pulando, então os novos diagnósticos
+foram exercitados contra o parser Lucene real mas com vocabulário sintético. Rodar
+`mvn -pl iped-mcp test -Diped.mcp.test.referenceCase=<caminho>` sobre um caso com metadado
+namespaced fecha essa lacuna.
 
 **Um teste pulado não é um teste que passou.** Quatro tarefas continuam abertas, todas por
 dependerem de recurso físico que não existe nesta bancada, e são a diferença entre "implementado" e
@@ -79,6 +102,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [ ] T006 Construir o **caso de referência pequeno** e versionar sua receita reprodutível em `iped-mcp/src/test/resources/reference-case/README.md`, com conteúdo conhecido e não sensível cobrindo: documentos, imagens com GPS, e-mails, mensagens, itens deletados, itens recuperados por carving e hits de regex — **receita e scripts versionados; caso NÃO construído.** `README.md` mais `build-reference-case.{sh,ps1}` produzem o material determinístico; fotos com EXIF GPS e a imagem de sistema de arquivos com item apagado e item carveado exigem passo manual
 - [x] T007 Reabrir a decisão provisória de durabilidade da trilha de auditoria e registrar o desfecho em `specs/001-iped-llm-integration/research.md` (seção R7) antes de escrever `AuditTrail` — **concluída em 2026-08-04**: estação vira buffer write-ahead, pasta do caso vira o lar da trilha; SC-003 reescrito e FR-071 a FR-074 acrescentados
 - [X] T008 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/JsonRpcCodec.java` (JSON-RPC 2.0 sobre Jackson: request, response, notification, erro), com **charset UTF-8 explícito** na leitura e escrita de stdio — sem herdar o padrão da plataforma (Princípio V)
+- [X] T089 Fazer de mensagem malformada um evento não-fatal: `JsonRpcCodec.readMessage` converte a falha do Jackson em `McpError.MALFORMED_MESSAGE` e o laço de `McpServerMain.start` responde `-32700` e continua servindo (FR-078). Coberto por `contract/MalformedMessageTest` — **concluída em 2026-08-06**, defeito encontrado no primeiro teste de campo: a exceção escapava do laço de leitura e derrubava o processo, então uma consulta mal escrita custava a sessão e todos os casos abertos nela
 - [X] T009 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/McpError.java` com o envelope comum `{code, message, remedy, details}` de [contracts/mcp-tools.md](./contracts/mcp-tools.md) — `remedy` é obrigatório, é o que sustenta FR-065
 - [X] T010 [P] Implementar `iped-mcp/src/main/java/iped/mcp/protocol/ToolDescriptor.java` e o registro de ferramentas com esquema de entrada
 - [X] T011 Implementar `iped-mcp/src/main/java/iped/mcp/protocol/McpDispatcher.java` tratando `initialize`, `tools/list` e `tools/call`, declarando a versão de protocolo suportada (depende de T008, T009, T010)
@@ -124,16 +148,20 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T029 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/item/ItemView.java` com propriedades essenciais enriquecidas e distinção explícita entre ausente e vazio (FR-014, FR-022)
 - [X] T030 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/FieldVocabulary.java` sobre `LoadIndexFields.getFields(...)`, com verificação de existência e sugestão de campos próximos por distância de edição (FR-007, FR-008, R6)
 - [X] T031 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/PagedSearcher.java` usando `QueryBuilder.getQuery`/`rewriteQuery` para a semântica do IPED e `IndexSearcher.searchAfter` para colher só a página, com contagem exata por `IndexSearcher.count`, ordenação estável e limite de tempo. **Não usar `IPEDSearcher`** — `searchAll()` materializa todo o conjunto (R3, FR-011 a FR-013, FR-018, FR-019)
+- [X] T090 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/FieldNames.java` com a grafia de consulta de nome de campo (`p2p:fileType` → `p2p\:fileType`) e o reparo de expressão limitado ao vocabulário do caso, fora de aspas e seguido de `:` (FR-075). Coberto por `unit/FieldNamesTest`, que exercita o parser Lucene real — asserção sobre a string sozinha passaria com uma forma que não parseia — **concluída em 2026-08-06**
+- [X] T092 [US1] Quebrar o laço `UNKNOWN_FIELD` ⇄ `QUERY_SYNTAX` em `PagedSearcher`: `plan()` verifica a correção contra o caso antes de sugeri-la, `checkFields` reconhece nome namespaced por `FieldVocabulary.namesUnder` em vez de tratá-lo como erro de digitação, e o reparo automático opcional (`autoEscapeFieldNames`, desligado por padrão) declara `query_normalized` em busca, agregação e exportação (FR-076, FR-077) — **concluída em 2026-08-06**. Era o defeito de maior impacto: o remedy mandava o agente reescrever a grafia que acabara de falhar, e o modelo concluía que o mecanismo de consulta era limitado
 - [X] T032 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/SnippetBuilder.java` sobre `lucene-highlighter`, devolvendo trecho ausente e declarado quando o item não tem conteúdo textual indexado (FR-015, R5)
 - [X] T033 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/Aggregator.java` sobre `SortedSetDocValues`, sem materializar itens, seguindo o padrão de `TimelineResults` (FR-016, R4)
 - [X] T034 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/item/ContentAccess.java` com tetos de volume, sinalização de truncamento e tamanho real para texto, miniatura e binário (FR-020, FR-021)
 - [X] T035 [US1] Implementar navegação de hierarquia (contêiner pai e itens contidos) em `iped-mcp/src/main/java/iped/mcp/item/ContentAccess.java` (FR-023)
 - [X] T036 [US1] Implementar as ferramentas de sessão e caso em `iped-mcp/src/main/java/iped/mcp/tools/SessionTools.java`: `iped_session_info`, `iped_open_case`, `iped_case_overview`, `iped_close_case` (FR-006)
 - [X] T037 [P] [US1] Implementar as ferramentas de vocabulário em `iped-mcp/src/main/java/iped/mcp/tools/VocabularyTools.java`: `iped_list_fields`, `iped_check_field`, `iped_item_fields` (FR-009)
+- [X] T091 [US1] Devolver a grafia de consulta junto do nome cru nas ferramentas de vocabulário: `query_form` em `iped_check_field` e `iped_item_fields`, e nota com a regra e um exemplo do próprio caso em `iped_list_fields` (FR-075) — **concluída em 2026-08-06**
 - [X] T038 [US1] Implementar as ferramentas de consulta em `iped-mcp/src/main/java/iped/mcp/tools/QueryTools.java`: `iped_search` e `iped_aggregate`, com erros `QUERY_SYNTAX` indicando a posição e `UNKNOWN_FIELD` trazendo sugestões (FR-017)
 - [X] T039 [US1] Implementar as ferramentas de item em `iped-mcp/src/main/java/iped/mcp/tools/ItemTools.java`: `iped_get_items` com teto de lote, `iped_item_metadata`, `iped_item_text`, `iped_item_thumbnail`, `iped_item_content`, `iped_item_tree` (FR-024)
 - [X] T040 [US1] Escrever a skill canônica em `iped-mcp/src/main/resources/skill/SKILL.md`: orientar-se antes de consultar, estreitar progressivamente, amostrar em volume alto, citar itens em toda conclusão, não afirmar ausência de evidência sem validar vocabulário, não extrapolar além dos dados retornados (FR-044 a FR-048)
 - [X] T041 [P] [US1] Escrever `iped-mcp/src/main/resources/skill/references/query-syntax.md` com sintaxe de consulta e vocabulário canônico de campos, subordinado à descoberta em tempo de execução em caso de conflito (FR-050)
+- [X] T093 [US1] Documentar em `query-syntax.md` e no `SKILL.md` a grafia de nome de campo com `:` dentro de expressão, incluindo que aspas não são alternativa e que o backslash é duplicado em JSON (FR-050) — **concluída em 2026-08-06**
 - [X] T042 [P] [US1] Escrever `iped-mcp/src/main/resources/skill/references/workflows.md` com os fluxos periciais recorrentes: localização geográfica, análise de conversas, itens deletados e recuperados, correspondência por hash, correlação por e-mail, linha do tempo, levantamento de dados pessoais, panorama de acervo (FR-049)
 - [X] T043 [US1] Construir a bateria de 30 perguntas com gabarito em `iped-mcp/src/test/resources/evaluation/questions.md` e o verificador em `iped-mcp/src/test/java/iped/mcp/integration/InvestigationBatteryTest.java`, aferindo ≥ 90% de acerto, zero falso positivo apresentado como conclusão e 100% de conclusões com itens citados (Cenário 12, SC-008, SC-009)
 

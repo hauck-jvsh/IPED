@@ -74,13 +74,31 @@ public class ExportTools {
                 "Pass an absolute file path outside the case folder."));
         checkDestination(openCase, destination);
 
-        List<Integer> itemIds = resolveSet(openCase, arguments);
-        return artifactWriter.write(openCase, itemIds, format, destination,
+        ItemSet set = resolveSet(openCase, arguments);
+        Map<String, Object> result = artifactWriter.write(openCase, set.ids, format, destination,
                 Args.optionalBoolean(arguments, "group_by_conversation", false));
+        if (set.plan != null) {
+            // An artifact outlives the conversation, so a repaired expression has to be legible
+            // from the artifact's own result: it is what the examiner will cite.
+            PagedSearcher.declareNormalization(result, set.plan);
+        }
+        return result;
+    }
+
+    /** The items to export, and the query plan that produced them when a query defined the set. */
+    private static final class ItemSet {
+
+        private final List<Integer> ids;
+        private final PagedSearcher.QueryPlan plan;
+
+        ItemSet(List<Integer> ids, PagedSearcher.QueryPlan plan) {
+            this.ids = ids;
+            this.plan = plan;
+        }
     }
 
     /** Exactly one of bookmark, query or item_ids defines the set. */
-    private List<Integer> resolveSet(OpenCase openCase, JsonNode arguments) {
+    private ItemSet resolveSet(OpenCase openCase, JsonNode arguments) {
         String bookmark = Args.optionalString(arguments, "bookmark", null);
         String query = Args.optionalString(arguments, "query", null);
         JsonNode ids = arguments.get("item_ids");
@@ -93,11 +111,12 @@ public class ExportTools {
                             + "'item_ids' for a list you assembled yourself.");
         }
         if (bookmark != null) {
-            return fromBookmark(openCase, bookmark);
+            return new ItemSet(fromBookmark(openCase, bookmark), null);
         }
         if (query != null) {
-            return pagedSearcher.collectAllIds(openCase,
-                    pagedSearcher.forItems(openCase, pagedSearcher.parse(openCase, query)), MAX_ITEMS);
+            PagedSearcher.QueryPlan plan = pagedSearcher.plan(openCase, query);
+            return new ItemSet(pagedSearcher.collectAllIds(openCase,
+                    pagedSearcher.forItems(openCase, plan.getQuery()), MAX_ITEMS), plan);
         }
         List<Integer> explicit = new ArrayList<>();
         for (JsonNode entry : ids) {
@@ -105,7 +124,7 @@ public class ExportTools {
                 explicit.add(entry.asInt());
             }
         }
-        return explicit;
+        return new ItemSet(explicit, null);
     }
 
     private List<Integer> fromBookmark(OpenCase openCase, String name) {

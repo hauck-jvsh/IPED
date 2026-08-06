@@ -10,6 +10,7 @@ import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -55,6 +56,13 @@ public class JsonRpcCodec implements AutoCloseable {
     /**
      * Reads the next message from the transport.
      *
+     * <p>
+     * A line that is not valid JSON is <b>one bad message, not the end of the session</b>. It is
+     * reported as {@link McpError#MALFORMED_MESSAGE} so the caller can answer with
+     * {@link #PARSE_ERROR} and keep serving, as JSON-RPC 2.0 requires. Letting the underlying
+     * Jackson failure escape would take the whole server down and the client would see the
+     * connection die mid-session.
+     *
      * @return the parsed message, or {@code null} when the stream is exhausted
      * @throws IOException
      *             on transport failure
@@ -67,9 +75,24 @@ public class JsonRpcCodec implements AutoCloseable {
             if (line.trim().isEmpty()) {
                 continue;
             }
-            return MAPPER.readTree(line);
+            try {
+                return MAPPER.readTree(line);
+            } catch (JsonProcessingException e) {
+                throw new McpError(McpError.MALFORMED_MESSAGE, "The message is not valid JSON: " + e.getOriginalMessage(),
+                        "Send one complete JSON-RPC object per line. A backslash inside a JSON string has to be "
+                                + "escaped as \\\\ — to pass a Lucene escape such as \\: in a query, the JSON must "
+                                + "carry \\\\: so the server receives \\:. This message was discarded; the session "
+                                + "is still open, so retry the call.")
+                                        .with("line", abbreviate(line));
+            }
         }
         return null;
+    }
+
+    /** Keeps a malformed line quotable in the diagnostic without echoing an unbounded payload back. */
+    private static String abbreviate(String line) {
+        int limit = 400;
+        return line.length() <= limit ? line : line.substring(0, limit) + "… [" + line.length() + " chars]";
     }
 
     /**

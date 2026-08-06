@@ -47,6 +47,12 @@ Três achados de [research.md](../specs/001-iped-llm-integration/research.md) ex
 | **`IPEDSearcher.searchAll()` materializa todo o conjunto** | `PagedSearcher` **não usa `IPEDSearcher`**. Usa `QueryBuilder` para a semântica do IPED e `IndexSearcher` + `TopFieldCollector` + `searchAfter` para colher só a página. Trocar isso reintroduz o defeito que a feature existe para remover. |
 | **Não há `lucene-facet` na árvore** e casos antigos não têm `FacetField` | `Aggregator` conta sobre `SortedSetDocValues`/`SortedDocValues`, no padrão de `TimelineResults`. |
 
+Um quarto achado veio de campo, não da pesquisa:
+
+| Achado | Consequência no código |
+|---|---|
+| **Boa parte do vocabulário é namespaced com `:`** (`p2p:fileType`, `ufed:UserID`, `ai:csamDetector:status`) e o parser lê `:` como separador entre campo e valor | `FieldNames` guarda a grafia de query (`p2p\:fileType`). As ferramentas de vocabulário devolvem `query_form` junto do nome cru, e os erros `QUERY_SYNTAX`/`UNKNOWN_FIELD` carregam a expressão corrigida já verificada contra o caso. Aspas **não** são alternativa: `"p2p:fileType":"mp3"` é erro de sintaxe. |
+
 Duas consequências práticas menos óbvias:
 
 - **O campo `content` é indexado mas não armazenado.** Snippet exige reextrair o texto do item, o que é caro. Por isso `SnippetBuilder` trabalha sob três orçamentos (itens por página, bytes por item, tempo por página) e declara ausência quando estoura, em vez de devolver vazio.
@@ -54,7 +60,7 @@ Duas consequências práticas menos óbvias:
 
 ## 4. Configuração
 
-Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constituição), nunca em constante de código: área de auditoria, modo de acesso, política de egresso, tetos de página, de lote e de conteúdo, faixa de versão suportada, destino de exportação.
+Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constituição), nunca em constante de código: área de auditoria, modo de acesso, política de egresso, tetos de página, de lote e de conteúdo, faixa de versão suportada, destino de exportação, reparo de nome de campo (`autoEscapeFieldNames`, desligado por padrão — ligado, uma expressão que só falha por colon não escapado é corrigida contra o vocabulário real do caso e o reparo vem declarado em `query_normalized`).
 
 `McpServerConfig` implementa `Configurable<UTF8Properties>` e é carregado pelo `ConfigurationManager`. Os valores no código são **fallback de último recurso** para quando o arquivo não existe (teste isolado, instalação quebrada); o arquivo distribuído é a autoridade e carrega os mesmos valores.
 
@@ -69,6 +75,9 @@ Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constitui�
 | Referência a item sempre carrega o caso | contrato das ferramentas; `ToolSchemaTest` verifica |
 | Ausência ≠ vazio | `ItemView.unavailable`, `ContentAccess.unavailable` |
 | Charset explícito, logging por SLF4J | `JsonRpcCodec`, `AuditTrail`; `System.out` corromperia o próprio protocolo |
+| Uma mensagem malformada é respondida e descartada, nunca fatal | `JsonRpcCodec.readMessage` → `McpError.MALFORMED_MESSAGE`; `McpServerMain.start` responde `-32700` e continue. Deixar a falha do Jackson escapar derrubava a sessão inteira e todos os casos abertos nela |
+| Nenhum erro devolve uma grafia que não parseia | `PagedSearcher.plan` verifica a correção contra o caso antes de sugeri-la; `FieldNames.toQueryForm` em todo remedy que cita nome de campo |
+| Consulta reescrita é sempre declarada | `PagedSearcher.declareNormalization` → `query_normalized` no resultado de busca, agregação e exportação |
 
 ## 6. Dependências
 
@@ -84,7 +93,7 @@ Nenhum artefato novo entra no release além do próprio `iped-mcp.jar`: POI e Ja
 ## 7. Testes
 
 ```bash
-mvn -pl iped-mcp test                                            # sem caso: 76 testes efetivos
+mvn -pl iped-mcp test                                            # sem caso: 92 testes efetivos
 mvn -pl iped-mcp test -Diped.mcp.test.referenceCase=<path>       # + suítes de integração
 mvn -pl iped-mcp test -Diped.mcp.test.largeCase=<path>           # + SC-002 e SC-015
 ```
@@ -106,6 +115,7 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | Portão de escrita no `McpDispatcher` | Precisa continuar antes de qualquer leitura de argumento, ou "sem tocar o caso" deixa de ser verdade. |
 | `ConcurrencyGuard` | A UI do IPED 4.3.1 não trava o caso. A detecção é cooperativa entre processos `iped-mcp` e best-effort para a UI — ausência de conflito **não** prova ausência de outro leitor. |
 | `ItemView.storedFields` | Lê do documento armazenado, não do `IItem`. Acrescentar campo aqui é barato; trocar por reconstrução de item custa a latência da página. |
+| `FieldNames.escapeKnownFieldNames` | Só reescreve nome que **este caso tem**, fora de aspas e seguido de `:`. Afrouxar qualquer uma das três condições faz o servidor inventar restrição de campo ou alterar a frase que o perito procurava. |
 
 ## 10. Limitações conhecidas
 

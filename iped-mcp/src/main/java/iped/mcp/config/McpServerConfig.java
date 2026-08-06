@@ -70,6 +70,7 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
     private int maxPageSize = 200;
     private int maxBatchSize = 200;
     private long queryTimeoutMs = 30000;
+    private boolean autoEscapeFieldNames = false;
 
     private int maxTextBytes = 100000;
     private int maxContentBytes = 262144;
@@ -132,6 +133,7 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
         maxPageSize = integer(properties, "maxPageSize", maxPageSize);
         maxBatchSize = integer(properties, "maxBatchSize", maxBatchSize);
         queryTimeoutMs = integer(properties, "queryTimeoutMs", (int) queryTimeoutMs);
+        autoEscapeFieldNames = bool(properties, "autoEscapeFieldNames", autoEscapeFieldNames);
 
         maxTextBytes = integer(properties, "maxTextBytes", maxTextBytes);
         maxContentBytes = integer(properties, "maxContentBytes", maxContentBytes);
@@ -278,6 +280,20 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
 
     public long getQueryTimeoutMs() {
         return queryTimeoutMs;
+    }
+
+    /**
+     * Whether the server may repair an expression whose only defect is an unescaped colon inside a
+     * field name this case actually has.
+     *
+     * <p>
+     * Off by default: the expression recorded and answered is the expression asked for. With it on,
+     * a repair is applied and declared in the result as {@code query_normalized} — never silently.
+     * It exists for weaker local models, which spend the session looping on the escape instead of
+     * working the case.
+     */
+    public boolean isAutoEscapeFieldNames() {
+        return autoEscapeFieldNames;
     }
 
     public int getMaxTextBytes() {

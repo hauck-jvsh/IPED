@@ -30,6 +30,14 @@ Esta feature entrega a versão de produção dessa integração: uma superfície
 - Q: Quais versões do IPED devem ter seus casos abertos pela integração? → A: Toda a linha 4.x como faixa declarada e testada. Fora dela, tenta abrir e recusa com diagnóstico claro, sem leitura parcial apresentada como completa.
 - Q: Em quais formatos a integração precisa entregar os artefatos de saída da US3? → A: xlsx, CSV e JSON — perito, intercâmbio e automação. Markdown fica de fora por só servir a volumes que já cabem na própria conversa. Requisitos FR-066 a FR-070 criados para cobrir a US3, que até então não tinha nenhum.
 
+### Session 2026-08-06 — achados do primeiro teste de campo
+
+Dois defeitos vieram do primeiro deploy usado por perito fora da bancada de desenvolvimento (`C:\iped\iped-mcp`, caso real). Ambos se manifestaram como a mesma coisa aos olhos de quem testava: "o MCP não consegue consultar campos de metadado".
+
+- Q: Quando o agente escreve uma mensagem JSON malformada, o servidor deve encerrar? → A: **Não.** A falha de parse era propagada para fora do laço de leitura e derrubava o processo — uma consulta mal escrita custava a sessão inteira e todos os casos abertos nela. Passa a responder `-32700` e continuar servindo, como o JSON-RPC 2.0 exige. O gatilho real: `\:` cru dentro de string JSON, que é escape inválido e é exatamente o que um agente escreve ao tentar escapar nome de campo namespaced.
+- Q: O servidor deve reescrever a expressão do perito quando ela falha só por colon não escapado em nome de campo? → A: **Por padrão não.** O diagnóstico passa a carregar a grafia corrigida já verificada contra o caso, e o agente acerta na segunda tentativa; a expressão registrada e respondida continua sendo a que foi pedida. Reescrita automática existe como opção de configuração (`autoEscapeFieldNames`, desligada por padrão) para modelos locais mais fracos, e quando ligada o reparo é **declarado** no resultado (`query_normalized`), nunca silencioso. Requisitos **FR-075 a FR-078** criados — FR-071 a FR-074 já pertenciam à revisão de durabilidade da auditoria.
+- Q: A dimensão de agregação deve aceitar campo arbitrário? → A: **Fora de escopo por ora.** `iped_aggregate` mantém o conjunto fechado (categoria, tipo de conteúdo, período, evidência, marcador) do FR-016. Agregar por campo arbitrário com DocValues é viável e vira feature própria se a demanda se confirmar em campo.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -165,6 +173,7 @@ O perito pede ao assistente que processe uma evidência bruta (imagem forense, e
 - **FR-008**: O sistema MUST, para um campo consultado, informar se ele existe naquele caso e, quando não existir, indicar campos disponíveis semelhantes.
 - **FR-009**: O sistema MUST permitir obter, para um item, o conjunto completo de campos indexados, como recurso de descoberta de vocabulário por exemplo concreto.
 - **FR-010**: A skill MUST instruir o agente a confirmar o vocabulário de campos do caso antes de montar consultas não triviais, e a tratar resultado zero como possível erro de nome de campo antes de concluir ausência de evidência.
+- **FR-075**: Quando a grafia de um nome de campo dentro de uma expressão de consulta diferir do nome como o índice o guarda, o sistema MUST entregar **as duas formas** junto ao nome. Um vocabulário que só devolve a forma inutilizável em consulta não cumpre o FR-007: leva o agente a montar consulta que não executa.
 
 #### Consulta e resultados
 
@@ -175,6 +184,8 @@ O perito pede ao assistente que processe uma evidência bruta (imagem forense, e
 - **FR-015**: O sistema MUST devolver, para consultas textuais, um trecho de contexto por item evidenciando o motivo da correspondência.
 - **FR-016**: O sistema MUST permitir obter contagens agregadas por dimensões relevantes (categoria, tipo de conteúdo, período, evidência de origem, marcador) sem materializar os itens correspondentes.
 - **FR-017**: O sistema MUST reportar erros de sintaxe de consulta de forma compreensível, indicando o ponto do problema.
+- **FR-076**: Um erro de consulta MUST NOT propor ao agente uma grafia que não executa. Quando o sistema conseguir derivar uma correção e **verificá-la contra o caso aberto**, MUST nomeá-la no próprio erro. Orientação que devolve o agente à grafia que acabou de falhar produz laço de tentativas e leva à conclusão falsa de que o mecanismo de consulta é limitado.
+- **FR-077**: O sistema MAY oferecer, como opção de configuração desligada por padrão, o reparo automático de expressão que falhe exclusivamente por grafia de nome de campo. Quando ativo e aplicado, o reparo MUST ser declarado no resultado da operação, com a expressão efetivamente executada. Consulta reescrita em silêncio MUST NOT ocorrer: o que foi contado precisa ser legível a partir da própria resposta, que é o que chega ao laudo.
 - **FR-018**: O sistema MUST aplicar limite de tempo às consultas e reportar explicitamente quando um resultado for parcial por esgotamento de tempo.
 - **FR-019**: O sistema MUST produzir resultados estáveis: a mesma consulta sobre o mesmo caso inalterado MUST retornar o mesmo conjunto, na mesma ordem.
 
@@ -251,6 +262,7 @@ A integração é consumida por mais de um harness de agente e, no futuro, por u
 - **FR-063**: O conteúdo instrucional da skill MUST ter fonte canônica única, com empacotamento fino por harness. Conteúdo duplicado entre formatos MUST NOT ser mantido em paralelo, para que a orientação não divirja entre harnesses.
 - **FR-064**: O servidor MUST poder ser iniciado e conectado de forma programática, por um processo hospedeiro, sem depender de edição manual de configuração por um humano.
 - **FR-065**: A integração MUST permanecer funcional quando acionada por um harness executando um modelo de linguagem local, e MUST NOT depender de capacidade disponível apenas em modelos de provedores externos.
+- **FR-078**: Uma mensagem malformada MUST ser respondida com o erro de protocolo previsto e descartada, e MUST NOT encerrar a sessão. Uma única mensagem mal escrita não pode custar a sessão inteira nem os casos abertos nela — o agente que a produziu precisa receber diagnóstico corrigível, não conexão morta.
 
 #### Geração de artefatos de saída
 

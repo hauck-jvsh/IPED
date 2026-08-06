@@ -111,7 +111,10 @@ Load these when you need them, not upfront:
 
 - [references/query-syntax.md](references/query-syntax.md) — query syntax and the canonical field
   vocabulary. **The index is the authority**: when this document and `iped_list_fields` disagree,
-  the tool is right and the document is stale.
+  the tool is right and the document is stale. Read it before querying parser-produced metadata:
+  most of that vocabulary is namespaced with colons (`p2p:fileType`, `ufed:UserID`), and a colon
+  inside a field name has to be escaped in a query — `p2p\:fileType:"mp3"`. A query that fails on
+  this looks like a limitation of the engine and is not one.
 - [references/workflows.md](references/workflows.md) — worked procedures for the recurring
   forensic tasks: geolocation, conversations, deleted and carved items, hash matching, email
   correlation, timelines, personal data sweeps, collection overview, final report.

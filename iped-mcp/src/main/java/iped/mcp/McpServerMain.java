@@ -23,6 +23,7 @@ import iped.mcp.export.ArtifactWriter;
 import iped.mcp.item.ContentAccess;
 import iped.mcp.protocol.JsonRpcCodec;
 import iped.mcp.protocol.McpDispatcher;
+import iped.mcp.protocol.McpError;
 import iped.mcp.protocol.ToolDescriptor;
 import iped.mcp.query.Aggregator;
 import iped.mcp.query.PagedSearcher;
@@ -105,11 +106,30 @@ public class McpServerMain implements AutoCloseable {
     /**
      * Serves messages until the input stream is exhausted. Returns when the peer closes stdin,
      * which is how every harness signals shutdown.
+     *
+     * <p>
+     * A malformed line is answered and skipped, never fatal. Only stdin closing ends the loop: an
+     * agent that emits one bad message — an unescaped backslash in a query is the common way — must
+     * get a diagnostic it can act on, not a dead server. Killing the session over one bad line would
+     * also discard every case this server has open.
      */
     public void start(InputStream in, OutputStream out) throws IOException {
         try (JsonRpcCodec codec = new JsonRpcCodec(in, out)) {
-            JsonNode message;
-            while ((message = codec.readMessage()) != null) {
+            while (true) {
+                JsonNode message;
+                try {
+                    message = codec.readMessage();
+                } catch (McpError e) {
+                    LOGGER.warn("Discarding a malformed message: {}", e.getMessage());
+                    // The id cannot be known when the line did not parse, so it goes back null,
+                    // as JSON-RPC 2.0 prescribes for a parse error.
+                    codec.writeMessage(codec.newErrorResponse(null, JsonRpcCodec.PARSE_ERROR, e.getMessage(),
+                            JsonRpcCodec.mapper().valueToTree(e.toMap())));
+                    continue;
+                }
+                if (message == null) {
+                    return;
+                }
                 ObjectNode response = dispatcher.dispatch(message, codec);
                 if (response != null) {
                     codec.writeMessage(response);
