@@ -38,6 +38,21 @@ torna o defeito grave apesar de contornável por `iped_export_artifact`.
 O teste também registrou que `similar: []` em `iped_check_field` não era distinguível de "sugestão
 não implementada" (T095).
 
+**Verificado em campo após a correção**, em sessão nova sobre o mesmo caso — e por comparação de
+conjuntos contra verdade-terreno, não por "a página 2 difere da página 1":
+
+| Verificação | Resultado |
+|---|---|
+| `Regex\:BR_CPF:*` (95 itens) exportada por `iped_export_artifact` e depois percorrida por cursor em 3 páginas de 25/25/45 | 95 paginados / 95 distintos / 95 no export |
+| Duplicados entre páginas · faltando · extras | nenhum · nenhum · nenhum |
+| Ordem idêntica à do export | sim |
+| `next_cursor` na última página | ausente — a travessia termina |
+| Caminho de score variável (`radxa`, 8.862 hits) | três saltos disjuntos, scores monotônicos 1456,0 → 1011,0 → 395,0 |
+
+A consulta foi escolhida pelo caso difícil: **todos os 95 itens têm score constante 1,0**, então é o
+desempate por `docId` que decide sozinho a ordem — onde um *search-after* mal feito pula ou repete
+itens. Os dois caminhos do *search-after* estão corretos.
+
 ### Primeiro teste de campo — dois defeitos corrigidos
 
 O primeiro deploy usado por perito fora da bancada de desenvolvimento encontrou o que nenhuma suíte
@@ -56,10 +71,11 @@ verificação da correção contra o caso antes de sugeri-la (FR-076) é o que i
 Escopo deliberadamente deixado de fora: dimensão de agregação por campo arbitrário — ver a
 clarificação de 2026-08-06 em [spec.md](./spec.md).
 
-**Verificação pendente**: as suítes de integração continuam pulando, então os novos diagnósticos
-foram exercitados contra o parser Lucene real mas com vocabulário sintético. Rodar
-`mvn -pl iped-mcp test -Diped.mcp.test.referenceCase=<caminho>` sobre um caso com metadado
-namespaced fecha essa lacuna.
+**Verificado em campo** no teste de cobertura seguinte, sobre um caso com **455 campos, 386 deles
+exigindo escape**: `iped_list_fields` anuncia a contagem e a regra, `iped_check_field` e
+`iped_item_fields` devolvem `query_form` pronto, e consultas como `Regex\:BR_CPF:*` executam. A
+lacuna que restava era vocabulário sintético, e ela está fechada — os 52 testes de integração
+continuam pulando por outro motivo, a ausência do caso de referência de T006.
 
 **Um teste pulado não é um teste que passou.** Quatro tarefas continuam abertas, todas por
 dependerem de recurso físico que não existe nesta bancada, e são a diferença entre "implementado" e
@@ -164,7 +180,7 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T030 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/FieldVocabulary.java` sobre `LoadIndexFields.getFields(...)`, com verificação de existência e sugestão de campos próximos por distância de edição (FR-007, FR-008, R6)
 - [X] T031 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/PagedSearcher.java` usando `QueryBuilder.getQuery`/`rewriteQuery` para a semântica do IPED e `IndexSearcher.searchAfter` para colher só a página, com contagem exata por `IndexSearcher.count`, ordenação estável e limite de tempo. **Não usar `IPEDSearcher`** — `searchAll()` materializa todo o conjunto (R3, FR-011 a FR-013, FR-018, FR-019)
 - [X] T090 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/FieldNames.java` com a grafia de consulta de nome de campo (`p2p:fileType` → `p2p\:fileType`) e o reparo de expressão limitado ao vocabulário do caso, fora de aspas e seguido de `:` (FR-075). Coberto por `unit/FieldNamesTest`, que exercita o parser Lucene real — asserção sobre a string sozinha passaria com uma forma que não parseia — **concluída em 2026-08-06**
-- [X] T094 [US1] Extrair a continuação de página para `iped-mcp/src/main/java/iped/mcp/query/Cursor.java`, lendo a posição de ordenação de `FieldDoc.fields[0]` em vez de `ScoreDoc.score`, que o `TopFieldCollector` deixa `NaN`, e recusando cursor inutilizável tanto na emissão quanto na leitura (FR-013, FR-079). Coberto por `unit/CursorPaginationTest` sobre índice Lucene em memória — **concluída em 2026-08-06**, defeito encontrado no teste de cobertura das 25 ferramentas: `next_cursor` era devolvido mas não avançava, e um laço de paginação repetia a primeira página para sempre sem sinal de erro
+- [X] T094 [US1] Extrair a continuação de página para `iped-mcp/src/main/java/iped/mcp/query/Cursor.java`, lendo a posição de ordenação de `FieldDoc.fields[0]` em vez de `ScoreDoc.score`, que o `TopFieldCollector` deixa `NaN`, e recusando cursor inutilizável tanto na emissão quanto na leitura (FR-013, FR-019, FR-079). Coberto por `unit/CursorPaginationTest` sobre índice Lucene em memória — **concluída e verificada em campo em 2026-08-06**: travessia completa de 95 itens em 3 páginas conferida contra o export do mesmo conjunto, sem duplicata, falta ou extra, na consulta de score constante onde só o desempate por `docId` ordena. Defeito encontrado no teste de cobertura das 25 ferramentas: `next_cursor` era devolvido mas não avançava, e um laço de paginação repetia a primeira página para sempre sem sinal de erro
 - [X] T092 [US1] Quebrar o laço `UNKNOWN_FIELD` ⇄ `QUERY_SYNTAX` em `PagedSearcher`: `plan()` verifica a correção contra o caso antes de sugeri-la, `checkFields` reconhece nome namespaced por `FieldVocabulary.namesUnder` em vez de tratá-lo como erro de digitação, e o reparo automático opcional (`autoEscapeFieldNames`, desligado por padrão) declara `query_normalized` em busca, agregação e exportação (FR-076, FR-077) — **concluída em 2026-08-06**. Era o defeito de maior impacto: o remedy mandava o agente reescrever a grafia que acabara de falhar, e o modelo concluía que o mecanismo de consulta era limitado
 - [X] T032 [P] [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/SnippetBuilder.java` sobre `lucene-highlighter`, devolvendo trecho ausente e declarado quando o item não tem conteúdo textual indexado (FR-015, R5)
 - [X] T033 [US1] Implementar `iped-mcp/src/main/java/iped/mcp/query/Aggregator.java` sobre `SortedSetDocValues`, sem materializar itens, seguindo o padrão de `TimelineResults` (FR-016, R4)
