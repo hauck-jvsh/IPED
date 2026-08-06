@@ -94,13 +94,32 @@ Nenhum artefato novo entra no release além do próprio `iped-mcp.jar`: POI e Ja
 
 ```bash
 mvn -pl iped-mcp test                                            # sem caso: 99 testes efetivos
-mvn -pl iped-mcp test -Diped.mcp.test.referenceCase=<path>       # + suítes de integração
-mvn -pl iped-mcp test -Diped.mcp.test.largeCase=<path>           # + SC-002 e SC-015
+
+# Com caso, são necessários mais dois parâmetros — ver abaixo por quê:
+mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java.exe \
+    -Diped.mcp.test.referenceCase=<path>                         # + suítes de integração
+mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java.exe \
+    -Diped.mcp.test.largeCase=<path>                             # + SC-002 e SC-015
 ```
 
-As suítes que precisam de caso **pulam** quando ele não está configurado, e **um teste pulado não é um teste que passou**. A receita reprodutível do caso de referência está em [`src/test/resources/reference-case/README.md`](src/test/resources/reference-case/README.md).
+Abrir caso real no harness exige duas coisas que o teste unitário não exige, e nenhuma das duas é opcional:
 
-`ScalePerformanceTest` contra o caso grande é inegociável: uma implementação que materializa o conjunto passa em todas as outras suítes deste módulo e só falha em campo.
+- **`-Diped.mcp.ipedRoot`** — a configuração do engine (`IndexTaskConfig`, `AnalysisConfig`, `CategoryConfig`) tem que ser carregada de uma instalação antes de abrir caso, exatamente como o `McpServerMain.main` faz. Sem isso o `iped_open_case` falha com `CASE_INACCESSIBLE` e `IndexTaskConfig` nulo. `McpTestSupport.requireIpedConfiguration()` cuida disso, chamado de `requireReferenceCase()`/`requireLargeCase()`.
+- **`-Djvm` apontando para o JRE 11 do release** — carregar o task installer arrasta o FST, que reflete em interno do JDK (`String.value`, `BigDecimal.intVal`, e mais conforme registra suas classes padrão). Java permite até a 15 e recusa a partir da 16. Em JVM ≥ 16 o harness **recusa antes de falhar**, com o comando pronto; abrir pacote a pacote com `--add-opens` é caça sem fim e um conjunto incompleto só desloca a confusão.
+
+As suítes que precisam de caso **pulam** quando ele não está configurado, e **um teste pulado não é um teste que passou**. Quando o caso está configurado mas a instalação ou o runtime não, o harness **falha** em vez de pular: alguém pediu execução real, e pular ali reportaria "nada a fazer" para bancada mal configurada. A receita reprodutível do caso de referência está em [`src/test/resources/reference-case/README.md`](src/test/resources/reference-case/README.md).
+
+`ScalePerformanceTest` contra o caso grande é inegociável: uma implementação que materializa o conjunto passa em todas as outras suítes deste módulo e só falha em campo. Ele imprime as medições ao final — pass/fail sozinho não mostra a corrida se aproximando do teto. Última execução, caso de **15.061.999 itens**:
+
+| Medição | Resultado | Teto |
+|---|---|---|
+| `iped_open_case` + `iped_case_overview` | 3.050 ms | 30.000 ms |
+| Primeira página de `*:*` (50 itens) | 655 ms | 5.000 ms |
+| Total exato devolvendo 1 item | 817 ms | 5.000 ms |
+| 10 páginas seguidas, pior caso | 836 ms — página 1: 836 ms, página 10: **479 ms** | 5.000 ms |
+| `iped_aggregate` por categoria (41 valores) | 4.490 ms | 15.000 ms |
+
+A linha que importa é a da paginação profunda: a página 10 é **mais rápida** que a primeira. O custo acompanha a página, não a profundidade — é isso que separa `PagedSearcher` de uma implementação que materializa o conjunto.
 
 ## 8. Skill
 

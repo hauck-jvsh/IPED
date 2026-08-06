@@ -1,6 +1,6 @@
 # Validation report — quickstart.md run
 
-**Feature**: 001-iped-llm-integration | **Data**: 2026-08-04 | Task T081
+**Feature**: 001-iped-llm-integration | **Data**: 2026-08-04, atualizado em 2026-08-06 | Task T081
 
 Resultado da execução de [quickstart.md](./quickstart.md) contra a implementação. O objetivo desta
 página é registrar **o que ficou de fora e por quê**, não celebrar o que passou.
@@ -9,12 +9,17 @@ página é registrar **o que ficou de fora e por quê**, não celebrar o que pas
 
 | | Cenários |
 |---|---|
-| Validados automaticamente | 1, 6 (parcial), 8 (passos 1–5), 13 |
+| Validados automaticamente | 1, 3 (caso grande), 6 (parcial), 8 (passos 1–5), 13 |
 | Cobertos por suíte que **pula** sem o caso de referência | 2, 3 (caso pequeno), 4, 5, 7, 9, 12 |
-| Não executáveis nesta bancada | 3 (caso grande), 10, 11 |
+| Não executáveis nesta bancada | 10, 11 |
 
 **A lacuna dominante é uma só: o caso de referência não foi construído.** Ela sozinha responde por
-52 dos 128 testes do módulo, que hoje pulam. Um teste pulado não é um teste que passou.
+47 dos 151 testes do módulo, que hoje pulam. Um teste pulado não é um teste que passou.
+
+> **Atualização de 2026-08-06 — o caso grande foi executado.** T028 rodou sobre um caso real de
+> **15.061.999 itens** e SC-002 e SC-015 passaram com folga. Isso remove a lacuna que este relatório
+> marcava como a mais séria; o Cenário 3 contra o caso grande deixa de ser hipótese. Ver a seção do
+> Cenário 3 abaixo, reescrita com as medições.
 
 ## Situação por cenário
 
@@ -35,18 +40,30 @@ estão cobertos e verdes em `DiagnosticsTest` e `VersionRangeTest`, sobre casos 
 
 O passo 6 (cronometragem no caso grande) depende do caso de 10 M.
 
-### Cenário 3 — Paginação e contagem ⏸ / ❌
+### Cenário 3 — Paginação e contagem ⏸ (caso pequeno) / ✅ (caso grande)
 
 `PaginationTest` escrito e pulando sobre o caso pequeno.
 
-**Contra o caso grande não foi executado, e isto é a lacuna mais séria da entrega.** O próprio
-quickstart avisa: sobre caso pequeno este cenário passa mesmo numa implementação que materializa
-todo o conjunto. `ScalePerformanceTest` existe e pula. Enquanto não rodar, SC-002 e SC-015 estão
-**não verificados** — não satisfeitos.
+**Contra o caso grande foi executado em 2026-08-06** (T028), sobre um caso real de **15.061.999
+itens**, índice de 68,6 GB. `ScalePerformanceTest`, 5 testes, verde:
 
-O que dá alguma confiança enquanto isso: `PagedSearcher` usa `IndexSearcher.count` para o total e
-`TopFieldCollector` com `searchAfter` para a página, sem passar por `IPEDSearcher` em nenhum ponto.
-É o desenho que R3 prescreve. Mas desenho correto não é medição.
+| Medição | Resultado | Teto | Critério |
+|---|---|---|---|
+| `iped_open_case` + `iped_case_overview` | 3.050 ms | 30.000 ms | SC-015 |
+| Primeira página de `*:*` (50 itens) | 655 ms | 5.000 ms | SC-002 |
+| Total exato devolvendo 1 item | 817 ms | 5.000 ms | FR-012 |
+| 10 páginas seguidas, pior caso | 836 ms — página 1: 836 ms, página 10: **479 ms** | 5.000 ms | SC-002 |
+| `iped_aggregate` por categoria (41 valores) | 4.490 ms | 15.000 ms | SC-015 |
+
+A linha decisiva é a da paginação profunda: **a página 10 é mais rápida que a primeira**. O custo
+acompanha a página, não a profundidade — que é exatamente a diferença entre `PagedSearcher` e uma
+implementação sobre `IPEDSearcher.searchAll()`, cujo custo cresce com a profundidade até derrubar a
+sessão. O desenho que R3 prescreve deixa de ser argumento e passa a ser medição.
+
+Ressalva honesta sobre o número de itens: 15 M está acima do alvo de ~10 M da clarificação, mas
+`*:*` sobre esse caso é o pior caso de amplitude, não o pior caso de custo por item — uma consulta
+textual com trechos ativados custa mais por página. `snippetBudgetMs` existe para isso e não foi
+exercitado nesta escala.
 
 ### Cenário 4 — Autocorreção de vocabulário ⏸
 

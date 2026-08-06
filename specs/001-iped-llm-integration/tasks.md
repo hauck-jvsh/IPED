@@ -14,14 +14,35 @@ description: "Task list for IPED ↔ LLM integration (MCP server + agent skill)"
 
 **Escopo**: a US5 (preparo de evidência) é **fase 2** por decisão D1 e **não** aparece aqui. Os FR-058 a FR-061 ficam fora desta entrega.
 
-**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007), T088 na reavaliação contra a Constituição v1.0.0, T089 a T093 na correção dos dois defeitos do primeiro teste de campo e T094 a T095 na do segundo (2026-08-06). Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
+**Numeração**: T001 a T082 vieram da geração inicial; T083 a T087 foram acrescentados na revisão de durabilidade da auditoria (T007), T088 na reavaliação contra a Constituição v1.0.0, T089 a T093 na correção dos dois defeitos do primeiro teste de campo, T094 a T095 na do segundo e T096 na execução de T028 (2026-08-06). Todos aparecem junto das tarefas com que se relacionam, fora da ordem numérica. Os identificadores são referências estáveis — a posição é que indica a ordem de execução.
 
 ---
 
 ## Estado da implementação — 2026-08-06
 
 O módulo `iped-mcp` está implementado, compila em Java 11, empacota no release e roda **151 testes
-com 0 falhas**. Dos 151, **52 pulam** por falta do caso de referência.
+com 0 falhas**. Dos 151, **47 pulam** por falta do caso de referência de T006.
+
+### Escala verificada — T028 fechada
+
+Executada em 2026-08-06 sobre caso real de **15.061.999 itens**, índice de 68,6 GB, no JRE 11 do
+release. Cinco medições, todas dentro do teto, com a decisiva sendo a última:
+
+| Medição | Resultado | Teto |
+|---|---|---|
+| `iped_open_case` + `iped_case_overview` | 3.050 ms | 30.000 ms |
+| Primeira página de `*:*` (50 itens) | 655 ms | 5.000 ms |
+| Total exato devolvendo 1 item | 817 ms | 5.000 ms |
+| `iped_aggregate` por categoria (41 valores) | 4.490 ms | 15.000 ms |
+| 10 páginas seguidas, pior caso | 836 ms — página 1: 836 ms, **página 10: 479 ms** | 5.000 ms |
+
+A página 10 sai mais rápida que a primeira: o custo acompanha a página, não a profundidade. É a
+diferença entre `PagedSearcher` e uma implementação sobre `IPEDSearcher.searchAll()`, e é o que
+R3 previu e SC-002 exige. **SC-002 e SC-015 verificados.**
+
+Rodar exigiu antes corrigir o harness (T096), que nunca tinha aberto um caso real e não carregava a
+configuração do engine. Vale registrar o que isso significa: **as 47 suítes que hoje pulam também
+não abririam caso** quando T006 ficasse pronta.
 
 ### Segundo teste de campo — cobertura das 25 ferramentas
 
@@ -77,16 +98,17 @@ exigindo escape**: `iped_list_fields` anuncia a contagem e a regra, `iped_check_
 lacuna que restava era vocabulário sintético, e ela está fechada — os 52 testes de integração
 continuam pulando por outro motivo, a ausência do caso de referência de T006.
 
-**Um teste pulado não é um teste que passou.** Quatro tarefas continuam abertas, todas por
-dependerem de recurso físico que não existe nesta bancada, e são a diferença entre "implementado" e
-"verificado":
+**Um teste pulado não é um teste que passou.** Três tarefas continuam abertas, todas por dependerem
+de recurso que não existe nesta bancada, e são a diferença entre "implementado" e "verificado":
 
 | Tarefa | O que falta | Consequência |
 |---|---|---|
-| **T006** | Construir o caso de referência pequeno | Bloqueia 52 testes e 7 cenários do quickstart |
-| **T028** | Executar sobre o caso de ~10 M itens | **SC-002 e SC-015 não verificados** — é a lacuna que o quickstart marca como inegociável |
+| **T006** | Construir o caso de referência pequeno | Bloqueia 47 testes e 7 cenários do quickstart |
 | **T073** | Cronometrar instalação em máquina limpa, nos 3 harnesses | SC-010 não verificado |
 | **T079** | Rodar com harness de modelo local | FR-065 não verificado, e com ele a salvaguarda da decisão D3 |
+
+**T028 saiu desta lista em 2026-08-06**: rodou sobre caso real de 15.061.999 itens e SC-002 e
+SC-015 estão verificados. Era a lacuna que o quickstart marcava como inegociável.
 
 Além disso, **SC-008 e SC-009 não são automatizáveis**: são propriedades do que o agente escreve,
 não do que a ferramenta devolve. `InvestigationBatteryTest` cobre a metade de recuperação e diz
@@ -172,7 +194,8 @@ Módulo novo `iped-mcp/` na raiz do repositório, conforme "Source Code" em [pla
 - [X] T025 [P] [US1] Teste de integração em `iped-mcp/src/test/java/iped/mcp/integration/VocabularyTest.java`: campo inexistente devolve `UNKNOWN_FIELD` com `details.similar` contendo o nome correto, e a consulta refeita com a sugestão retorna resultados (Cenário 4, SC-006)
 - [X] T026 [P] [US1] Teste de integração em `iped-mcp/src/test/java/iped/mcp/integration/AggregationTest.java`: soma dos buckets bate com o total do caso e é coerente com `total_matches` de uma consulta restritiva (Cenário 5)
 - [X] T027 [P] [US1] Teste de indisponibilidade em `iped-mcp/src/test/java/iped/mcp/unit/AvailabilityTest.java`: item sem texto extraído, sem miniatura, cifrado e com evidência ausente declaram indisponibilidade com motivo, nunca vazio silencioso (FR-022)
-- [ ] T028 [US1] Teste de desempenho em `iped-mcp/src/test/java/iped/mcp/integration/ScalePerformanceTest.java` sobre caso de ~10 M itens: primeira página < 5 s, abertura + panorama < 30 s, agregação < 15 s (SC-002, SC-015). **Executar contra o caso grande é obrigatório** — a diferença entre paginar e materializar não aparece no caso pequeno. **Teste escrito; NÃO executado** — pula sem `-Diped.mcp.test.largeCase`, e enquanto pular SC-002 e SC-015 estão não verificados
+- [X] T028 [US1] Teste de desempenho em `iped-mcp/src/test/java/iped/mcp/integration/ScalePerformanceTest.java` sobre caso de ~10 M itens: primeira página < 5 s, abertura + panorama < 30 s, agregação < 15 s (SC-002, SC-015). **Executar contra o caso grande é obrigatório** — a diferença entre paginar e materializar não aparece no caso pequeno. **Executado em 2026-08-06** sobre caso real de **15.061.999 itens**, índice de 68,6 GB, 5 testes verdes: abertura + panorama 3.050 ms, primeira página de `*:*` 655 ms, total exato 817 ms, agregação por categoria 4.490 ms, e 10 páginas seguidas com pior caso de 836 ms — **página 10 mais rápida que a página 1** (479 ms contra 836 ms), que é a medição que separa paginar de materializar. SC-002 e SC-015 **verificados**. A suíte passa a imprimir as medições ao final: pass/fail sozinho não mostra a corrida se aproximando do teto
+- [X] T096 [US1] Tornar o harness de integração capaz de abrir caso real: `McpTestSupport.requireIpedConfiguration()` carrega a configuração do engine a partir de `-Diped.mcp.ipedRoot`, como o `McpServerMain.main` faz, e o harness recusa com instrução em JVM ≥ 16, onde o FST não consegue refletir e a falha viria de dentro de uma lib de serialização — **concluída em 2026-08-06**. Sem isso o `iped_open_case` falhava com `CASE_INACCESSIBLE` e `IndexTaskConfig` nulo, e **nenhuma** das suítes de integração conseguiria abrir caso quando T006 ficasse pronta
 
 ### Implementation for User Story 1
 
@@ -385,7 +408,8 @@ Depois da Fase 2: um desenvolvedor em US1 (o caminho crítico e o mais pesado), 
 ## Notes
 
 - **T006 e T007 primeiro.** O caso de referência é pré-requisito de toda verificação, e a decisão de durabilidade da auditoria precisa ser reaberta antes de virar código. Ambas são fáceis de adiar e caras de corrigir depois.
-- **T028 contra o caso grande é inegociável.** A diferença entre `PagedSearcher` e `IPEDSearcher` não aparece em caso pequeno — passa nos testes e falha na bancada.
+- **T028 contra o caso grande é inegociável.** A diferença entre `PagedSearcher` e `IPEDSearcher` não aparece em caso pequeno — passa nos testes e falha na bancada. ✅ Executada em 2026-08-06 sobre 15 M itens.
+- **Suíte de integração precisa de `-Diped.mcp.ipedRoot` e do JRE 11 do release em `-Djvm`.** Ver a seção Testes do [CLAUDE.md do módulo](../../iped-mcp/CLAUDE.md); sem os dois, nenhum caso real abre.
 - `[P]` = arquivos diferentes, sem dependência pendente
 - Commitar após cada tarefa ou grupo lógico
 - Parar em qualquer checkpoint para validar a história de forma independente
