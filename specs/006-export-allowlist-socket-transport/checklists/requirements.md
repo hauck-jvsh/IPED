@@ -58,6 +58,19 @@ sessões sobre um caso era total. Com sessões simultâneas, o histórico de um 
 repartido entre trilhas paralelas e **FR-037 de 001 deixa de ser satisfeito por uma trilha isolada**.
 FR-033 e SC-013 criados para cobrir isso. A quarta entrada da seção Clarifications registra o achado.
 
+### Iteração 3 — 2026-08-10 (pós-pesquisa de Phase 0)
+
+**16 de 16 mantidos.** A pesquisa de Phase 0 encontrou um defeito que o spec não cobria e o perito
+autorizou incorporá-lo: **FR-034** e **SC-015**, sobre destino que aceita a escrita sem retê-la.
+
+O achado é instrutivo sobre o limite da própria allow-list. `<raiz>\NUL` **não escapa da raiz** — FR-001
+o aprova corretamente — e ainda assim o artefato não existe depois da escrita, com sucesso reportado e
+`bytes: 0`. Confinamento de destino e integridade do resultado são garantias diferentes, e a primeira
+não implica a segunda. Foi medido, não deduzido: ver [research.md](../research.md) R2.
+
+O item "Edge cases are identified" foi reavaliado e continua aprovado, agora com a borda de dispositivo
+reservado listada explicitamente.
+
 ### Verificações transversais
 
 **Vazamento de implementação**: o termo "socket", presente no pedido original, aparece apenas no campo
@@ -66,7 +79,7 @@ critérios de sucesso descrevem comportamento observável — porta aberta, recu
 equivalência de resultados, bloqueio mútuo entre sessões — sem nomear mecanismo. "Segredo
 compartilhado" é modelo de confiança, não tecnologia.
 
-**Numeração**: FR-001 a FR-033 e SC-001 a SC-014, ambos contíguos e sem lacunas. Requisitos de 001
+**Numeração**: FR-001 a FR-034 e SC-001 a SC-015, ambos contíguos e sem lacunas. Requisitos de 001
 são sempre citados com origem explícita ("FR-068 de 001"), convenção declarada na seção *Relação com
 a spec 001*.
 

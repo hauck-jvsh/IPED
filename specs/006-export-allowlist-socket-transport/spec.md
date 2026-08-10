@@ -4,7 +4,7 @@
 
 **Created**: 2026-08-10
 
-**Status**: Draft — clarificado em 2026-08-10, sem marcadores pendentes
+**Status**: Draft — clarificado em 2026-08-10 e ampliado com FR-034/SC-015 na pesquisa de Phase 0; sem marcadores pendentes
 
 **Input**: User description: "Agora vamos melhorar esse MCP. Vamos implemntar o Nível 0 do plano escalonado (allow-list no checkDestination). Depois vamos acicionar ao MCP suporte a socket, permitindo que ele funcione em uma máquina diferente da máquina onde o harness roda."
 
@@ -42,6 +42,12 @@ Vale registrar a leitura que sustenta a compatibilidade: **FR-057 de 001 restrin
 - Q: O servidor atende um cliente por vez, ou vários? → A: **Várias sessões somente-leitura simultâneas, no máximo uma com escrita.** Atende o caso real de dois peritos consultando o mesmo caso sem reabrir o controle de concorrência de escrita entre agentes. Exige arbitrar a posse da escrita, sua liberação em queda de conexão, e a convivência com a detecção de concorrência local de FR-028 de 001, que continua valendo por cima. Requisitos FR-029 a FR-031 criados.
 - Q: Consequência não antecipada da resposta anterior — com várias sessões sobre o mesmo caso, a trilha de auditoria ainda reconstitui o exame? → A: **Não sem trabalho adicional, e por isso vira requisito.** A trilha do módulo é **por sessão, não por caso** — limitação já conhecida e registrada. Com uma sessão por vez ela era irrelevante, porque a sequência de sessões sobre um caso era total. Com sessões simultâneas, o histórico de um caso passa a estar repartido entre trilhas paralelas, e FR-037 de 001 — "um segundo examinador reproduz a sequência de consultas e chega ao mesmo conjunto de itens" — deixa de ser satisfeito por uma trilha isolada. As trilhas concorrentes precisam ser reconciliáveis em uma história única e ordenável do caso. FR-033 criado.
 - Q: Quem é o operador registrado numa sessão de rede? → A: **Ambas as identidades**, com a conta que executa o servidor como autoritativa e a identidade declarada pelo cliente registrada como **alegação explicitamente não verificada**. A trilha não afirma mais do que pode provar e ainda assim carrega quem disse ser. A distinção precisa sobreviver à exportação da trilha: uma alegação que se lê como fato verificado num laudo é pior do que alegação nenhuma. Requisito FR-032 criado.
+
+### Session 2026-08-10 — achado da pesquisa de Phase 0
+
+Um defeito veio da sondagem experimental do planejamento, não de raciocínio sobre o código. Está medido em [research.md](./research.md) R2.
+
+- Q: Um destino dentro de uma raiz permitida pode aceitar a escrita e não guardar nada. Isso é problema desta feature? → A: **Sim, e a allow-list não o resolve.** Um destino como `<raiz>\NUL` fica **dentro** da raiz declarada, então FR-001 o aprova corretamente — não houve escape de raiz nenhuma. A escrita retorna sucesso, o tamanho reportado vem zero e o arquivo não existe. O agente receberia artefato declarado gerado, com contagem de itens, sobre arquivo que não está lá. É a mesma classe de defeito que a invariante "ausência ≠ vazio" do módulo existe para impedir, e a única razão de não ter aparecido antes é que ninguém exportou para um nome de dispositivo. Na mesma sondagem, `CON` criou um arquivo real e um nome terminado em espaço foi rejeitado na entrada — ou seja, o comportamento varia por nome e por versão do sistema, o que condena qualquer lista de nomes proibidos a ser incompleta. **FR-034** e **SC-015** criados, exigindo verificação **posterior à escrita** em vez de julgamento do nome.
 
 ---
 
@@ -109,6 +115,7 @@ O perito pergunta ao servidor — sem ler código, sem inspecionar o sistema ope
 - Destino cujo caminho aparenta estar sob a raiz declarada mas resolve para fora dela por ligação simbólica, junção de diretório ou ponto de reanálise.
 - Destino nomeado por forma alternativa do mesmo caminho — nome curto no padrão 8.3, prefixo de caminho estendido, caminho de rede — que a comparação textual ingênua não reconhece como equivalente.
 - Destino que nomeia um fluxo alternativo de dados sobre um arquivo permitido: o arquivo pai está dentro da raiz e a gravação vai para outro lugar.
+- Destino que nomeia um dispositivo reservado do sistema operacional **dentro** da raiz permitida: a contenção aprova corretamente, a escrita é aceita e nada é retido.
 - Destino cuja pasta-pai não existe: hoje a pasta é criada antes de qualquer verificação de permissão. A verificação precisa preceder a criação, ou a recusa deixa rastro.
 - Raiz declarada que não existe, não é pasta, ou não é gravável pela conta que executa o servidor.
 - Raiz declarada que contém a pasta do caso, ou que é a própria pasta do caso.
@@ -146,6 +153,7 @@ O perito pergunta ao servidor — sem ler código, sem inspecionar o sistema ope
 - **FR-007**: Toda recusa de destino MUST ser registrada na trilha de auditoria, com o destino pedido e a regra aplicada, no mesmo padrão que FR-041 de 001 estabelece para conteúdo bloqueado por política de egresso.
 - **FR-008**: A recusa devolvida ao agente MUST nomear as raízes onde a gravação é permitida, de modo que a correção seja possível na tentativa seguinte sem intervenção do perito.
 - **FR-009**: O conjunto de raízes de escrita MUST NOT ser alterável pelas ferramentas expostas ao agente, pela mesma razão que FR-034 de 001 protege a trilha de auditoria.
+- **FR-034**: Depois de gravar um artefato, o sistema MUST verificar que ele **existe no caminho resolvido e retém o que foi escrito**, e MUST NOT reportar sucesso quando não retiver. Um destino pode estar legitimamente dentro de uma raiz permitida e ainda assim descartar a escrita — nomes de dispositivo reservados do sistema operacional aceitam os bytes e não guardam nada —, e nessa situação FR-001 não se aplica, porque o pedido não escapou de raiz alguma. Julgar o **nome** do destino contra uma lista de nomes proibidos MUST NOT ser o mecanismo: o conjunto varia por sistema e por versão, e uma lista incompleta devolve exatamente a falha que deveria impedir. Artefato declarado gerado, com contagem de itens, sobre arquivo que não está lá é pior do que falha na exportação: o perito só descobre quando for buscar a entrega.
 
 ### Transporte de rede
 
@@ -210,6 +218,7 @@ O perito pergunta ao servidor — sem ler código, sem inspecionar o sistema ope
 - **SC-012**: Com sessões somente-leitura concorrentes sobre um mesmo caso, **nenhuma bloqueia a outra** e todas obtêm resultados idênticos aos de uma sessão isolada; e em 100% das tentativas no máximo uma sessão detém a escrita sobre o mesmo caso, incluindo pedidos simultâneos. Após a queda da detentora, outra sessão obtém a escrita sem reinício do servidor.
 - **SC-013**: Partindo apenas do material que acompanha o caso, um segundo examinador reconstitui a sequência completa de operações de um exame conduzido por **duas sessões simultâneas** e chega ao mesmo conjunto de itens, sem saber de antemão quantas sessões existiram — mantendo SC-005 de 001 sob o novo modelo de concorrência.
 - **SC-014**: Em 100% das leituras e exportações da trilha, a identidade alegada pelo cliente é distinguível da autoritativa sem consulta a documentação externa.
+- **SC-015**: Nenhum destino que aceite a escrita sem retê-la produz resposta de sucesso. Sobre uma bateria de nomes de dispositivo reservados situados **dentro** de uma raiz permitida, 100% das tentativas são reportadas como falha com diagnóstico acionável, e nenhuma resposta declara artefato gerado sobre arquivo inexistente.
 
 ---
 
