@@ -1,14 +1,13 @@
 package iped.mcp.export;
 
 import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -66,7 +65,7 @@ public class ArtifactWriter {
      *            identified (FR-069)
      * @return count, sample and path — never the rows themselves
      */
-    public Map<String, Object> write(OpenCase openCase, List<Integer> itemIds, String format, File destination,
+    public Map<String, Object> write(OpenCase openCase, List<Integer> itemIds, String format, Path destination,
             boolean groupByConversation) {
         // Validate the format before anything reads the case: an unsupported format is a caller
         // mistake, and discovering it after the set has been materialized wastes the work and
@@ -90,9 +89,12 @@ public class ArtifactWriter {
         }
 
         try {
-            File parent = destination.getParentFile();
+            // The destination has already been approved against the declared write roots by the
+            // time this runs, which is what makes creating the folders safe here: a refused
+            // destination never reaches this method, so it never leaves a folder behind (FR-002).
+            Path parent = destination.getParent();
             if (parent != null) {
-                Files.createDirectories(parent.toPath());
+                Files.createDirectories(parent);
             }
             switch (normalized) {
                 case "csv":
@@ -107,23 +109,62 @@ public class ArtifactWriter {
             }
         } catch (IOException e) {
             throw new McpError(McpError.EXPORT_FAILED,
-                    "The artifact could not be written to " + destination.getAbsolutePath() + ": " + e.getMessage(),
+                    "The artifact could not be written to " + destination + ": " + e.getMessage(),
                     "Check that the folder exists and is writable, and that there is free space, then export "
                             + "again.",
-                    e).with("destination", destination.getAbsolutePath());
+                    e).with("destination", destination.toString());
         }
+        long bytes = verifyArtifact(destination);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("case_id", openCase.getCaseId());
         result.put("format", normalized);
         result.put("item_count", rows.size());
-        result.put("destination", destination.getAbsolutePath());
-        result.put("bytes", destination.length());
+        result.put("destination", destination.toString());
+        result.put("bytes", bytes);
         result.put("sample", rows.subList(0, Math.min(sampleSize, rows.size())));
         result.put("note", "The full set of " + rows.size() + " records is in the file. Only the first "
                 + Math.min(sampleSize, rows.size()) + " are shown here, on purpose: the artifact is the "
                 + "deliverable, not this conversation.");
         return result;
+    }
+
+    /**
+     * Confirms the artifact is actually there afterwards, and returns its size (FR-034).
+     *
+     * <p>
+     * Containment is not integrity. A destination can sit legitimately inside a permitted root and
+     * still keep nothing: on Windows, {@code <root>\NUL} names the null device, the write succeeds,
+     * and the file does not exist. Without this check the caller would be told the export succeeded,
+     * with an item count and a path, over a file that is not there — and the examiner would find out
+     * when they went looking for the deliverable.
+     *
+     * <p>
+     * <b>Deliberately not a list of forbidden names.</b> The set of names that behave this way varies
+     * by system and by version — measured on this platform, {@code CON} created a real file while
+     * {@code NUL} did not — so any such list is incomplete by construction and would hand back
+     * exactly the failure it was meant to prevent. Checking the result is insensitive to which
+     * mechanism made the file vanish.
+     */
+    static long verifyArtifact(Path destination) {
+        try {
+            if (Files.isRegularFile(destination)) {
+                long size = Files.size(destination);
+                if (size > 0) {
+                    return size;
+                }
+            }
+        } catch (IOException e) {
+            throw new McpError(McpError.EXPORT_FAILED,
+                    "The artifact at " + destination + " could not be confirmed after writing: " + e.getMessage(),
+                    "Nothing was delivered. Export again to a plain file under one of the permitted folders.", e)
+                            .with("destination", destination.toString());
+        }
+        throw new McpError(McpError.EXPORT_FAILED,
+                "The write to " + destination + " was accepted but nothing is there afterwards.",
+                "Some destinations take a write and keep nothing — a reserved device name such as NUL is the "
+                        + "usual cause, and it can sit inside a permitted folder. Nothing was delivered. Export "
+                        + "again to a plain file name.").with("destination", destination.toString());
     }
 
     private List<Map<String, Object>> readRows(OpenCase openCase, List<Integer> itemIds, boolean groupByConversation) {
@@ -184,10 +225,10 @@ public class ArtifactWriter {
         });
     }
 
-    private void writeCsv(List<Map<String, Object>> rows, File destination, boolean withMessages) throws IOException {
+    private void writeCsv(List<Map<String, Object>> rows, Path destination, boolean withMessages) throws IOException {
         List<String> columns = columns(withMessages);
         try (Writer writer = new BufferedWriter(
-                new OutputStreamWriter(new FileOutputStream(destination), StandardCharsets.UTF_8))) {
+                new OutputStreamWriter(Files.newOutputStream(destination), StandardCharsets.UTF_8))) {
             // BOM so that spreadsheet software opens UTF-8 correctly on Windows, which is where
             // most of these files get opened.
             writer.write('﻿');
@@ -216,8 +257,8 @@ public class ArtifactWriter {
         return text;
     }
 
-    private void writeJson(OpenCase openCase, List<Map<String, Object>> rows, File destination) throws IOException {
-        try (OutputStream out = new FileOutputStream(destination);
+    private void writeJson(OpenCase openCase, List<Map<String, Object>> rows, Path destination) throws IOException {
+        try (OutputStream out = Files.newOutputStream(destination);
                 JsonGenerator generator = JsonRpcCodec.mapper().getFactory().createGenerator(out,
                         JsonEncoding.UTF8)) {
             generator.useDefaultPrettyPrinter();
@@ -235,11 +276,12 @@ public class ArtifactWriter {
         }
     }
 
-    private void writeXlsx(List<Map<String, Object>> rows, File destination, boolean withMessages) throws IOException {
+    private void writeXlsx(List<Map<String, Object>> rows, Path destination, boolean withMessages) throws IOException {
         List<String> columns = columns(withMessages);
         // Streaming workbook: rows are flushed to disk as they are written, so a five-thousand-item
         // bookmark never sits in memory as a document tree.
-        try (SXSSFWorkbook workbook = new SXSSFWorkbook(200); OutputStream out = new FileOutputStream(destination)) {
+        try (SXSSFWorkbook workbook = new SXSSFWorkbook(200);
+                OutputStream out = Files.newOutputStream(destination)) {
             SXSSFSheet sheet = workbook.createSheet("items");
             Row header = sheet.createRow(0);
             for (int i = 0; i < columns.size(); i++) {

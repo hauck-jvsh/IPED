@@ -182,4 +182,87 @@ public final class McpTestSupport {
         config.setAuditArea(auditArea);
         return config;
     }
+
+    /**
+     * Creates a folder under the temporary root and returns it resolved to its real path.
+     *
+     * <p>
+     * Resolution matters even here. On Windows a temporary folder is routinely reached through a
+     * path carrying an 8.3 short name — {@code JOAOPA~1} for a longer account name — and a test that
+     * declares a write root by its unresolved path while the server compares resolved paths would
+     * fail for a reason that has nothing to do with what it is testing.
+     */
+    public static File realDirectory(File tempRoot, String name) throws IOException {
+        File dir = new File(tempRoot, name);
+        Files.createDirectories(dir.toPath());
+        return dir.toPath().toRealPath().toFile();
+    }
+
+    /**
+     * Creates a directory link at {@code link} pointing at {@code target}, or skips the calling test
+     * when the platform will not make one.
+     *
+     * <p>
+     * <b>Both paths must live under the same temporary root.</b> That is not tidiness, it is safety:
+     * JUnit's {@code TemporaryFolder} deletes recursively with {@code File.listFiles()}, which on
+     * Windows reports the contents of a junction's <i>target</i> rather than the link itself. A
+     * junction pointing outside the temporary tree would therefore have its target emptied during
+     * cleanup. Keeping the target inside the same tree makes the recursive delete remove only what
+     * it was already going to remove.
+     *
+     * <p>
+     * A junction is used on Windows because that is the mechanism the confinement check has to
+     * survive: {@code File.getCanonicalPath()} does not traverse one, which is measured in
+     * {@code research.md} R1 and locked in by
+     * {@code PathConfinementTest#canonicalPathDoesNotTraverseDirectoryLink}. Elsewhere a symbolic
+     * link is the equivalent, and needs no privilege.
+     */
+    public static void createDirectoryLink(File link, File target) throws IOException {
+        if (!isWindows()) {
+            Files.createSymbolicLink(link.toPath(), target.toPath());
+            return;
+        }
+        Process process = new ProcessBuilder("cmd", "/c", "mklink", "/J", link.getAbsolutePath(),
+                target.getAbsolutePath()).redirectErrorStream(true).start();
+        try {
+            process.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while creating a directory junction", e);
+        }
+        Assume.assumeTrue("This platform would not create a directory junction, so the escape vector it "
+                + "represents cannot be exercised here.", link.isDirectory());
+    }
+
+    /**
+     * Removes a directory link without touching what it points at.
+     *
+     * <p>
+     * {@code Files.delete} on a junction removes the link, but a recursive delete written the
+     * obvious way descends through it first. Tests that create a link should remove it here before
+     * cleanup runs, even though {@link #createDirectoryLink} keeps the blast radius inside the
+     * temporary tree.
+     */
+    public static void removeDirectoryLink(File link) throws IOException {
+        if (!link.exists()) {
+            return;
+        }
+        if (!isWindows()) {
+            Files.deleteIfExists(link.toPath());
+            return;
+        }
+        Process process = new ProcessBuilder("cmd", "/c", "rmdir", link.getAbsolutePath()).redirectErrorStream(true)
+                .start();
+        try {
+            process.waitFor();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while removing a directory junction", e);
+        }
+    }
+
+    /** Skips the calling test off Windows, for vectors that only exist there. */
+    public static void assumeWindows() {
+        Assume.assumeTrue("This vector only exists on Windows.", isWindows());
+    }
 }

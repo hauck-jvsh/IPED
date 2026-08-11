@@ -118,5 +118,25 @@ snippetBudgetMs = 3000
 # with a diagnostic naming the supported range.
 supportedVersionPrefix = 4.
 
+# Folders the server may write output artifacts into. Separated by ";",
+# not by "," — a Windows path carries a comma often enough that splitting
+# on one would cut a declared root in half with no error to explain it.
+#
+# This is a list of what is PERMITTED. A destination that resolves
+# anywhere else is refused, and "resolves" means the place the write
+# really reaches: a directory junction inside a permitted folder that
+# points outside it is refused, because the check follows it.
+#
+# Left empty, a default folder under the account's home directory is
+# used and created on demand, so an installation that upgrades without
+# editing this file keeps working and is still confined.
+#
+# exportRoots = D:\pericia\trabalho;D:\pericia\laudos
+exportRoots =
+
 # Output artifacts must not be written into the case folder by default.
+#
+# This suppresses the case-folder refusal ONLY. It does not re-open the
+# rest of the filesystem: with it on, a destination outside exportRoots
+# is still refused.
 allowExportIntoCaseFolder = false

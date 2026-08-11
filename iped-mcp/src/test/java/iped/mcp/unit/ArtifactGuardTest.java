@@ -56,7 +56,7 @@ public class ArtifactGuardTest {
     public void emptySetProducesNoFile() throws Exception {
         File destination = new File(temp.newFolder("out"), "report.csv");
         try {
-            new ArtifactWriter(5).write(null, Collections.emptyList(), "csv", destination, false);
+            new ArtifactWriter(5).write(null, Collections.emptyList(), "csv", destination.toPath(), false);
             fail("an empty set must be refused, not written");
         } catch (McpError e) {
             assertEquals(McpError.EMPTY_RESULT_SET, e.getCode());
@@ -86,7 +86,7 @@ public class ArtifactGuardTest {
         // The case is deliberately null: an unsupported format is a caller mistake and has to be
         // caught before anything reads the case, or the set gets materialized for nothing.
         try {
-            new ArtifactWriter(5).write(null, Collections.singletonList(1), "pdf", destination, false);
+            new ArtifactWriter(5).write(null, Collections.singletonList(1), "pdf", destination.toPath(), false);
             fail("an unsupported format must be refused");
         } catch (McpError e) {
             assertEquals(McpError.INVALID_ARGUMENT, e.getCode());

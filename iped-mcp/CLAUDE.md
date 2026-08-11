@@ -76,6 +76,9 @@ Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constitui�
 | Ausência ≠ vazio | `ItemView.unavailable`, `ContentAccess.unavailable` |
 | Charset explícito, logging por SLF4J | `JsonRpcCodec`, `AuditTrail`; `System.out` corromperia o próprio protocolo |
 | Uma mensagem malformada é respondida e descartada, nunca fatal | `JsonRpcCodec.readMessage` → `McpError.MALFORMED_MESSAGE`; `McpServerMain.start` responde `-32700` e continue. Deixar a falha do Jackson escapar derrubava a sessão inteira e todos os casos abertos nela |
+| Artefato só é gravado sob raiz declarada | `PathConfinement.resolve` chamado por `ExportTools.checkDestination` **antes** de `ArtifactWriter.write`. É lista de permissão, não de recusa, e a comparação é sobre o caminho **real** (`Path.toRealPath`) contra a raiz **real**. `File.getCanonicalPath()` **não atravessa junção de diretório no Windows** e por isso não pode voltar a ser usado aqui |
+| Recusa de destino não deixa rastro | A criação de pastas intermediárias em `ArtifactWriter` acontece depois do veredito `ALLOWED`, nunca antes |
+| Sucesso de exportação implica artefato existente | `ArtifactWriter.verifyArtifact` confere existência e tamanho depois de escrever. Contenção não é integridade: `<raiz>\NUL` fica dentro da raiz, aceita a escrita e não guarda nada |
 | Nenhum erro devolve uma grafia que não parseia | `PagedSearcher.plan` verifica a correção contra o caso antes de sugeri-la; `FieldNames.toQueryForm` em todo remedy que cita nome de campo |
 | Consulta reescrita é sempre declarada | `PagedSearcher.declareNormalization` → `query_normalized` no resultado de busca, agregação e exportação |
 
@@ -134,6 +137,9 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | Portão de escrita no `McpDispatcher` | Precisa continuar antes de qualquer leitura de argumento, ou "sem tocar o caso" deixa de ser verdade. |
 | `ConcurrencyGuard` | A UI do IPED 4.3.1 não trava o caso. A detecção é cooperativa entre processos `iped-mcp` e best-effort para a UI — ausência de conflito **não** prova ausência de outro leitor. |
 | `ItemView.storedFields` | Lê do documento armazenado, não do `IItem`. Acrescentar campo aqui é barato; trocar por reconstrução de item custa a latência da página. |
+| `PathConfinement` | Toda a classe existe porque comparação textual de prefixo não sustenta a regra. Trocar `toRealPath()` por `getCanonicalPath()` ou por `normalize()` reabre a junção de diretório; comparar com `String.startsWith` em vez de `Path.startsWith` faz uma raiz `D:\laudo` casar com `D:\laudos`. `PathConfinementTest` fixa os dois. O veredito de prefixo estendido `\\?\` **difere entre Java 11 e versões novas** — o teste afirma "recusado", não um veredito |
+| `McpServerConfig.exportRoots` | Separador `;`, não `,`: caminho de arquivo carrega vírgula. Sem raiz declarada vale uma raiz padrão criada sob demanda, para que instalação existente continue funcionando ao atualizar (FR-024) |
+| `allowExportIntoCaseFolder` | **Semântica estreitada.** Suprime só o veredito `INSIDE_CASE`; não reabre o resto do sistema de arquivos. Antes fazia `checkDestination` retornar antes de qualquer verificação |
 | `FieldNames.escapeKnownFieldNames` | Só reescreve nome que **este caso tem**, fora de aspas e seguido de `:`. Afrouxar qualquer uma das três condições faz o servidor inventar restrição de campo ou alterar a frase que o perito procurava. |
 | `Cursor` | A posição vem de `FieldDoc.fields[0]`, **nunca** de `ScoreDoc.score` — o `TopFieldCollector` deixa `NaN` ali. O formato do cursor decorre de `Cursor.SORT`: mudar a ordenação sem mudar o cursor faz a paginação reiniciar em silêncio. |
 

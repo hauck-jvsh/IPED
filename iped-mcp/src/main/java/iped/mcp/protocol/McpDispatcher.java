@@ -232,7 +232,7 @@ public class McpDispatcher {
             session.getAuditTrail().recordEnd(start, AuditRecord.Outcome.OK, volumeOf(result), null);
             return renderResult(result);
         } catch (McpError e) {
-            Map<String, Object> blocked = McpError.BLOCKED_BY_POLICY.equals(e.getCode()) ? blockDetails(e) : null;
+            Map<String, Object> blocked = isPolicyRefusal(e) ? blockDetails(e) : null;
             session.getAuditTrail().recordEnd(start,
                     blocked != null ? AuditRecord.Outcome.DENIED : AuditRecord.Outcome.ERROR, null, blocked);
             throw e;
@@ -250,6 +250,20 @@ public class McpDispatcher {
         String caseId = arguments.path("case_id").asText(null);
         AuditRecord start = session.getAuditTrail().recordStart(name, toMap(arguments), caseId, null, null);
         session.getAuditTrail().recordEnd(start, AuditRecord.Outcome.DENIED, null, null);
+    }
+
+    /**
+     * Whether a refusal is a policy decision rather than a failure.
+     *
+     * <p>
+     * The distinction matters to the trail. A failure says the operation could not be carried out; a
+     * policy refusal says it was stopped on purpose, and the rule that stopped it belongs in the
+     * record — content blocked by the egress policy (FR-041), and a destination outside the declared
+     * write roots (FR-007). Both are recorded as {@code DENIED} with their details attached.
+     */
+    private static boolean isPolicyRefusal(McpError error) {
+        return McpError.BLOCKED_BY_POLICY.equals(error.getCode())
+                || McpError.DESTINATION_REFUSED.equals(error.getCode());
     }
 
     private static Map<String, Object> blockDetails(McpError error) {

@@ -8,3 +8,6 @@ nbactions.xml
 /.project
 .pydevproject
 /.idea/
+# Editor and IDE state, at the root and inside modules.
+.vscode/
+**/.settings/

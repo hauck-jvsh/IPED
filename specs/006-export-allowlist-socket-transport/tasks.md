@@ -29,7 +29,7 @@ Módulo `iped-mcp` dentro do projeto multi-módulo. Fonte em `iped-mcp/src/main/
 
 **Purpose**: fixar o ponto de partida para que toda falha posterior seja atribuível
 
-- [ ] T001 Registrar a linha de base em `iped-mcp/`: rodar `mvn -pl iped-mcp -am install` e `mvn -pl iped-mcp test`, e anotar **quantos testes passam e quantos pulam**. A feature 001 encerrou com o caso de referência não construído e 47 testes pulando por isso; sem esse número anotado, um teste que passe a pular por causa desta feature fica indistinguível dos que já pulavam
+- [X] T001 Registrar a linha de base em `iped-mcp/`: rodar `mvn -pl iped-mcp -am install` e `mvn -pl iped-mcp test`, e anotar **quantos testes passam e quantos pulam**. A feature 001 encerrou com o caso de referência não construído e 47 testes pulando por isso; sem esse número anotado, um teste que passe a pular por causa desta feature fica indistinguível dos que já pulavam
 
 ---
 
@@ -39,7 +39,7 @@ Módulo `iped-mcp` dentro do projeto multi-módulo. Fonte em `iped-mcp/src/main/
 
 **⚠️ Esta fase é deliberadamente curta.** US1 foi desenhada para não precisar de nada de US2, e a maior parte do que pareceria fundação — chaves de configuração, diagnóstico — é específica de cada história e vive nela.
 
-- [ ] T002 Estender `iped-mcp/src/test/java/iped/mcp/McpTestSupport.java` com auxiliares que as suítes das três histórias vão usar: criação de raiz de escrita temporária, criação e remoção de **junção de diretório** no Windows (`cmd /c mklink /J` e `cmd /c rmdir` — `Remove-Item -Recurse` sobre junção alcança o alvo e apagaria o que está do outro lado), e montagem de `McpServerConfig` em memória sem arquivo em disco
+- [X] T002 Estender `iped-mcp/src/test/java/iped/mcp/McpTestSupport.java` com auxiliares que as suítes das três histórias vão usar: criação de raiz de escrita temporária, criação e remoção de **junção de diretório** no Windows (`cmd /c mklink /J` e `cmd /c rmdir` — `Remove-Item -Recurse` sobre junção alcança o alvo e apagaria o que está do outro lado), e montagem de `McpServerConfig` em memória sem arquivo em disco
 
 **Checkpoint**: fundação pronta — US1 pode começar
 
@@ -55,25 +55,25 @@ Módulo `iped-mcp` dentro do projeto multi-módulo. Fonte em `iped-mcp/src/main/
 
 > **T003 precisa falhar contra a implementação atual antes de qualquer mudança.** Esse é o ponto: a linha da junção é a prova de que o defeito medido em [research.md](./research.md) R1 é real neste código, e não uma preocupação teórica. Um teste escrito depois da correção não prova nada sobre o que existia antes.
 
-- [ ] T003 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/unit/PathConfinementTest.java` com a bateria de SC-001: caminho relativo com `..`, **junção de diretório dentro da raiz apontando para fora**, fluxo alternativo de dados sobre arquivo permitido, nome curto 8.3, diferença de caixa, prefixo `\\?\`, destino dentro da pasta do caso com a raiz contendo o caso, e destino válido. Rodar contra o código atual e **registrar quais linhas passam** — a da junção deve reprovar
-- [ ] T004 [P] [US1] Acrescentar a `PathConfinementTest` a verificação de FR-002: após cada recusa, **nenhum arquivo e nenhuma pasta** existem no destino pedido
-- [ ] T005 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/unit/ArtifactIntegrityTest.java` para FR-034/SC-015: destino nomeando dispositivo reservado (`NUL`, `CON`, `COM1`) **dentro** da raiz permitida. O teste afirma a **resposta devolvida** — falha com diagnóstico —, nunca o veredito de contenção, que é corretamente `ALLOWED`. Um teste que afirme o veredito passa com o defeito presente
-- [ ] T006 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/integration/ExportRefusalAuditTest.java` para FR-007: toda recusa consta da trilha com destino pedido e regra aplicada
+- [X] T003 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/unit/PathConfinementTest.java` com a bateria de SC-001: caminho relativo com `..`, **junção de diretório dentro da raiz apontando para fora**, fluxo alternativo de dados sobre arquivo permitido, nome curto 8.3, diferença de caixa, prefixo `\\?\`, destino dentro da pasta do caso com a raiz contendo o caso, e destino válido. Rodar contra o código atual e **registrar quais linhas passam** — a da junção deve reprovar
+- [X] T004 [P] [US1] Acrescentar a `PathConfinementTest` a verificação de FR-002: após cada recusa, **nenhum arquivo e nenhuma pasta** existem no destino pedido
+- [X] T005 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/unit/ArtifactIntegrityTest.java` para FR-034/SC-015: destino nomeando dispositivo reservado (`NUL`, `CON`, `COM1`) **dentro** da raiz permitida. O teste afirma a **resposta devolvida** — falha com diagnóstico —, nunca o veredito de contenção, que é corretamente `ALLOWED`. Um teste que afirme o veredito passa com o defeito presente
+- [X] T006 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/integration/ExportRefusalAuditTest.java` para FR-007: toda recusa consta da trilha com destino pedido e regra aplicada
 
 ### Implementation for User Story 1
 
-- [ ] T007 [P] [US1] Acrescentar `exportRoots` a `iped-mcp/src/main/java/iped/mcp/config/McpServerConfig.java`, separado por `;` conforme [contracts/config-surface.md](./contracts/config-surface.md) — vírgula não serve porque caminho de arquivo a contém —, com resolução por `toRealPath()` e estado por raiz (`USABLE`, `MISSING`, `NOT_A_DIRECTORY`, `NOT_WRITABLE`)
-- [ ] T008 [US1] Criar `iped-mcp/src/main/java/iped/mcp/export/PathConfinement.java`: resolver o **ancestral existente mais profundo** com `toRealPath()` e recompor o restante por cima — `toRealPath()` lança `NoSuchFileException` em arquivo inexistente e o destino de uma exportação nunca existe. Comparar **real contra real**, com a raiz também resolvida. Produzir `ResolvedDestination` com veredito `ALLOWED`, `OUTSIDE_ROOTS`, `INSIDE_CASE` ou `UNRESOLVABLE` (depende de T007)
-- [ ] T009 [US1] Converter `InvalidPathException` em veredito `UNRESOLVABLE` nomeado dentro de `PathConfinement.java`, em vez de deixá-la escapar como exceção técnica — é por onde fluxo alternativo de dados e espaço ao final chegam
-- [ ] T010 [US1] Reescrever `checkDestination` em `iped-mcp/src/main/java/iped/mcp/tools/ExportTools.java` para delegar a `PathConfinement`, mantendo `INSIDE_CASE` prevalecendo sobre `ALLOWED` (FR-004) e fazendo `DESTINATION_REFUSED` **nomear as raízes permitidas** (FR-008)
-- [ ] T011 [US1] Estreitar a semântica de `allowExportIntoCaseFolder` em `ExportTools.java`: passa a suprimir **apenas** o veredito `INSIDE_CASE`; `OUTSIDE_ROOTS` continua recusado com a chave ligada. Hoje ela faz `checkDestination` retornar antes de qualquer verificação, liberando o disco inteiro
-- [ ] T012 [US1] Inverter a ordem em `iped-mcp/src/main/java/iped/mcp/export/ArtifactWriter.java`: a criação de pastas intermediárias (`Files.createDirectories`, hoje na linha 95, antes de qualquer decisão) passa a acontecer **depois** do veredito `ALLOWED`, para que uma recusa não deixe rastro (FR-002)
-- [ ] T013 [US1] Migrar o caminho de escrita de `ArtifactWriter.java` de `java.io.File` para `java.nio.file.Path`. `File` aceita fluxo alternativo de dados e `FileOutputStream` grava nele; `Paths.get` o rejeita na entrada
-- [ ] T014 [US1] Acrescentar a `ArtifactWriter.java` a verificação pós-escrita de FR-034: o artefato existe no caminho resolvido e retém o que foi escrito. **Sem lista de nomes proibidos** — na sondagem de R2, `CON` criou arquivo real e `NUL` não, e o conjunto varia por sistema e por versão
-- [ ] T015 [US1] Implementar a raiz padrão de FR-024 em `McpServerConfig.java`: sem `exportRoots` declarado, vale uma raiz documentada na área de trabalho do usuário que executa o servidor, criada sob demanda. Instalação existente continua funcionando e ainda assim passa a estar confinada
-- [ ] T016 [US1] Acrescentar a `iped-mcp/src/main/java/iped/mcp/Diagnostics.java` a sondagem de cada raiz na inicialização (FR-006): reportado, servidor sobe, primeira gravação sob raiz inutilizável falha com diagnóstico acionável
-- [ ] T017 [US1] Registrar a recusa na trilha com destino pedido e regra aplicada, em `ExportTools.java`, no padrão que FR-041 de 001 usa para conteúdo bloqueado por egresso (FR-007)
-- [ ] T018 [US1] Acrescentar `exportRoots` e a nota de semântica estreitada de `allowExportIntoCaseFolder` a `iped-app/resources/config/conf/McpServerConfig.txt`, com os mesmos valores dos fallbacks de código
+- [X] T007 [P] [US1] Acrescentar `exportRoots` a `iped-mcp/src/main/java/iped/mcp/config/McpServerConfig.java`, separado por `;` conforme [contracts/config-surface.md](./contracts/config-surface.md) — vírgula não serve porque caminho de arquivo a contém —, com resolução por `toRealPath()` e estado por raiz (`USABLE`, `MISSING`, `NOT_A_DIRECTORY`, `NOT_WRITABLE`)
+- [X] T008 [US1] Criar `iped-mcp/src/main/java/iped/mcp/export/PathConfinement.java`: resolver o **ancestral existente mais profundo** com `toRealPath()` e recompor o restante por cima — `toRealPath()` lança `NoSuchFileException` em arquivo inexistente e o destino de uma exportação nunca existe. Comparar **real contra real**, com a raiz também resolvida. Produzir `ResolvedDestination` com veredito `ALLOWED`, `OUTSIDE_ROOTS`, `INSIDE_CASE` ou `UNRESOLVABLE` (depende de T007)
+- [X] T009 [US1] Converter `InvalidPathException` em veredito `UNRESOLVABLE` nomeado dentro de `PathConfinement.java`, em vez de deixá-la escapar como exceção técnica — é por onde fluxo alternativo de dados e espaço ao final chegam
+- [X] T010 [US1] Reescrever `checkDestination` em `iped-mcp/src/main/java/iped/mcp/tools/ExportTools.java` para delegar a `PathConfinement`, mantendo `INSIDE_CASE` prevalecendo sobre `ALLOWED` (FR-004) e fazendo `DESTINATION_REFUSED` **nomear as raízes permitidas** (FR-008)
+- [X] T011 [US1] Estreitar a semântica de `allowExportIntoCaseFolder` em `ExportTools.java`: passa a suprimir **apenas** o veredito `INSIDE_CASE`; `OUTSIDE_ROOTS` continua recusado com a chave ligada. Hoje ela faz `checkDestination` retornar antes de qualquer verificação, liberando o disco inteiro
+- [X] T012 [US1] Inverter a ordem em `iped-mcp/src/main/java/iped/mcp/export/ArtifactWriter.java`: a criação de pastas intermediárias (`Files.createDirectories`, hoje na linha 95, antes de qualquer decisão) passa a acontecer **depois** do veredito `ALLOWED`, para que uma recusa não deixe rastro (FR-002)
+- [X] T013 [US1] Migrar o caminho de escrita de `ArtifactWriter.java` de `java.io.File` para `java.nio.file.Path`. `File` aceita fluxo alternativo de dados e `FileOutputStream` grava nele; `Paths.get` o rejeita na entrada
+- [X] T014 [US1] Acrescentar a `ArtifactWriter.java` a verificação pós-escrita de FR-034: o artefato existe no caminho resolvido e retém o que foi escrito. **Sem lista de nomes proibidos** — na sondagem de R2, `CON` criou arquivo real e `NUL` não, e o conjunto varia por sistema e por versão
+- [X] T015 [US1] Implementar a raiz padrão de FR-024 em `McpServerConfig.java`: sem `exportRoots` declarado, vale uma raiz documentada na área de trabalho do usuário que executa o servidor, criada sob demanda. Instalação existente continua funcionando e ainda assim passa a estar confinada
+- [X] T016 [US1] Acrescentar a `iped-mcp/src/main/java/iped/mcp/Diagnostics.java` a sondagem de cada raiz na inicialização (FR-006): reportado, servidor sobe, primeira gravação sob raiz inutilizável falha com diagnóstico acionável
+- [X] T017 [US1] Registrar a recusa na trilha com destino pedido e regra aplicada, em `ExportTools.java`, no padrão que FR-041 de 001 usa para conteúdo bloqueado por egresso (FR-007)
+- [X] T018 [US1] Acrescentar `exportRoots` e a nota de semântica estreitada de `allowExportIntoCaseFolder` a `iped-app/resources/config/conf/McpServerConfig.txt`, com os mesmos valores dos fallbacks de código
 
 **Checkpoint**: T003 passa inteira, incluindo a linha da junção. **US1 está completa e implantável sem nenhuma linha de US2.**
 

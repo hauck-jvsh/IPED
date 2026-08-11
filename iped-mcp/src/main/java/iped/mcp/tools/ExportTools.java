@@ -1,7 +1,6 @@
 package iped.mcp.tools;
 
-import java.io.File;
-import java.io.IOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -11,7 +10,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import iped.data.IBookmarks;
 import iped.engine.data.IPEDSource;
+import iped.mcp.config.McpServerConfig;
 import iped.mcp.export.ArtifactWriter;
+import iped.mcp.export.PathConfinement;
+import iped.mcp.export.PathConfinement.ResolvedDestination;
 import iped.mcp.protocol.McpError;
 import iped.mcp.protocol.ToolDescriptor;
 import iped.mcp.query.PagedSearcher;
@@ -70,12 +72,14 @@ public class ExportTools {
         OpenCase openCase = session.getCaseRegistry().require(Args.requiredString(arguments, "case_id",
                 "Pass the case_id returned by iped_open_case."));
         String format = Args.requiredString(arguments, "format", "Pass one of: xlsx, csv, json.");
-        File destination = new File(Args.requiredString(arguments, "destination",
-                "Pass an absolute file path outside the case folder."));
-        checkDestination(openCase, destination);
+        String requested = Args.requiredString(arguments, "destination",
+                "Pass an absolute file path inside one of the folders this server may write to.");
+        // Before the set is materialized, and before anything touches the filesystem: a refused
+        // destination must cost nothing and leave nothing (FR-002).
+        ResolvedDestination destination = checkDestination(openCase, requested);
 
         ItemSet set = resolveSet(openCase, arguments);
-        Map<String, Object> result = artifactWriter.write(openCase, set.ids, format, destination,
+        Map<String, Object> result = artifactWriter.write(openCase, set.ids, format, destination.getResolved(),
                 Args.optionalBoolean(arguments, "group_by_conversation", false));
         if (set.plan != null) {
             // An artifact outlives the conversation, so a repaired expression has to be legible
@@ -145,30 +149,86 @@ public class ExportTools {
     }
 
     /**
-     * Refuses a destination inside the case folder unless the configuration explicitly allows it
-     * (FR-068).
+     * Approves a destination against the declared write roots, or refuses it (FR-001, FR-004).
+     *
+     * <p>
+     * This is a <b>list of what is permitted</b>, not a list of what is forbidden. The previous rule
+     * refused the case folder and allowed the rest of the filesystem the account could reach, which
+     * protected the case and did nothing for the workstation. A deny list leaves everything nobody
+     * anticipated open, and what nobody anticipated is where the defect lives.
+     *
+     * <p>
+     * {@code allowExportIntoCaseFolder} still exists and still means what it says, but it now means
+     * only that: it suppresses the case-folder refusal and does not turn the rest of the disk back
+     * on. Anyone who was using it to write to an arbitrary folder will start getting refused, and
+     * that is the point of the change.
      */
-    private void checkDestination(OpenCase openCase, File destination) {
-        if (session.getConfig().isAllowExportIntoCaseFolder()) {
-            return;
+    private ResolvedDestination checkDestination(OpenCase openCase, String requested) {
+        McpServerConfig config = session.getConfig();
+        ResolvedDestination destination = PathConfinement.resolve(requested, config.getResolvedExportRoots(),
+                openCase.getCasePath(), config.isAllowExportIntoCaseFolder());
+        if (destination.isAllowed()) {
+            return destination;
         }
-        try {
-            String casePath = openCase.getCasePath().getCanonicalPath();
-            File parent = destination.getCanonicalFile().getParentFile();
-            String target = parent == null ? destination.getCanonicalPath() : parent.getCanonicalPath();
-            if (target.equals(casePath) || target.startsWith(casePath + File.separator)) {
-                throw new McpError(McpError.DESTINATION_REFUSED,
-                        "The destination is inside the case folder, which is refused by default.",
+        throw refusal(destination, openCase);
+    }
+
+    /**
+     * Turns a refusal into a diagnostic the agent can act on without the examiner stepping in
+     * (FR-008), and that the trail can record with the rule that applied (FR-007).
+     */
+    private static McpError refusal(ResolvedDestination destination, OpenCase openCase) {
+        String permitted = describeRoots(destination.getRoots());
+        McpError error;
+        switch (destination.getVerdict()) {
+            case INSIDE_CASE:
+                error = new McpError(McpError.DESTINATION_REFUSED,
+                        "The destination is inside the case folder, which is refused.",
                         "Write the artifact somewhere outside the case — a working folder or the report "
                                 + "folder. An artifact written into the case becomes indistinguishable later "
-                                + "from something the case itself produced.").with("destination",
-                                        destination.getAbsolutePath()).with("casePath", casePath);
-            }
-        } catch (IOException e) {
-            throw new McpError(McpError.DESTINATION_REFUSED,
-                    "The destination path could not be resolved: " + e.getMessage(),
-                    "Pass an absolute path whose parent folder exists.").with("destination",
-                            destination.getAbsolutePath());
+                                + "from something the case itself produced. Permitted: " + permitted + ".")
+                                        .with("casePath", openCase.getCasePath().getAbsolutePath());
+                break;
+            case UNRESOLVABLE:
+                error = new McpError(McpError.DESTINATION_REFUSED,
+                        "The destination is not a path this system can name: " + destination.getReason() + ".",
+                        "Pass an absolute path to a plain file — no alternate data stream after a colon, no "
+                                + "trailing space or dot — under one of: " + permitted + ".");
+                break;
+            case OUTSIDE_ROOTS:
+            default:
+                error = new McpError(McpError.DESTINATION_REFUSED,
+                        "The destination is outside every folder this server may write to.",
+                        "Write the artifact under one of: " + permitted + ". These are declared in "
+                                + "conf/McpServerConfig.txt and cannot be changed from this conversation.");
+                break;
         }
+        error.with("destination", destination.getRequested()).with("rule", destination.getVerdict().name())
+                .with("permittedRoots", describeRootList(destination.getRoots()));
+        if (destination.getResolved() != null) {
+            // Where it would really have landed. For a junction or a short name this is the whole
+            // explanation, and without it the refusal looks arbitrary to whoever asked.
+            error.with("resolvedTo", destination.getResolved().toString());
+        }
+        return error;
+    }
+
+    private static String describeRoots(List<Path> roots) {
+        if (roots.isEmpty()) {
+            return "(no writable folder is configured — see exportRoots in conf/McpServerConfig.txt)";
+        }
+        List<String> quoted = new ArrayList<>(roots.size());
+        for (Path root : roots) {
+            quoted.add(root.toString());
+        }
+        return String.join(", ", quoted);
+    }
+
+    private static List<String> describeRootList(List<Path> roots) {
+        List<String> list = new ArrayList<>(roots.size());
+        for (Path root : roots) {
+            list.add(root.toString());
+        }
+        return list;
     }
 }

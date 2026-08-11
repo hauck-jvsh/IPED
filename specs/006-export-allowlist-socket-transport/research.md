@@ -23,8 +23,16 @@ fora dela. Os resultados desmontam a abordagem atual:
 | Fluxo alternativo de dados `ok.txt:hidden` | Lança `IOException` | `Paths.get` lança `InvalidPathException` na entrada |
 | Nome curto 8.3 (`JOAOPA~1`) | Expande | Expande |
 | Diferença de caixa | Normaliza | Normaliza |
-| Prefixo estendido `\\?\` | — | Prefixo removido, resolve para o mesmo arquivo |
+| Prefixo estendido `\\?\` | — | **Depende da versão** — ver abaixo |
 | Travessia relativa `..` | — | `startsWith` cru dá **true**; só após `normalize()`/`toRealPath()` dá **false** |
+
+**Correção registrada durante a implementação.** A linha do prefixo estendido foi medida primeiro em
+um JDK 25, onde `Paths.get("\\?\C:\...")` aceita a entrada e remove o prefixo, resultando em
+`OUTSIDE_ROOTS`. Repetida no **JDK 11 que o release embarca**, a mesma expressão lança
+`InvalidPathException: Illegal character [?]`, resultando em `UNRESOLVABLE`. As duas são recusa e a
+garantia vale nos dois runtimes, mas o veredito difere — e é exatamente o caso que a restrição de
+plataforma da constituição descreve: Java 11 é restrição de **runtime**, e medir na JVM da bancada
+responde por outra máquina. O teste correspondente afirma "recusado", não um veredito específico.
 
 O achado que decide a questão é o primeiro: **`getCanonicalPath()` não atravessa junções de
 diretório no Windows.** Uma junção criada dentro de uma raiz declarada passaria por uma verificação

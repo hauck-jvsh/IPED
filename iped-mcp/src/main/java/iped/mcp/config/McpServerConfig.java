@@ -4,9 +4,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.DirectoryStream.Filter;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -82,6 +84,7 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
 
     private String supportedVersionPrefix = "4.";
     private boolean allowExportIntoCaseFolder = false;
+    private List<String> exportRoots = new ArrayList<>();
 
     private UTF8Properties properties = new UTF8Properties();
 
@@ -145,6 +148,7 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
 
         supportedVersionPrefix = str(properties, "supportedVersionPrefix", supportedVersionPrefix);
         allowExportIntoCaseFolder = bool(properties, "allowExportIntoCaseFolder", allowExportIntoCaseFolder);
+        exportRoots = pathList(properties, "exportRoots", exportRoots);
     }
 
     private static String str(UTF8Properties p, String key, String fallback) {
@@ -199,6 +203,29 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
             }
         }
         return config;
+    }
+
+    /**
+     * Splits a list of filesystem paths.
+     *
+     * <p>
+     * Separated by {@code ;}, not by the {@code ,} the other list keys use. A Windows path carries a
+     * comma often enough that splitting on one would silently cut a declared root in half, and the
+     * examiner would see a root they wrote being ignored with no error to explain it. Semicolon is
+     * also what {@code PATH} uses on the platform, so it reads as a path list to whoever edits it.
+     */
+    private static List<String> pathList(UTF8Properties p, String key, List<String> fallback) {
+        String value = str(p, key, null);
+        if (value == null) {
+            return fallback;
+        }
+        List<String> result = new ArrayList<>();
+        for (String token : value.split(";")) {
+            if (!token.trim().isEmpty()) {
+                result.add(token.trim());
+            }
+        }
+        return result;
     }
 
     /**
@@ -330,5 +357,121 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
 
     public boolean isAllowExportIntoCaseFolder() {
         return allowExportIntoCaseFolder;
+    }
+
+    /** How usable a declared write root turned out to be when it was probed. */
+    public enum WriteRootState {
+        USABLE, MISSING, NOT_A_DIRECTORY, NOT_WRITABLE
+    }
+
+    /** A declared write root, with where it really is and whether it can be written to. */
+    public static final class WriteRoot {
+
+        private final String declared;
+        private final Path resolved;
+        private final WriteRootState state;
+
+        WriteRoot(String declared, Path resolved, WriteRootState state) {
+            this.declared = declared;
+            this.resolved = resolved;
+            this.state = state;
+        }
+
+        public String getDeclared() {
+            return declared;
+        }
+
+        /** The real path, or {@code null} when the root could not be resolved. */
+        public Path getResolved() {
+            return resolved;
+        }
+
+        public WriteRootState getState() {
+            return state;
+        }
+
+        public boolean isUsable() {
+            return state == WriteRootState.USABLE;
+        }
+    }
+
+    /** The roots exactly as declared, before any probing. Empty means the default root is in force. */
+    public List<String> getExportRoots() {
+        return exportRoots;
+    }
+
+    public void setExportRoots(List<String> roots) {
+        this.exportRoots = roots == null ? new ArrayList<>() : new ArrayList<>(roots);
+    }
+
+    /**
+     * The default write root, in force when {@code exportRoots} is not declared (FR-024).
+     *
+     * <p>
+     * Refusing every export until someone configures a root would protect more and would break every
+     * installation that upgrades without editing configuration. This keeps them working <i>and</i>
+     * confined from the first minute. The case folder stays refused either way.
+     */
+    public File getDefaultExportRoot() {
+        return new File(System.getProperty("user.home"), ".iped/mcp-artifacts");
+    }
+
+    /**
+     * Probes the declared roots and reports what each one is, for the startup diagnostic (FR-006).
+     *
+     * <p>
+     * An unusable root does not stop the server: the diagnostic reports it and the first write under
+     * it fails with something the examiner can act on, which is the behaviour the rest of
+     * {@code Diagnostics} already has.
+     */
+    public List<WriteRoot> getWriteRoots() {
+        List<String> declared = exportRoots.isEmpty()
+                ? Collections.singletonList(getDefaultExportRoot().getAbsolutePath())
+                : exportRoots;
+        List<WriteRoot> roots = new ArrayList<>(declared.size());
+        for (String each : declared) {
+            roots.add(probeWriteRoot(each, exportRoots.isEmpty()));
+        }
+        return roots;
+    }
+
+    private static WriteRoot probeWriteRoot(String declared, boolean createOnDemand) {
+        File file = new File(declared);
+        if (createOnDemand && !file.exists()) {
+            // Only ever the server's own default area, never a caller-supplied destination — FR-002
+            // is about leaving nothing behind at a refused destination, which this is not.
+            try {
+                Files.createDirectories(file.toPath());
+            } catch (IOException e) {
+                return new WriteRoot(declared, null, WriteRootState.MISSING);
+            }
+        }
+        if (!file.exists()) {
+            return new WriteRoot(declared, null, WriteRootState.MISSING);
+        }
+        if (!file.isDirectory()) {
+            return new WriteRoot(declared, null, WriteRootState.NOT_A_DIRECTORY);
+        }
+        Path resolved;
+        try {
+            resolved = file.toPath().toRealPath();
+        } catch (IOException e) {
+            return new WriteRoot(declared, null, WriteRootState.MISSING);
+        }
+        if (!Files.isWritable(resolved)) {
+            return new WriteRoot(declared, resolved, WriteRootState.NOT_WRITABLE);
+        }
+        return new WriteRoot(declared, resolved, WriteRootState.USABLE);
+    }
+
+    /** The real paths writing is permitted under. Only usable roots take part in the decision. */
+    public List<Path> getResolvedExportRoots() {
+        List<Path> resolved = new ArrayList<>();
+        for (WriteRoot root : getWriteRoots()) {
+            if (root.isUsable()) {
+                resolved.add(root.getResolved());
+            }
+        }
+        return resolved;
     }
 }

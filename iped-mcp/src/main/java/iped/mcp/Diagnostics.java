@@ -75,8 +75,46 @@ public class Diagnostics {
     public Diagnostics run(File ipedRoot, McpServerConfig config) {
         checkIpedRoot(ipedRoot);
         checkAuditArea(config);
+        checkWriteRoots(config);
         checkJavaVersion();
         return this;
+    }
+
+    /**
+     * Reports the state of every declared write root (FR-006).
+     *
+     * <p>
+     * An unusable root does not stop the server, in keeping with the rest of this class: the failure
+     * is named here, and the first export under that root fails with something the examiner can act
+     * on. Refusing to start would turn one mistyped path into an unavailable server.
+     */
+    private void checkWriteRoots(McpServerConfig config) {
+        boolean usingDefault = config.getExportRoots().isEmpty();
+        for (McpServerConfig.WriteRoot root : config.getWriteRoots()) {
+            if (root.isUsable()) {
+                checks.add(new Check("write_root", true,
+                        root.getResolved() + (usingDefault ? " (default; exportRoots is not declared)" : ""), null));
+                continue;
+            }
+            String problem;
+            switch (root.getState()) {
+                case NOT_A_DIRECTORY:
+                    problem = "is not a folder";
+                    break;
+                case NOT_WRITABLE:
+                    problem = "is not writable by this account";
+                    break;
+                case MISSING:
+                default:
+                    problem = "does not exist";
+                    break;
+            }
+            checks.add(new Check("write_root", false,
+                    "The declared write root " + root.getDeclared() + " " + problem + ".",
+                    "Artifacts can only be written under a declared root, so exports aimed at this one will "
+                            + "be refused. Create it, grant write permission on it, or correct exportRoots in "
+                            + "conf/" + McpServerConfig.CONFIG_FILE + "."));
+        }
     }
 
     private void checkIpedRoot(File ipedRoot) {
