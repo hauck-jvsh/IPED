@@ -138,6 +138,26 @@ estabelecida por rede.
 mvn -pl iped-mcp test -Dtest=ReadOnlyInvariantTest -Diped.mcp.test.referenceCase=<CASO>
 ```
 
+## Q11 — O relay encerra quando o harness encerra (SC-016)
+
+Não exige `<CASO>`. É o cenário que o primeiro teste de campo reprovou.
+
+Suba o servidor com transporte de rede, alimente o relay com um par de requisições por sua entrada
+padrão e **feche essa entrada**, como um harness faz ao sair.
+
+Esperado: as respostas chegam **e o processo termina**, sem espera. Um relay que responde tudo
+corretamente e fica pendurado é o defeito exato que este cenário existe para pegar — ele passa em
+qualquer verificação de requisição/resposta, porque as respostas estão certas.
+
+Verificar também do lado do servidor: a sessão correspondente encerrou e o caso não ficou retido.
+
+```powershell
+mvn -pl iped-mcp test -Dtest=RelayShutdownTest
+```
+
+O teste automatizado cobre o mecanismo; o cenário acima cobre o processo real, e foi o processo real
+que revelou o problema.
+
 ## Q9 — Postura vigente é verificável de dentro (SC-008)
 
 Em cada configuração — sem transporte de rede, com transporte de rede —, consultar `iped_session_info`
@@ -172,6 +192,7 @@ conjunto passa em todas as outras suítes e só falha em campo.
 | Q6 | SC-005 | US2 |
 | Q7 | SC-013 | US2 |
 | Q8 | SC-004 | US1 + US2 |
+| Q11 | SC-016 | US2 |
 | Q9 | SC-008 | US3 |
 | Q10 | SC-006 | US2 |
 

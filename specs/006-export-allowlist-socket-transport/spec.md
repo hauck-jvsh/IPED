@@ -49,6 +49,12 @@ Um defeito veio da sondagem experimental do planejamento, não de raciocínio so
 
 - Q: Um destino dentro de uma raiz permitida pode aceitar a escrita e não guardar nada. Isso é problema desta feature? → A: **Sim, e a allow-list não o resolve.** Um destino como `<raiz>\NUL` fica **dentro** da raiz declarada, então FR-001 o aprova corretamente — não houve escape de raiz nenhuma. A escrita retorna sucesso, o tamanho reportado vem zero e o arquivo não existe. O agente receberia artefato declarado gerado, com contagem de itens, sobre arquivo que não está lá. É a mesma classe de defeito que a invariante "ausência ≠ vazio" do módulo existe para impedir, e a única razão de não ter aparecido antes é que ninguém exportou para um nome de dispositivo. Na mesma sondagem, `CON` criou um arquivo real e um nome terminado em espaço foi rejeitado na entrada — ou seja, o comportamento varia por nome e por versão do sistema, o que condena qualquer lista de nomes proibidos a ser incompleta. **FR-034** e **SC-015** criados, exigindo verificação **posterior à escrita** em vez de julgamento do nome.
 
+### Session 2026-08-11 — achado do primeiro teste de campo do transporte
+
+O servidor foi exercitado fora da suíte, contra a instalação real (`C:\iped\iped-mcp\iped-4.3.1`, JRE 11 embarcado), com transporte de rede ativo. Sete verificações passaram — recusa sem segredo, recusa com segredo errado, sessão servida, postura, identidade dupla, sessões simultâneas, trilhas sem colisão. Uma reprovou.
+
+- Q: O relay respondeu corretamente e **não terminou** quando o stdin acabou. Isso é defeito de implementação ou falta requisito? → A: **Falta requisito.** FR-017 governa o servidor: a queda de uma conexão libera o caso. O que aconteceu foi o contrário — a conexão **não caiu**, porque o relay parou de bombear no fim da entrada sem avisar o servidor, que seguiu esperando requisição enquanto o relay seguia esperando resposta. O servidor se comportou como especificado; ninguém havia dito que o relay precisa propagar o encerramento. Em uso real isso deixa processo pendurado e sessão segurando o caso e a reivindicação de escrita até o timeout de ociosidade — e **fechar o stdin do processo filho é como todo harness suportado sinaliza encerramento**, de modo que a falha não é um caso de borda, é o caminho normal de saída. **FR-035** e **SC-016** criados.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -132,6 +138,7 @@ O perito pergunta ao servidor — sem ler código, sem inspecionar o sistema ope
 - Mensagem cortada ao meio pelo fechamento da conexão, indistinguível de mensagem malformada.
 - Segunda sessão pedindo escrita sobre um caso já reivindicado por outra.
 - Sessão detentora da escrita que abandona a conexão sem encerrá-la, deixando a reivindicação pendurada.
+- Harness que encerra fechando a entrada padrão do intermediário — o caminho normal de saída, não uma borda — sem que o encerramento alcance o servidor.
 - Sessão que detém a reivindicação de escrita sobre um caso que a UI do IPED abre em seguida na mesma máquina.
 - Duas sessões somente-leitura sobre o mesmo caso produzindo trilhas paralelas que precisam ser reconciliadas depois.
 - Cliente que declara identidade de operador vazia, ausente, ou igual à da conta que executa o servidor.
@@ -172,6 +179,7 @@ O perito pergunta ao servidor — sem ler código, sem inspecionar o sistema ope
 - **FR-016**: Uma mensagem malformada recebida pela rede MUST seguir a regra de FR-078 de 001 — respondida com o erro de protocolo previsto e descartada, nunca fatal para a sessão.
 - **FR-017**: A queda da conexão de um cliente MUST liberar o caso que aquela sessão mantinha aberto e MUST NOT encerrar o servidor. Operação em curso interrompida por queda de conexão MUST receber desfecho na trilha; um registro de início sem desfecho correspondente MUST NOT ser o resultado normal de uma desconexão.
 - **FR-018**: A falha em estabelecer o ponto de escuta MUST produzir diagnóstico acionável e MUST NOT resultar em servidor que aparenta estar servindo sem estar.
+- **FR-035**: Um intermediário entre o harness e o servidor MUST propagar o encerramento do harness até o servidor, de modo que a sessão termine e o caso seja liberado. Fechar a entrada padrão do processo filho é como os harnesses suportados sinalizam encerramento; um intermediário que apenas pare de encaminhar deixa o servidor esperando uma requisição que não virá e a si próprio esperando uma resposta que não virá, com a sessão retendo o caso e a reivindicação de escrita até o teto de ociosidade. Esta é a **saída normal**, não uma borda: um encerramento que só funciona por timeout não é um encerramento.
 - **FR-019**: Em sessão de rede, o destino de artefato MUST ser interpretado no sistema de arquivos **do servidor**, e a resposta MUST declarar isso explicitamente. O perito opera de outra máquina e não tem como distinguir, pelo caminho devolvido, qual sistema de arquivos o produziu.
 
 ### Identidade, auditoria e visibilidade
@@ -218,6 +226,7 @@ O perito pergunta ao servidor — sem ler código, sem inspecionar o sistema ope
 - **SC-012**: Com sessões somente-leitura concorrentes sobre um mesmo caso, **nenhuma bloqueia a outra** e todas obtêm resultados idênticos aos de uma sessão isolada; e em 100% das tentativas no máximo uma sessão detém a escrita sobre o mesmo caso, incluindo pedidos simultâneos. Após a queda da detentora, outra sessão obtém a escrita sem reinício do servidor.
 - **SC-013**: Partindo apenas do material que acompanha o caso, um segundo examinador reconstitui a sequência completa de operações de um exame conduzido por **duas sessões simultâneas** e chega ao mesmo conjunto de itens, sem saber de antemão quantas sessões existiram — mantendo SC-005 de 001 sob o novo modelo de concorrência.
 - **SC-014**: Em 100% das leituras e exportações da trilha, a identidade alegada pelo cliente é distinguível da autoritativa sem consulta a documentação externa.
+- **SC-016**: Ao encerramento do harness, o intermediário e a sessão que ele abriu terminam **sem depender de nenhum tempo de espera**, em 100% das execuções; nenhum caso permanece retido e nenhuma reivindicação de escrita sobrevive ao harness que a originou.
 - **SC-015**: Nenhum destino que aceite a escrita sem retê-la produz resposta de sucesso. Sobre uma bateria de nomes de dispositivo reservados situados **dentro** de uma raiz permitida, 100% das tentativas são reportadas como falha com diagnóstico acionável, e nenhuma resposta declara artefato gerado sobre arquivo inexistente.
 
 ---

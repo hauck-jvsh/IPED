@@ -94,27 +94,45 @@ public final class McpRelayMain {
             }
             LOGGER.info("Relay connected to {}:{}", host, port);
 
-            Thread upstream = pump(System.in, toServer, "iped-mcp-relay-up");
-            // Downstream runs on this thread so that main returns only when the server hangs up.
-            copy(fromServer, System.out);
-            upstream.interrupt();
+            relay(System.in, System.out, socket);
         } catch (IOException e) {
             LOGGER.error("The relay could not reach the server at {}:{}: {}", host, port, e.getMessage());
             System.exit(4);
         }
     }
 
-    private static Thread pump(InputStream in, OutputStream out, String name) {
-        Thread thread = new Thread(() -> {
+    /**
+     * Pumps both directions until the harness or the server hangs up.
+     *
+     * <p>
+     * <b>The half-close is the part that matters.</b> Every harness signals shutdown by closing the
+     * child's stdin, and when that happens the connection has to be half-closed so the server sees
+     * end-of-input, ends the session and releases the case. Without it the upstream pump simply
+     * stops, the server keeps waiting for a request that will never arrive, and this method stays
+     * blocked reading a reply that will never come — the relay hangs, and the session it opened sits
+     * there holding the case and its write claim until the idle timeout expires.
+     *
+     * <p>
+     * Downstream runs on the calling thread so this returns only once the server has closed its
+     * side, which is what makes the process exit cleanly rather than being killed.
+     */
+    static void relay(InputStream fromHarness, OutputStream toHarness, Socket socket) throws IOException {
+        Thread upstream = new Thread(() -> {
             try {
-                copy(in, out);
+                copy(fromHarness, socket.getOutputStream());
             } catch (IOException e) {
-                LOGGER.debug("Relay stream {} ended: {}", name, e.getMessage());
+                LOGGER.debug("Relay upstream ended: {}", e.getMessage());
+            } finally {
+                try {
+                    socket.shutdownOutput();
+                } catch (IOException ignored) {
+                    // Already gone, which is the condition this is announcing anyway.
+                }
             }
-        }, name);
-        thread.setDaemon(true);
-        thread.start();
-        return thread;
+        }, "iped-mcp-relay-up");
+        upstream.setDaemon(true);
+        upstream.start();
+        copy(socket.getInputStream(), toHarness);
     }
 
     /** Byte for byte, flushed per chunk: the protocol is line-oriented and must not sit in a buffer. */

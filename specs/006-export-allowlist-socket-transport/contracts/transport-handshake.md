@@ -54,6 +54,16 @@ opencode ──stdio──▶ McpRelayMain ──socket──▶ McpServerMain
 O relay lê o segredo das mesmas duas fontes que o servidor (variável de ambiente ou arquivo apontado),
 faz o handshake e bombeia bytes nas duas direções até qualquer lado fechar.
 
+**Meio-fechamento ao fim da entrada, e isso não é detalhe (FR-035).** Quando a entrada vinda do
+harness acaba, o relay MUST fechar o lado de escrita da conexão (`Socket.shutdownOutput`). Fechar o
+stdin do processo filho é como os harnesses suportados sinalizam encerramento; sem o meio-fechamento
+o servidor não fica sabendo, segue esperando requisição, e o relay segue esperando resposta — os dois
+parados, com a sessão retendo o caso e a reivindicação de escrita até o teto de ociosidade. Medido em
+campo antes de existir o requisito.
+
+O sentido de descida roda na thread principal, de modo que o processo só termina quando o servidor
+fecha o seu lado — saída limpa, não morte por timeout.
+
 **Restrição que vale para o relay tanto quanto para o servidor**: nenhum `System.out`. No relay, stdout
 é o canal do protocolo **para o harness** — um único print corrompe a sessão do lado do cliente,
 exatamente como já vale do lado do servidor. Diagnóstico por SLF4J, para stderr ou arquivo.

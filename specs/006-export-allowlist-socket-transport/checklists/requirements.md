@@ -71,6 +71,23 @@ não implica a segunda. Foi medido, não deduzido: ver [research.md](../research
 O item "Edge cases are identified" foi reavaliado e continua aprovado, agora com a borda de dispositivo
 reservado listada explicitamente.
 
+### Iteração 4 — 2026-08-11 (pós-teste de campo do transporte)
+
+**16 de 16 mantidos.** O servidor foi exercitado fora da suíte, contra a instalação real, com
+transporte de rede ativo. Sete verificações passaram; uma reprovou e virou **FR-035** e **SC-016**.
+
+O achado é sobre o que a suíte não estava olhando. O relay respondia as requisições corretamente e
+não terminava quando o stdin acabava — e **fechar o stdin do processo filho é como todo harness
+suportado sinaliza encerramento**, então isso não era borda, era o caminho normal de saída. FR-017
+governa o servidor e estava satisfeito: a conexão não caía, logo não havia nada a liberar. Ninguém
+havia dito que o intermediário precisa propagar o encerramento.
+
+Por que passou despercebido: **um relay pendurado passa em qualquer teste de requisição/resposta**,
+porque as respostas estão certas. O que falha é o encerramento, e nada exercitava encerramento.
+`RelayShutdownTest` e o cenário Q11 do quickstart passam a exercitar.
+
+Nenhum requisito existente foi relaxado. A numeração vai a FR-001–035 e SC-001–016.
+
 ### Verificações transversais
 
 **Vazamento de implementação**: o termo "socket", presente no pedido original, aparece apenas no campo
@@ -79,7 +96,7 @@ critérios de sucesso descrevem comportamento observável — porta aberta, recu
 equivalência de resultados, bloqueio mútuo entre sessões — sem nomear mecanismo. "Segredo
 compartilhado" é modelo de confiança, não tecnologia.
 
-**Numeração**: FR-001 a FR-034 e SC-001 a SC-015, ambos contíguos e sem lacunas. Requisitos de 001
+**Numeração**: FR-001 a FR-035 e SC-001 a SC-016, ambos contíguos e sem lacunas. Requisitos de 001
 são sempre citados com origem explícita ("FR-068 de 001"), convenção declarada na seção *Relação com
 a spec 001*.
 

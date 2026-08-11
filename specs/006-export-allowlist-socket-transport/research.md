@@ -117,6 +117,17 @@ até o servidor.
    pom — é invocado por `-cp lib/* iped.mcp.McpServerMain`. Uma segunda classe `main` custa zero em
    empacotamento.
 
+**Correção vinda do primeiro teste de campo (2026-08-11).** O relay foi escrito bombeando os dois
+sentidos e retornando quando o servidor desligasse. Contra o servidor real ele respondeu as duas
+requisições corretamente e **não terminou**: o bombeamento de subida para no fim da entrada e nada
+avisava o servidor, que seguia esperando requisição enquanto o relay seguia esperando resposta. A
+peça que faltava é o **meio-fechamento** da conexão (`Socket.shutdownOutput`) quando a entrada do
+harness acaba — só isso faz o servidor ver fim de entrada, encerrar a sessão e devolver o caso.
+
+Vale registrar por que a suíte não pegou: um relay pendurado **passa em qualquer teste de
+requisição/resposta**, porque as respostas estão corretas. O que falha é o encerramento, e nada
+exercitava o encerramento. `RelayShutdownTest` passa a exercitar, e FR-035 passa a exigir.
+
 **Alternativas descartadas**:
 - *Transporte MCP Streamable HTTP com `com.sun.net.httpserver`* — permitiria ao harness conectar
   nativamente por `type: remote`, sem relay. Descartado por dois motivos: `jdk.httpserver` é módulo
