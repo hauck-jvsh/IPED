@@ -98,6 +98,25 @@ Par que substitui o campo único de hoje.
   nunca substituída pela autoritativa.
 - Sob transporte local, `claimed` não existe e o comportamento é o de hoje.
 
+### Como o par é gravado — decisão revista na implementação (2026-08-11)
+
+Este documento previa **campos novos em `AuditRecord`** para a identidade alegada, o transporte e a
+origem. **Não foi feito assim**, e a razão é uma restrição que o próprio módulo já registrava: a ordem
+dos campos em `AuditRecord.toNodeWithoutHash` faz parte do hash encadeado, e a verificação de uma
+trilha recomputa esse nó a partir do que lê. Acrescentar campo mudaria o que a verificação recomputa
+para registros já emitidos, quebrando exatamente a garantia que a trilha existe para dar.
+
+O que foi feito:
+
+| Dado | Onde vai |
+|---|---|
+| Identidade dupla | No campo `operator`, **que já existe**, renderizado por `OperatorIdentity.describe()` como `conta (client claims: X, unverified)`. A palavra "unverified" faz parte do valor, não da documentação em volta — é o valor que sobrevive a ser copiado para um laudo |
+| Transporte e origem | No **manifesto de sessões**, que é por sessão e não por operação. São propriedade da sessão inteira; repeti-los em cada registro seria redundância, não informação |
+| Identidade dupla, em forma de máquina | Em `iped_session_info`, como `operator.authoritative` / `operator.claimed` / `operator.claimed_is_verified` |
+
+FR-020, FR-021 e FR-032 continuam atendidos, e o formato de `AuditRecord` permanece byte a byte o que
+era. Nenhum requisito foi relaxado para acomodar isso.
+
 ---
 
 ## Sessão de transporte — `Session` (modificada)

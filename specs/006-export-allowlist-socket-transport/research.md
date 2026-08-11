@@ -251,3 +251,11 @@ precisa dizer "não verificada" onde a alegação aparece.
 
 **Alternativa descartada**: derivar a identidade da origem da conexão. Endereço de rede não é
 pessoa, e apresentá-lo como operador num laudo seria pior do que não registrar.
+
+**Revisão na implementação (2026-08-11).** O desenho previa acrescentar campos a `AuditRecord` para a
+alegação, o transporte e a origem. Ao implementar ficou claro que isso colide com a restrição que o
+módulo já documentava: a ordem dos campos de `toNodeWithoutHash` faz parte do hash, e `AuditTrail.verify`
+recomputa esse nó a partir do que lê — um campo a mais mudaria o resultado para registros já emitidos.
+A alegação passou a viajar dentro do campo `operator`, que já existe, renderizada com a palavra
+"unverified" no próprio valor; transporte e origem foram para o manifesto de sessões, onde são
+propriedade da sessão e não de cada operação. Ver a seção correspondente do [data-model.md](./data-model.md).

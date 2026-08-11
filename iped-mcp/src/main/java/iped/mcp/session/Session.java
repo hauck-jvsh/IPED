@@ -15,9 +15,11 @@ import org.slf4j.LoggerFactory;
 
 import iped.mcp.audit.AuditSync;
 import iped.mcp.audit.AuditTrail;
+import iped.mcp.audit.SessionManifest;
 import iped.mcp.config.McpServerConfig;
 import iped.mcp.config.McpServerConfig.AccessMode;
 import iped.mcp.egress.EgressPolicy;
+import iped.mcp.transport.Transport;
 
 /**
  * The working context of the server process. One session per process.
@@ -37,30 +39,79 @@ public class Session implements Closeable {
 
     private final String sessionId = UUID.randomUUID().toString();
     private final Instant startedAt = Instant.now();
-    private final String operator;
+    private final OperatorIdentity operator;
     private final McpServerConfig config;
     private final AuditTrail auditTrail;
     private final AuditSync auditSync;
     private final EgressPolicy egressPolicy;
     private final ConcurrencyGuard concurrencyGuard;
     private final CaseRegistry caseRegistry;
+    private final CasePool casePool;
+    private final boolean ownsCasePool;
+    private final Transport.Kind transport;
+    private final String origin;
     private final List<String> openingWarnings = new ArrayList<>();
 
+    /**
+     * A session over the local transport, owning everything it uses. This is the shape the process
+     * has when it is serving one stdio client, and the shape the suites build.
+     */
     public Session(McpServerConfig config) {
+        this(config, new CasePool(), new WriteClaims(), Transport.Kind.STDIO, null, null, true);
+    }
+
+    /**
+     * A session over a connection, sharing the process's case pool and write register with the other
+     * sessions (FR-014).
+     *
+     * @param origin
+     *            where the connection came from, recorded for FR-021; {@code null} for stdio
+     * @param claimedOperator
+     *            the identity declared in the handshake, unverified; {@code null} when none was
+     */
+    public Session(McpServerConfig config, CasePool casePool, WriteClaims writeClaims, Transport.Kind transport,
+            String origin, String claimedOperator) {
+        this(config, casePool, writeClaims, transport, origin, claimedOperator, false);
+    }
+
+    private Session(McpServerConfig config, CasePool casePool, WriteClaims writeClaims, Transport.Kind transport,
+            String origin, String claimedOperator, boolean ownsCasePool) {
         this.config = config;
-        // D2: single-operator workstation, no authentication of its own. The operator is the
-        // account the process runs under, which is what the audit trail records.
-        this.operator = System.getProperty("user.name", "unknown");
+        this.casePool = casePool;
+        this.ownsCasePool = ownsCasePool;
+        this.transport = transport;
+        this.origin = origin;
+        // Two identities, never merged: the account this process runs under, which is verified, and
+        // what the client said, which is not (FR-020). Under the local transport there is no claim.
+        this.operator = transport == Transport.Kind.STDIO ? OperatorIdentity.ofProcess()
+                : OperatorIdentity.withClaim(claimedOperator);
+        // The trail's operator field carries the pair as one rendered string rather than gaining a
+        // column. Appending a field would change what AuditRecord hashes, and the order of those
+        // fields is part of the verification of trails already emitted.
         this.auditTrail = new AuditTrail(new File(config.getAuditArea(), "session-" + sessionId + ".jsonl"), sessionId,
-                operator);
+                operator.describe());
         this.auditSync = new AuditSync(auditTrail, config.getAuditFolderNameInCase(),
                 config.getAuditSyncIntervalSeconds());
         this.auditSync.start();
         this.egressPolicy = new EgressPolicy(config);
-        this.concurrencyGuard = new ConcurrencyGuard();
-        this.caseRegistry = new CaseRegistry(config, auditSync, concurrencyGuard);
+        this.concurrencyGuard = new ConcurrencyGuard(writeClaims, sessionId);
+        // Per-session facts — transport, origin, both identities — live here rather than being
+        // repeated inside every operation record, and rather than being added to AuditRecord, whose
+        // field order is part of verifying trails already emitted.
+        SessionManifest manifest = new SessionManifest(sessionId, transport.name(), origin,
+                operator.getAuthoritative(), operator.getClaimed(), () -> (int) auditTrail.getRecordCount());
+        this.caseRegistry = new CaseRegistry(config, auditSync, concurrencyGuard, casePool, manifest);
 
         openingWarnings.add(egressPolicy.openingWarning());
+        if (transport == Transport.Kind.SOCKET) {
+            // The examiner is entitled to know this before opening a case: under the local transport
+            // evidence content never left the process, and now it crosses a wire that nothing
+            // protects (FR-023).
+            openingWarnings.add("This session arrived over a network connection. Evidence content returned by "
+                    + "these tools — item text, thumbnails and raw bytes — travels over that connection, and "
+                    + "the channel is not encrypted. Keep the traffic inside one physical machine or a trusted "
+                    + "segment, or enable the egress policy to restrict what may leave at all.");
+        }
         if (config.getAccessMode() == AccessMode.READ_ONLY) {
             openingWarnings.add("Access mode is READ_ONLY. Curation tools are refused without touching the case. "
                     + "Enabling writes is done outside this conversation, in conf/McpServerConfig.txt.");
@@ -75,8 +126,21 @@ public class Session implements Closeable {
         return sessionId;
     }
 
-    public String getOperator() {
+    public OperatorIdentity getOperator() {
         return operator;
+    }
+
+    public Transport.Kind getTransport() {
+        return transport;
+    }
+
+    /** Where the connection came from, or {@code null} under the local transport. */
+    public String getOrigin() {
+        return origin;
+    }
+
+    public CasePool getCasePool() {
+        return casePool;
     }
 
     public Instant getStartedAt() {
@@ -120,14 +184,56 @@ public class Session implements Closeable {
         return warnings;
     }
 
+    /**
+     * What is exposed and what may be written, answerable from inside the session (FR-022).
+     *
+     * <p>
+     * A security posture that cannot be checked from inside is one nobody trusts, and the examiner
+     * is the person who signs the report. It answers with the network transport inactive too — the
+     * absence of a listening endpoint is itself the fact worth confirming.
+     */
+    public Map<String, Object> describePosture() {
+        Map<String, Object> posture = new LinkedHashMap<>();
+        posture.put("transport", transport.name());
+        posture.put("origin", origin);
+        posture.put("listen_endpoint", transport == Transport.Kind.SOCKET ? config.describeListenEndpoint() : null);
+        posture.put("channel_protected", false);
+
+        List<Map<String, Object>> roots = new ArrayList<>();
+        for (McpServerConfig.WriteRoot root : config.getWriteRoots()) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("declared", root.getDeclared());
+            entry.put("resolved", root.getResolved() == null ? null : root.getResolved().toString());
+            entry.put("state", root.getState().name());
+            roots.add(entry);
+        }
+        posture.put("write_roots", roots);
+        posture.put("write_roots_are_declared", !config.getExportRoots().isEmpty());
+        posture.put("allow_export_into_case_folder", config.isAllowExportIntoCaseFolder());
+
+        List<Map<String, Object>> claims = new ArrayList<>();
+        for (OpenCase openCase : caseRegistry.getOpenCases()) {
+            WriteClaims.Claim claim = concurrencyGuard.getWriteClaims().holderOf(openCase.getCaseId());
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("case_id", openCase.getCaseId());
+            entry.put("write_held_by", claim == null ? null : claim.getSessionId());
+            entry.put("write_held_by_this_session", claim != null && claim.getSessionId().equals(sessionId));
+            entry.put("sessions_holding_case", casePool.referenceCount(openCase.getCaseId()));
+            claims.add(entry);
+        }
+        posture.put("write_claims", claims);
+        return posture;
+    }
+
     /** Full session state, as returned by {@code iped_session_info}. */
     public Map<String, Object> describe() {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("session_id", sessionId);
-        info.put("operator", operator);
+        info.put("operator", operator.toMap());
         info.put("started_at", startedAt.toString());
         info.put("access_mode", getAccessMode().name());
         info.put("egress_policy", egressPolicy.describe());
+        info.put("posture", describePosture());
 
         List<Map<String, Object>> cases = new ArrayList<>();
         for (OpenCase openCase : caseRegistry.getOpenCases()) {
@@ -166,6 +272,12 @@ public class Session implements Closeable {
             // complete file rather than one missing its last lines.
             auditTrail.close();
             auditSync.close();
+            if (ownsCasePool) {
+                // Only the local transport owns its pool. Under the network transport the pool
+                // belongs to the process and outlives any one connection — closing it here would
+                // pull the engine handle out from under the other sessions.
+                casePool.close();
+            }
             LOGGER.info("MCP session {} closed after {} audit records", sessionId, auditTrail.getRecordCount());
         }
     }

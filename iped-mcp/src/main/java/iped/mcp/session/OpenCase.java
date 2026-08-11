@@ -12,8 +12,14 @@ import iped.mcp.audit.AuditSync;
 import iped.mcp.query.FieldVocabulary;
 
 /**
- * A case that has been validated and opened. Read-only handle onto the engine plus everything the
- * tool surface needs to answer without reopening anything.
+ * A case that has been validated and opened, as one session sees it.
+ *
+ * <p>
+ * The engine handle and the vocabulary underneath are <b>shared</b> with any other session that has
+ * the same case open — see {@link CasePool}. What is per-session is the rest: the warnings raised
+ * when this session opened it, and where this session's audit trail is being synchronized. Closing
+ * therefore drops a reference rather than closing the engine handle, because another session may
+ * still be reading through it.
  */
 public class OpenCase implements AutoCloseable {
 
@@ -23,17 +29,20 @@ public class OpenCase implements AutoCloseable {
     private final String ipedVersion;
     private final IPEDSource source;
     private final FieldVocabulary vocabulary;
+    private final Runnable onClose;
     private final Instant openedAt = Instant.now();
     private final List<String> warnings = new ArrayList<>();
     private AuditSync.Target syncTarget;
 
-    OpenCase(String caseId, String caseBinding, File casePath, String ipedVersion, IPEDSource source) {
+    OpenCase(String caseId, String caseBinding, File casePath, String ipedVersion, CasePool.Handle handle,
+            Runnable onClose) {
         this.caseId = caseId;
         this.caseBinding = caseBinding;
         this.casePath = casePath;
         this.ipedVersion = ipedVersion;
-        this.source = source;
-        this.vocabulary = new FieldVocabulary(source);
+        this.source = handle.getSource();
+        this.vocabulary = handle.getVocabulary();
+        this.onClose = onClose;
     }
 
     public String getCaseId() {
@@ -95,8 +104,12 @@ public class OpenCase implements AutoCloseable {
         return evidences;
     }
 
+    /**
+     * Drops this session's reference. The engine handle closes when the last session lets go, not
+     * here — another session reading the same case must not lose its searcher underneath it.
+     */
     @Override
     public void close() {
-        source.close();
+        onClose.run();
     }
 }

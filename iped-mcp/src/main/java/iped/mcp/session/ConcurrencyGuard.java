@@ -50,6 +50,19 @@ public class ConcurrencyGuard implements AutoCloseable {
 
     private final Map<String, FileLock> heldLocks = new HashMap<>();
     private final Map<String, RandomAccessFile> heldFiles = new HashMap<>();
+    private final WriteClaims writeClaims;
+    private final String sessionId;
+
+    /**
+     * @param writeClaims
+     *            the process-wide register of who holds what, so a refusal can name the holder
+     * @param sessionId
+     *            the session this guard belongs to
+     */
+    public ConcurrencyGuard(WriteClaims writeClaims, String sessionId) {
+        this.writeClaims = writeClaims;
+        this.sessionId = sessionId;
+    }
 
     /**
      * Acquires the write lock for a case, or throws when someone else holds it.
@@ -77,22 +90,47 @@ public class ConcurrencyGuard implements AutoCloseable {
             }
             if (lock == null) {
                 raf.close();
-                throw new McpError(McpError.CONCURRENT_ACCESS,
-                        "The case is open for writing by another process on this machine.",
-                        "Close the other IPED session — the UI or another MCP server — and retry. Reading is "
-                                + "unaffected and stays available meanwhile.").with("caseId", caseId)
-                                        .with("lockFile", lockFile.getAbsolutePath());
+                throw refusal(caseId, lockFile);
             }
             raf.setLength(0);
-            raf.write((ProcessIdentity.describe() + "\n").getBytes(StandardCharsets.UTF_8));
+            raf.write((ProcessIdentity.describe() + " session=" + sessionId + "\n")
+                    .getBytes(StandardCharsets.UTF_8));
             heldLocks.put(caseId, lock);
             heldFiles.put(caseId, raf);
+            writeClaims.record(caseId, sessionId);
         } catch (IOException e) {
             throw new McpError(McpError.CONCURRENT_ACCESS,
                     "The concurrency lock for the case could not be taken: " + e.getMessage(),
                     "Check that the audit subfolder inside the case is writable, then retry.", e).with("caseId",
                             caseId);
         }
+    }
+
+    /**
+     * Names who is holding the write, when it can be named (FR-029).
+     *
+     * <p>
+     * The message this replaced said "by another process on this machine", which stopped being true
+     * the moment two sessions could exist in one process: the holder is now just as likely to be a
+     * second connection to this same server. Telling an examiner to close another process when the
+     * conflict is with their own second session sends them looking for something that is not there.
+     */
+    private McpError refusal(String caseId, File lockFile) {
+        WriteClaims.Claim holder = writeClaims.holderOf(caseId);
+        if (holder != null) {
+            return new McpError(McpError.CONCURRENT_ACCESS,
+                    "The case is open for writing by another session of this server, held since " + holder.getSince()
+                            + ".",
+                    "Wait for that session to finish or close it, then retry. Reading is unaffected and stays "
+                            + "available meanwhile — only one session at a time may write to a case.")
+                                    .with("caseId", caseId).with("holderSessionId", holder.getSessionId())
+                                    .with("heldSince", holder.getSince().toString());
+        }
+        return new McpError(McpError.CONCURRENT_ACCESS,
+                "The case is open for writing by another process on this machine.",
+                "Close the other IPED session — the UI or another MCP server — and retry. Reading is "
+                        + "unaffected and stays available meanwhile.").with("caseId", caseId)
+                                .with("lockFile", lockFile.getAbsolutePath());
     }
 
     /**
@@ -125,9 +163,15 @@ public class ConcurrencyGuard implements AutoCloseable {
         }
     }
 
+    /** The process-wide register, so the session can report who holds what (FR-022). */
+    public WriteClaims getWriteClaims() {
+        return writeClaims;
+    }
+
     public synchronized void release(String caseId) {
         FileLock lock = heldLocks.remove(caseId);
         RandomAccessFile file = heldFiles.remove(caseId);
+        writeClaims.release(caseId, sessionId);
         try {
             if (lock != null) {
                 lock.release();
@@ -145,6 +189,9 @@ public class ConcurrencyGuard implements AutoCloseable {
         for (String caseId : heldLocks.keySet().toArray(new String[0])) {
             release(caseId);
         }
+        // Belt and braces for FR-030: a session that dropped its connection mid-operation must not
+        // leave a case claimed by nobody, whatever state its locks were in.
+        writeClaims.releaseAll(sessionId);
     }
 
     /** Identifies this process in the lock file, so a stale lock can be traced to its owner. */

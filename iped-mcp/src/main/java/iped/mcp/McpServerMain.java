@@ -28,7 +28,12 @@ import iped.mcp.protocol.ToolDescriptor;
 import iped.mcp.query.Aggregator;
 import iped.mcp.query.PagedSearcher;
 import iped.mcp.query.SnippetBuilder;
+import iped.mcp.session.CasePool;
 import iped.mcp.session.Session;
+import iped.mcp.session.WriteClaims;
+import iped.mcp.transport.SocketTransport;
+import iped.mcp.transport.StdioTransport;
+import iped.mcp.transport.Transport;
 import iped.mcp.tools.AuditTools;
 import iped.mcp.tools.BookmarkTools;
 import iped.mcp.tools.ExportTools;
@@ -62,10 +67,23 @@ public class McpServerMain implements AutoCloseable {
     private final McpDispatcher dispatcher;
 
     /**
-     * Builds a server over an already-initialized configuration.
+     * A server for one local session, owning everything it uses.
      */
     public McpServerMain(McpServerConfig config) {
-        this.session = new Session(config);
+        this(new Session(config));
+    }
+
+    /**
+     * A server for one session over a connection, sharing the process's case pool and write register
+     * with the sessions beside it (FR-014).
+     */
+    public McpServerMain(McpServerConfig config, CasePool casePool, WriteClaims writeClaims,
+            Transport.Kind transport, String origin, String claimedOperator) {
+        this(new Session(config, casePool, writeClaims, transport, origin, claimedOperator));
+    }
+
+    private McpServerMain(Session session) {
+        this.session = session;
         this.dispatcher = new McpDispatcher(session, Version.APP_VERSION);
         registerTools();
     }
@@ -192,11 +210,38 @@ public class McpServerMain implements AutoCloseable {
                     diagnostics.getFailures().size());
         }
 
-        try (McpServerMain server = new McpServerMain(config)) {
-            server.start(System.in, System.out);
+        // The case pool and the write register belong to the process, not to a session: under the
+        // network transport several sessions share them, and under stdio there simply happens to be
+        // one (FR-014).
+        CasePool casePool = new CasePool();
+        WriteClaims writeClaims = new WriteClaims();
+        try (Transport transport = createTransport(config, casePool, writeClaims)) {
+            transport.serve();
         } catch (Exception e) {
             LOGGER.error("The MCP server terminated abnormally", e);
             System.exit(1);
+        } finally {
+            casePool.close();
         }
+    }
+
+    /**
+     * Picks the transport from configuration, defaulting to the one that opens no port.
+     *
+     * <p>
+     * An installation that configures nothing gets exactly what it got before this feature existed:
+     * stdio, no listening socket, FR-057 of feature 001 satisfied without anyone having to know
+     * there was something to switch off (FR-011).
+     */
+    static Transport createTransport(McpServerConfig config, CasePool casePool, WriteClaims writeClaims)
+            throws IOException {
+        if (config.getTransport() != McpServerConfig.TransportMode.SOCKET) {
+            return new StdioTransport(config, casePool, writeClaims);
+        }
+        SocketTransport socket = new SocketTransport(config, casePool, writeClaims);
+        // Binding here, before serving, so a missing secret or an occupied port is a startup failure
+        // with a diagnostic rather than a server that appears to be running (FR-018, FR-026).
+        socket.bind();
+        return socket;
     }
 }

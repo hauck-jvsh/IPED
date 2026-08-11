@@ -19,6 +19,7 @@ import iped.mcp.protocol.ToolDescriptor;
 import iped.mcp.query.PagedSearcher;
 import iped.mcp.session.OpenCase;
 import iped.mcp.session.Session;
+import iped.mcp.transport.Transport;
 
 /**
  * {@code iped_export_artifact}: turns a bookmark, a query or an explicit list into a spreadsheet,
@@ -81,6 +82,13 @@ public class ExportTools {
         ItemSet set = resolveSet(openCase, arguments);
         Map<String, Object> result = artifactWriter.write(openCase, set.ids, format, destination.getResolved(),
                 Args.optionalBoolean(arguments, "group_by_conversation", false));
+        if (session.getTransport() == Transport.Kind.SOCKET) {
+            // The examiner is on another machine and cannot tell, from the path alone, which
+            // filesystem produced it. Saying so beats letting them go looking on the wrong one.
+            result.put("destination_filesystem", "server");
+            result.put("destination_note", "This path is on the machine running the MCP server, not on the machine "
+                    + "running this conversation. Retrieve the file there.");
+        }
         if (set.plan != null) {
             // An artifact outlives the conversation, so a repaired expression has to be legible
             // from the artifact's own result: it is what the examiner will cite.

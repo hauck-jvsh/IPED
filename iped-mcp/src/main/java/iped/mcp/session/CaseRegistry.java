@@ -9,8 +9,8 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import iped.engine.data.IPEDSource;
 import iped.mcp.audit.AuditSync;
+import iped.mcp.audit.SessionManifest;
 import iped.mcp.config.McpServerConfig;
 import iped.mcp.protocol.McpError;
 
@@ -36,13 +36,18 @@ public class CaseRegistry implements AutoCloseable {
     private final CaseValidator validator;
     private final AuditSync auditSync;
     private final ConcurrencyGuard concurrencyGuard;
+    private final CasePool casePool;
+    private final SessionManifest manifest;
     private final Map<String, OpenCase> openCases = new LinkedHashMap<>();
 
-    public CaseRegistry(McpServerConfig config, AuditSync auditSync, ConcurrencyGuard concurrencyGuard) {
+    public CaseRegistry(McpServerConfig config, AuditSync auditSync, ConcurrencyGuard concurrencyGuard,
+            CasePool casePool, SessionManifest manifest) {
         this.config = config;
         this.validator = new CaseValidator(config.getSupportedVersionPrefix());
         this.auditSync = auditSync;
         this.concurrencyGuard = concurrencyGuard;
+        this.casePool = casePool;
+        this.manifest = manifest;
     }
 
     /**
@@ -58,24 +63,12 @@ public class CaseRegistry implements AutoCloseable {
             return existing;
         }
 
-        IPEDSource source;
-        try {
-            // askImagePathIfNotFound = false: a server with no console must never block on a
-            // dialog. A portable case with missing evidence stays queryable for metadata; raw
-            // content declares its unavailability when asked (FR-022).
-            source = new IPEDSource(validated.caseDir, null, false);
-        } catch (RuntimeException e) {
-            throw new McpError(McpError.CASE_INACCESSIBLE,
-                    "The case at " + casePath.getAbsolutePath() + " could not be opened: " + e.getMessage(),
-                    "The folder looks like a case but the engine refused it. If the message mentions a missing "
-                            + "image, this is a portable case whose evidence files are not present: metadata "
-                            + "stays queryable, raw content does not. Otherwise check the server log for the "
-                            + "underlying failure.",
-                    e).with("path", casePath.getAbsolutePath());
-        }
-
-        OpenCase openCase = new OpenCase(validated.caseId(), validated.caseBinding(), validated.caseDir,
-                validated.ipedVersion, source);
+        // The engine handle comes from the process-wide pool, so a second session on the same case
+        // pays neither the open time nor the memory a second time.
+        String caseId = validated.caseId();
+        CasePool.Handle handle = casePool.acquire(caseId, validated.caseDir);
+        OpenCase openCase = new OpenCase(caseId, validated.caseBinding(), validated.caseDir, validated.ipedVersion,
+                handle, () -> casePool.release(caseId));
 
         List<String> orphans = AuditSync.findOrphanTrails(config.getAuditArea(), validated.caseBinding(),
                 validated.caseDir, config.getAuditFolderNameInCase());
@@ -97,6 +90,10 @@ public class CaseRegistry implements AutoCloseable {
                     + " is authoritative for this session. Copy it alongside the case before archiving, or the "
                     + "trail stays behind on this workstation.");
         }
+
+        // One line naming this session beside its trail, so a later examiner can tell how many
+        // sessions touched the case and in what order to read them (FR-033).
+        manifest.record(target.caseAuditDir, SessionManifest.Event.OPENED);
 
         openCases.put(openCase.getCaseId(), openCase);
         return openCase;
@@ -124,7 +121,12 @@ public class CaseRegistry implements AutoCloseable {
 
     public synchronized void close(String caseId) {
         OpenCase openCase = require(caseId);
+        AuditSync.Target target = openCase.getSyncTarget();
         concurrencyGuard.release(caseId);
+        // Before unbinding, so the last synchronization carries the closing line too.
+        if (target != null) {
+            manifest.record(target.caseAuditDir, SessionManifest.Event.CLOSED);
+        }
         auditSync.unbindCase(caseId);
         openCases.remove(caseId);
         openCase.close();

@@ -29,7 +29,9 @@ iped/mcp/
 ├── query/                   # PagedSearcher, Aggregator, SnippetBuilder, FieldVocabulary, FieldNames, Cursor
 ├── item/                    # ItemView, ContentAccess
 ├── curation/BookmarkWriter  # marcadores e seleção sobre Bookmarks/saveState
-├── audit/                   # AuditRecord, AuditTrail, AuditSync
+├── McpRelayMain.java        # relay stdio↔socket, para o harness em outra máquina
+├── transport/               # Transport, StdioTransport, SocketTransport, HandshakeCodec
+├── audit/                   # AuditRecord, AuditTrail, AuditSync, SessionManifest
 ├── egress/EgressPolicy      # opcional, inativa por padrão
 ├── export/ArtifactWriter    # xlsx (POI streaming), CSV, JSON
 └── tools/                   # uma classe por grupo de ferramentas MCP
@@ -62,12 +64,19 @@ Duas consequências práticas menos óbvias:
 
 Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constituição), nunca em constante de código: área de auditoria, modo de acesso, política de egresso, tetos de página, de lote e de conteúdo, faixa de versão suportada, destino de exportação, reparo de nome de campo (`autoEscapeFieldNames`, desligado por padrão — ligado, uma expressão que só falha por colon não escapado é corrigida contra o vocabulário real do caso e o reparo vem declarado em `query_normalized`).
 
+Acrescentado nesta linha de trabalho: **raízes de escrita** (`exportRoots`, separadas por `;` — vírgula cortaria caminho do Windows ao meio) e **transporte** (`transport`, `listenAddress`, `listenPort`, `sharedSecretFile`, `maxConcurrentSessions`, `sessionIdleTimeoutSeconds`). Endereço e porta **não têm padrão**, de propósito. O segredo tampouco vive aqui: a chave diz **onde** encontrá-lo.
+
 `McpServerConfig` implementa `Configurable<UTF8Properties>` e é carregado pelo `ConfigurationManager`. Os valores no código são **fallback de último recurso** para quando o arquivo não existe (teste isolado, instalação quebrada); o arquivo distribuído é a autoridade e carrega os mesmos valores.
 
 ## 5. Invariantes que não podem ser afrouxadas
 
 | Invariante | Onde é aplicada |
 |---|---|
+| Instalação padrão não abre porta | `transport = stdio` é o padrão em `McpServerConfig`; `McpServerMain.createTransport` só constrói `SocketTransport` quando a configuração pede. `NoNetworkExposureTest` verifica |
+| Transporte de rede não existe sem autenticação | `SocketTransport.bind()` recusa quando `resolveSharedSecret()` devolve nulo. Não há caminho que sirva peer não autenticado — o handshake precede a entrega dos fluxos ao dispatcher, então uma conexão recusada nunca alcança ferramenta alguma |
+| O segredo nunca mora em arquivo distribuído | `McpServerConfig.resolveSharedSecret()` lê da variável `IPED_MCP_SHARED_SECRET` ou do arquivo apontado por `sharedSecretFile`. `conf/McpServerConfig.txt` declara **onde**, nunca **qual** |
+| No máximo uma sessão escreve um caso | `ConcurrencyGuard.acquireWriteLock` sobre `access.lock`; duas sessões do mesmo processo colidem por `OverlappingFileLockException`. `WriteClaims` **não exclui** — só nomeia a detentora no diagnóstico |
+| Identidade alegada nunca se lê como verificada | `OperatorIdentity.describe()` põe "unverified" **dentro do valor**, e é esse valor que vai para o campo `operator` da trilha. Nome de campo não sobrevive a ser copiado para um laudo; o valor sobrevive |
 | Nenhuma operação executa sem registro prévio | `McpDispatcher.callTool` → `AuditTrail.recordStart` |
 | Somente-leitura por padrão; curadoria recusada sem tocar o caso | portão de modo de acesso no `McpDispatcher`, antes de qualquer leitura de argumento |
 | Política de egresso não contornável por escolha de ferramenta | classe de conteúdo declarada em `ToolDescriptor.returnsContent`, aplicada na fronteira do dispatcher |
@@ -137,6 +146,9 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | Portão de escrita no `McpDispatcher` | Precisa continuar antes de qualquer leitura de argumento, ou "sem tocar o caso" deixa de ser verdade. |
 | `ConcurrencyGuard` | A UI do IPED 4.3.1 não trava o caso. A detecção é cooperativa entre processos `iped-mcp` e best-effort para a UI — ausência de conflito **não** prova ausência de outro leitor. |
 | `ItemView.storedFields` | Lê do documento armazenado, não do `IItem`. Acrescentar campo aqui é barato; trocar por reconstrução de item custa a latência da página. |
+| `CasePool` | Um `IPEDSource` por caso por processo, com contagem de referências. `OpenCase.close()` **solta referência**, não fecha o handle — fechá-lo direto tira o searcher de baixo de outra sessão. O que é compartilhado é imutável depois do construtor; nada com estado mutável pode entrar aqui |
+| `AuditRecord` | **Não acrescente campo.** `AuditTrail.verify` recompõe `toNodeWithoutHash` a partir do que lê, então um campo a mais muda o resultado para registros já emitidos. Foi por isso que identidade alegada foi para o campo `operator` e transporte/origem para o `SessionManifest` |
+| `HandshakeCodec` | Fora do JSON-RPC de propósito. Movê-lo para dentro de `initialize` daria ao dispatcher um estado "autenticado ou não" que toda ferramenta teria de consultar, e a primeira que esquecesse seria um vazamento |
 | `PathConfinement` | Toda a classe existe porque comparação textual de prefixo não sustenta a regra. Trocar `toRealPath()` por `getCanonicalPath()` ou por `normalize()` reabre a junção de diretório; comparar com `String.startsWith` em vez de `Path.startsWith` faz uma raiz `D:\laudo` casar com `D:\laudos`. `PathConfinementTest` fixa os dois. O veredito de prefixo estendido `\\?\` **difere entre Java 11 e versões novas** — o teste afirma "recusado", não um veredito |
 | `McpServerConfig.exportRoots` | Separador `;`, não `,`: caminho de arquivo carrega vírgula. Sem raiz declarada vale uma raiz padrão criada sob demanda, para que instalação existente continue funcionando ao atualizar (FR-024) |
 | `allowExportIntoCaseFolder` | **Semântica estreitada.** Suprime só o veredito `INSIDE_CASE`; não reabre o resto do sistema de arquivos. Antes fazia `checkDestination` retornar antes de qualquer verificação |
@@ -145,7 +157,8 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 
 ## 10. Limitações conhecidas
 
-- **Concorrência com a UI** é best-effort (ver acima).
-- **Trilha por sessão, não por caso.** Uma sessão que abre dois casos sincroniza o mesmo arquivo para dentro dos dois. Sob a decisão D2 — estação individual, um caso por vez — isso é o comportamento certo; com dois casos abertos juntos, o perito vê ambos de qualquer forma.
+- **Concorrência com a UI** é best-effort (ver acima). Vale **por cima** da exclusividade entre sessões: deter a reivindicação de escrita não dispensa o `probeBookmarksState`, e a UI segurando o estado de marcadores recusa a escrita de qualquer forma.
+- **O canal do transporte de rede não é protegido.** Autenticação por segredo compartilhado, conteúdo em claro. Adequado quando o trânsito fica dentro de uma máquina física — VM ou contêiner falando com o hospedeiro — ou em segmento confiável. Entre máquinas físicas em rede compartilhada, o conteúdo de evidência trafega legível para quem observe o segmento. Autenticação mútua por certificados é evolução prevista e não construída; o gatilho para retomá-la é a primeira implantação entre máquinas físicas distintas.
+- **Trilha por sessão, não por caso**, agora com o `SessionManifest` como resposta: uma linha por sessão que tocou o caso, na subpasta de auditoria, respondendo "são todas?" e "em que ordem?". A limitação em si permanece — o que mudou é que ela deixou de impedir a reconstituição. Uma sessão que abre dois casos sincroniza o mesmo arquivo para dentro dos dois. Sob a decisão D2 — estação individual, um caso por vez — isso é o comportamento certo; com dois casos abertos juntos, o perito vê ambos de qualquer forma.
 - **Snippet custa reextração de texto**, limitado por orçamento. Itens além do orçamento vêm com o trecho declarado ausente.
 - **A versão do caso é lida do nome dos jars em `iped/lib`.** Um caso com essa pasta podada é recusado com `VERSION_UNSUPPORTED` em vez de ser aberto sob suposição.

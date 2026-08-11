@@ -76,8 +76,45 @@ public class Diagnostics {
         checkIpedRoot(ipedRoot);
         checkAuditArea(config);
         checkWriteRoots(config);
+        checkTransport(config);
         checkJavaVersion();
         return this;
+    }
+
+    /**
+     * Reports what the transport configuration will actually do (FR-018, FR-026).
+     *
+     * <p>
+     * The check that matters most is the one for the secret. Everything else here is advisory; a
+     * network transport configured without a secret does not start at all, because a transport
+     * without authentication is not a degraded transport.
+     */
+    private void checkTransport(McpServerConfig config) {
+        if (config.getTransport() != McpServerConfig.TransportMode.SOCKET) {
+            checks.add(new Check("transport", true, "stdio; no network port is opened", null));
+            return;
+        }
+        String secretProblem = config.describeSecretProblem();
+        if (secretProblem != null) {
+            checks.add(new Check("transport_secret", false,
+                    "The network transport is configured but no shared secret resolves: " + secretProblem + ".",
+                    "The endpoint will not be established. Set " + McpServerConfig.SHARED_SECRET_ENV
+                            + " in the environment, or point sharedSecretFile at a file containing the secret. "
+                            + "It must not be written into conf/" + McpServerConfig.CONFIG_FILE
+                            + ", which ships with the release and tends to be version controlled."));
+        } else {
+            checks.add(new Check("transport_secret", true, "resolved", null));
+        }
+        String endpoint = config.describeListenEndpoint();
+        if (endpoint == null) {
+            checks.add(new Check("transport", false,
+                    "The network transport is configured but listenAddress and listenPort are not.",
+                    "There is no default on purpose — a server that picks an address for you may expose more "
+                            + "than you meant. Declare both in conf/" + McpServerConfig.CONFIG_FILE + "."));
+        } else {
+            checks.add(new Check("transport", true, "socket on " + endpoint
+                    + "; evidence content will cross this connection unencrypted", null));
+        }
     }
 
     /**

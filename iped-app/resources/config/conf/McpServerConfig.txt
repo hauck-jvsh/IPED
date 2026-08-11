@@ -140,3 +140,48 @@ exportRoots =
 # rest of the filesystem: with it on, a destination outside exportRoots
 # is still refused.
 allowExportIntoCaseFolder = false
+
+########################################################################
+# Transport
+########################################################################
+
+# How clients reach the server: "stdio" or "socket".
+#
+# stdio is the default and opens NO network port at all. Leave it alone
+# unless the harness has to run on a different machine from the case.
+transport = stdio
+
+# Where the network transport listens. There is deliberately no default:
+# a server that picks an address for you may expose more than you meant.
+# Both must be declared for "socket" to start.
+#
+# Use a loopback address unless the harness is genuinely on another
+# machine. With a VM on this same host, a forwarded loopback port keeps
+# the traffic inside the machine.
+#
+# listenAddress = 127.0.0.1
+# listenPort = 8737
+listenAddress =
+listenPort = 0
+
+# WHERE the shared secret is, never WHAT it is.
+#
+# This file ships with the release and tends to end up under version
+# control, so the secret must not be written here. The server reads, in
+# order: the IPED_MCP_SHARED_SECRET environment variable, then the
+# contents of the file named below.
+#
+# With transport = socket and neither one resolving to a non-empty
+# value, the endpoint is NOT established and the reason is reported. A
+# transport without authentication is not a degraded transport.
+#
+# sharedSecretFile = D:\pericia\segredo-mcp.txt
+sharedSecretFile =
+
+# Ceiling on simultaneous sessions. The expected order of magnitude is
+# "two examiners", not "a hundred clients".
+maxConcurrentSessions = 4
+
+# An authenticated connection that issues no request is closed after
+# this long, so it does not hold a session slot indefinitely.
+sessionIdleTimeoutSeconds = 300

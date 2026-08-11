@@ -2,6 +2,7 @@ package iped.mcp.config;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.DirectoryStream.Filter;
 import java.nio.file.Files;
@@ -52,6 +53,11 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
         READ_ONLY, READ_WRITE
     }
 
+    /** How clients reach the server. {@code STDIO} opens no port at all (FR-011). */
+    public enum TransportMode {
+        STDIO, SOCKET
+    }
+
     /** Classes of evidence-derived content the egress policy can allow or block (FR-039). */
     public enum ContentClass {
         metadata, text, thumbnail, binary
@@ -85,6 +91,15 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
     private String supportedVersionPrefix = "4.";
     private boolean allowExportIntoCaseFolder = false;
     private List<String> exportRoots = new ArrayList<>();
+
+    /** Off by default: an installation that configures nothing opens no port (FR-011). */
+    private TransportMode transport = TransportMode.STDIO;
+    /** No default, and in particular never every interface (FR-012, Principle V). */
+    private String listenAddress = null;
+    private int listenPort = 0;
+    private String sharedSecretFile = null;
+    private int maxConcurrentSessions = 4;
+    private int sessionIdleTimeoutSeconds = 300;
 
     private UTF8Properties properties = new UTF8Properties();
 
@@ -149,6 +164,13 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
         supportedVersionPrefix = str(properties, "supportedVersionPrefix", supportedVersionPrefix);
         allowExportIntoCaseFolder = bool(properties, "allowExportIntoCaseFolder", allowExportIntoCaseFolder);
         exportRoots = pathList(properties, "exportRoots", exportRoots);
+
+        transport = TransportMode.valueOf(str(properties, "transport", transport.name()).trim().toUpperCase());
+        listenAddress = str(properties, "listenAddress", listenAddress);
+        listenPort = integer(properties, "listenPort", listenPort);
+        sharedSecretFile = str(properties, "sharedSecretFile", sharedSecretFile);
+        maxConcurrentSessions = integer(properties, "maxConcurrentSessions", maxConcurrentSessions);
+        sessionIdleTimeoutSeconds = integer(properties, "sessionIdleTimeoutSeconds", sessionIdleTimeoutSeconds);
     }
 
     private static String str(UTF8Properties p, String key, String fallback) {
@@ -357,6 +379,101 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
 
     public boolean isAllowExportIntoCaseFolder() {
         return allowExportIntoCaseFolder;
+    }
+
+    /** Environment variable holding the shared secret, checked before {@code sharedSecretFile}. */
+    public static final String SHARED_SECRET_ENV = "IPED_MCP_SHARED_SECRET";
+
+    public TransportMode getTransport() {
+        return transport;
+    }
+
+    public void setTransport(TransportMode transport) {
+        this.transport = transport;
+    }
+
+    public String getListenAddress() {
+        return listenAddress;
+    }
+
+    public int getListenPort() {
+        return listenPort;
+    }
+
+    public void setListenEndpoint(String address, int port) {
+        this.listenAddress = address;
+        this.listenPort = port;
+    }
+
+    public void setSharedSecretFile(String path) {
+        this.sharedSecretFile = path;
+    }
+
+    public int getMaxConcurrentSessions() {
+        return maxConcurrentSessions;
+    }
+
+    public void setMaxConcurrentSessions(int max) {
+        this.maxConcurrentSessions = max;
+    }
+
+    public int getSessionIdleTimeoutSeconds() {
+        return sessionIdleTimeoutSeconds;
+    }
+
+    public void setSessionIdleTimeoutSeconds(int seconds) {
+        this.sessionIdleTimeoutSeconds = seconds;
+    }
+
+    /** The endpoint as configured, for the posture answer. {@code null} when nothing is declared. */
+    public String describeListenEndpoint() {
+        if (listenAddress == null || listenPort <= 0) {
+            return null;
+        }
+        return listenAddress + ":" + listenPort;
+    }
+
+    /**
+     * The shared secret, from the environment or from the file the configuration points at (FR-013).
+     *
+     * <p>
+     * <b>The secret is never written in {@code McpServerConfig.txt}.</b> That file ships with the
+     * release and is the kind of file people put under version control, which is exactly what FR-028
+     * — extending FR-055 of feature 001 — forbids. So the configuration declares <i>where</i> the
+     * secret is, never what it is.
+     *
+     * @return the secret, or {@code null} when neither source yields a non-empty value
+     */
+    public String resolveSharedSecret() {
+        String fromEnv = System.getenv(SHARED_SECRET_ENV);
+        if (fromEnv != null && !fromEnv.trim().isEmpty()) {
+            return fromEnv.trim();
+        }
+        if (sharedSecretFile == null || sharedSecretFile.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            String fromFile = new String(Files.readAllBytes(new File(sharedSecretFile.trim()).toPath()),
+                    StandardCharsets.UTF_8).trim();
+            return fromFile.isEmpty() ? null : fromFile;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    /** Why the secret could not be resolved, for the startup diagnostic. {@code null} when it could. */
+    public String describeSecretProblem() {
+        if (resolveSharedSecret() != null) {
+            return null;
+        }
+        if (sharedSecretFile == null || sharedSecretFile.trim().isEmpty()) {
+            return "neither the " + SHARED_SECRET_ENV + " environment variable nor sharedSecretFile is set";
+        }
+        File file = new File(sharedSecretFile.trim());
+        if (!file.isFile()) {
+            return "sharedSecretFile points at " + file.getAbsolutePath() + ", which is not a readable file";
+        }
+        return "the file at " + file.getAbsolutePath() + " is empty or could not be read";
     }
 
     /** How usable a declared write root turned out to be when it was probed. */
