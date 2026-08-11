@@ -138,11 +138,11 @@ Módulo `iped-mcp` dentro do projeto multi-módulo. Fonte em `iped-mcp/src/main/
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T047 [P] Atualizar `iped-mcp/src/main/resources/skill/SKILL.md` com o destino de artefato sendo do lado do servidor e as raízes declaradas. **Editar apenas a fonte canônica** — os invólucros em `iped-app/resources/skills/{claude-code,codex,opencode}/` são regenerados no build e ignorados pelo git
-- [ ] T048 [P] Acrescentar a topologia dividida aos três guias em `iped-mcp/src/main/resources/skill/install/{claude-code,codex,opencode}.md`, incluindo o que verificar para que a separação seja real e não aparente, e **dizendo com todas as letras** que o canal não é protegido e que o alcance recomendado é trânsito dentro de uma máquina física ou segmento confiável (FR-025)
-- [ ] T049 Confirmar que `iped-mcp/src/test/java/iped/mcp/contract/SkillParityTest.java` continua passando após T047 e T048
-- [ ] T050 Atualizar `iped-mcp/CLAUDE.md`: seção de invariantes (confinamento de escrita, exclusividade por caso, handshake antes do JSON-RPC), seção de áreas sensíveis (`PathConfinement`, `CasePool`) e seção de limitações conhecidas — a de concorrência muda materialmente, e a trilha por sessão passa a ter o manifesto como resposta
-- [ ] T051 Executar Q1 e Q2 do [quickstart.md](./quickstart.md), que não exigem caso processado
+- [X] T047 [P] Atualizar `iped-mcp/src/main/resources/skill/SKILL.md` com o destino de artefato sendo do lado do servidor e as raízes declaradas. **Editar apenas a fonte canônica** — os invólucros em `iped-app/resources/skills/{claude-code,codex,opencode}/` são regenerados no build e ignorados pelo git
+- [X] T048 [P] Acrescentar a topologia dividida aos três guias em `iped-mcp/src/main/resources/skill/install/{claude-code,codex,opencode}.md`, incluindo o que verificar para que a separação seja real e não aparente, e **dizendo com todas as letras** que o canal não é protegido e que o alcance recomendado é trânsito dentro de uma máquina física ou segmento confiável (FR-025)
+- [X] T049 Confirmar que `iped-mcp/src/test/java/iped/mcp/contract/SkillParityTest.java` continua passando após T047 e T048
+- [X] T050 Atualizar `iped-mcp/CLAUDE.md`: seção de invariantes (confinamento de escrita, exclusividade por caso, handshake antes do JSON-RPC), seção de áreas sensíveis (`PathConfinement`, `CasePool`) e seção de limitações conhecidas — a de concorrência muda materialmente, e a trilha por sessão passa a ter o manifesto como resposta
+- [X] T051 Executar Q1 e Q2 do [quickstart.md](./quickstart.md), que não exigem caso processado
 - [ ] T052 Executar Q3 a Q10 do quickstart com caso processado e ambiente isolado, **registrando explicitamente o que for pulado** — um teste pulado não é um teste que passou, e a feature 001 encerrou com 47 pulando por caso de referência ausente
 - [X] T053 Rodar `mvn -pl iped-mcp -am install` e `mvn -pl iped-mcp test`, comparando passa/pula com a linha de base de T001
 

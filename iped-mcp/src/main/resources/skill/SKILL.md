@@ -93,7 +93,18 @@ When the examiner wants the items themselves — a spreadsheet, a list, a delive
 the path. Do not page a result set into the conversation to build a table by hand: it is slower, it
 truncates, and it produces a document nobody can reproduce.
 
-The destination goes outside the case folder.
+**The destination has to be inside a folder the server is allowed to write to.** The permitted
+folders are declared in the server's configuration and cannot be changed from this conversation. If
+the destination is refused, the error names them — use one of those, do not go looking for another
+path that might work. The case folder is refused whatever else is permitted: an artifact written
+into the case becomes indistinguishable, later, from something the case itself produced.
+
+**The path is on the machine running the server, which may not be the machine running this
+conversation.** When the answer says so, tell the examiner where the file actually is rather than
+letting them look for it on the wrong machine.
+
+If an export comes back reporting that the write was accepted but nothing is there, do not retry the
+same destination. Nothing was delivered, and some destinations take a write and keep nothing.
 
 ## When something fails
 
