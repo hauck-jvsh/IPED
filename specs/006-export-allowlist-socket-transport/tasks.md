@@ -149,6 +149,26 @@ Módulo `iped-mcp` dentro do projeto multi-módulo. Fonte em `iped-mcp/src/main/
 
 ---
 
+## Phase 7: Achados da primeira implantação isolada (2026-08-12)
+
+Tarefas criadas **depois** do Polish, a partir da primeira montagem da topologia com isolamento de
+fato — VM Lima sobre QEMU, `mounts: []`, nenhum sistema de arquivos do hospedeiro visível no hóspede.
+Nenhuma delas era visível antes, e o motivo é comum às três: **só existem quando os dois lados deixam
+de compartilhar disco**, condição que a suíte não reproduz. Ver [research.md](./research.md) R9–R11 e
+a Iteração 5 do [checklist](./checklists/requirements.md).
+
+- [X] T055 [P] Acrescentar a seção "Paths belong to the server" a `iped-mcp/src/main/resources/skill/SKILL.md` (FR-036, SC-017), nomeando o modo de falha em primeira pessoa — ler caminho de outro sistema operacional, concluir que o caso sumiu, procurar no disco local — e fixando que a única forma de testar um caminho de caso é submetê-lo a `iped_open_case`. **Editar apenas a fonte canônica**
+- [X] T056 [P] Criar `iped-mcp/src/main/resources/bridge/` com `mcp-bridge.py`, o invólucro `iped-mcp-bridge` e o `README.md` (FR-037, SC-018). Porte de `McpRelayMain` para Python 3 sem dependência de terceiros, preservando as duas propriedades que separam um intermediário que funciona de um que aparenta funcionar: nada em stdout e **meio-fechamento no fim da entrada** (FR-035)
+- [X] T057 Empacotar o bridge no release: execução `copy-mcp-bridge` em `iped-app/pom.xml`, de `iped-mcp/src/main/resources/bridge` para `${release.dir}/bridge`. Cópia única, sem etapa de geração e sem verificação de paridade — ao contrário da skill, não há uma versão por harness
+- [X] T058 [P] Criar `iped-app/resources/config/conf/Log4j2ConfigurationMcp.xml` apontando para `SYSTEM_ERR` (FR-038, SC-019). As duas configurações já distribuídas, e o padrão da própria biblioteca, apontam para `SYSTEM_OUT` — correto para a CLI e para a UI, errado para o servidor sob transporte local e para o intermediário, onde a saída padrão **é o canal do protocolo**
+- [X] T059 Atualizar os três guias em `iped-mcp/src/main/resources/skill/install/`: bridge como opção padrão para ambiente isolado com o relay ao lado, `-Dlog4j.configurationFile` **nos comandos publicados** e não apenas mencionada, exemplo completo de Lima com QEMU, a distinção de a qual sistema de arquivos cada caminho pertence, e as novas linhas da tabela de sintomas (FR-025, FR-036, FR-037, FR-038)
+- [X] T060 Verificar em campo o meio-fechamento do bridge antes de adotá-lo: chamadas respondidas **e código de saída 0 quando o stdin fecha**. É a segunda condição que importa — foi exatamente a que reprovou o relay em T054, e um intermediário pendurado passa em qualquer verificação de requisição/resposta
+- [X] T061 Verificar SC-017 em campo: com o agente no hóspede Linux e o caso no Windows, a abertura acontece pela ferramenta. Confirmado **no manifesto de sessões do caso**, não apenas na resposta — o identificador e o total constam do arquivo de memória do agente, então a resposta correta sozinha não prova que a ferramenta foi chamada
+- [X] T062 Verificar SC-019 com a configuração de log **vinda do repositório** (a implantação usou uma cópia escrita à mão): subir servidor e intermediário com os comandos exatamente como publicados e confirmar que a saída padrão carrega apenas protocolo. Verificado nas duas metades — servidor: **zero byte** em stdout na inicialização, com os oito diagnósticos em stderr; relay: uma linha em stdout, validada como JSON-RPC
+- [X] T063 Atualizar `iped-mcp/CLAUDE.md`: o bridge como segunda implementação do intermediário, a configuração de log como parte da invariante de stdout, e a área sensível correspondente
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

@@ -221,32 +221,119 @@ There is no configuration in which the server listens without authentication.
 
 ### In the isolated environment
 
-Same `opencode.json`, one word different — the relay instead of the server:
+OpenCode cannot dial a socket. It knows two kinds of MCP server: `local`, which it launches and
+speaks stdio to, and `remote`, which is an HTTP URL. So something inside the isolated environment has
+to turn stdio into the connection. Two implementations ship, speaking the same protocol to the same
+server:
+
+| | Needs | Where it is |
+|---|---|---|
+| `bridge/iped-mcp-bridge` | Python 3.6+ | `<IPED_ROOT>/bridge/` — copy both files in |
+| `iped.mcp.McpRelayMain` | a JRE and four jars | `<IPED_ROOT>/lib/` |
+
+Prefer the bridge unless the isolated environment already has a JVM: it is two files and about five
+kilobytes, against installing a second runtime to keep patched inside the environment whose whole
+value is being small enough to reason about.
+
+Copy `bridge/mcp-bridge.py` and `bridge/iped-mcp-bridge` in, put the secret in a file only the
+harness account can read, and point OpenCode at the wrapper:
 
 ```json
 {
   "mcp": {
     "iped": {
       "type": "local",
-      "command": [
-        "java",
-        "-Diped.mcp.relay.host=127.0.0.1",
-        "-Diped.mcp.relay.port=8737",
-        "-Diped.mcp.relay.operator=perito.silva",
-        "-cp", "/path/to/iped-mcp.jar",
-        "iped.mcp.McpRelayMain"
-      ],
-      "enabled": true
+      "command": ["/opt/iped-mcp/iped-mcp-bridge"],
+      "enabled": true,
+      "timeout": 180000
     }
   }
 }
 ```
 
-The secret goes in the environment, as `IPED_MCP_SHARED_SECRET`, not in this file — `opencode.json`
-is the kind of file that ends up in a repository.
+with the environment carrying the rest:
 
-`-Diped.mcp.relay.operator` is optional and is recorded as an **unverified claim**: the secret proves
-the connection was authorized, not who is at the keyboard. It appears in the trail marked as such.
+```sh
+IPED_MCP_HOST=host.lima.internal
+IPED_MCP_PORT=8737
+IPED_MCP_SECRET_FILE=/home/analyst/.config/iped-mcp/secret   # chmod 600
+IPED_MCP_OPERATOR=perito.silva                               # optional
+```
+
+The secret stays out of `opencode.json` on purpose: that file is the kind of thing that ends up in a
+repository. The configuration holds a path; the credential does not.
+
+`IPED_MCP_OPERATOR` is recorded as an **unverified claim** — the secret proves the connection was
+authorized, not who is at the keyboard. It appears in the trail marked as such.
+
+**Run the wrapper by hand before wiring the harness to it.** It should print
+`mcp-bridge: connected to ...` on stderr and then sit waiting. That is success, and it separates "the
+server is unreachable" from "the harness configuration is wrong" in one step instead of leaving you
+to guess which.
+
+If the environment already has a JVM and you would rather use the relay:
+
+```json
+"command": [
+  "java",
+  "-Dlog4j.configurationFile=/path/to/conf/Log4j2ConfigurationMcp.xml",
+  "-Diped.mcp.relay.host=127.0.0.1",
+  "-Diped.mcp.relay.port=8737",
+  "-Diped.mcp.relay.operator=perito.silva",
+  "-cp", "/path/to/lib/*",
+  "iped.mcp.McpRelayMain"
+]
+```
+
+**That `-Dlog4j.configurationFile` is not decoration.** The other two logging configurations in
+`conf/`, and Log4j's own fallback, all write to stdout — which on this process is the protocol
+channel. Without the flag a log line eventually lands in the middle of the JSON-RPC stream, and the
+symptom looks like a protocol bug in the server rather than a logging setting. The same flag belongs
+on the server's own command line, for the same reason.
+
+### A worked example: Lima with QEMU
+
+A concrete recipe, because "put the harness in a VM" hides the few decisions that determine whether
+the isolation is real.
+
+```yaml
+# iped-agent.yaml
+#
+# Deliberately NOT based on template://ubuntu-24.04: that template pulls in
+# _default/mounts, which mounts the host home directory into the guest.
+base:
+- template:_images/ubuntu-24.04
+
+vmType: qemu
+cpus: 4
+memory: "8GiB"
+
+# The isolation boundary. Nothing of the host filesystem is visible in here.
+# Do not add a mount for convenience: a mount is a second path to the evidence,
+# and a second path is one the audit trail does not record.
+mounts: []
+
+ssh:
+  # Do not copy the operator's personal keys into the guest.
+  loadDotSSHPubKeys: false
+```
+
+```sh
+limactl start --name=iped-agent iped-agent.yaml
+```
+
+The guest reaches the host through the user-mode network gateway, which Lima publishes as
+`host.lima.internal`. QEMU maps that gateway to the **host's loopback**, so the server can stay on
+`listenAddress = 127.0.0.1` and still be reachable from the VM — nothing is exposed to the network at
+all. That is the configuration to aim for.
+
+Two consequences to know before relying on it:
+
+- The gateway reaches **every** service listening on the host's loopback, not only the MCP port. If
+  the workstation runs other loopback services, the isolated environment can reach those too.
+  Restrict outbound traffic from the guest if that matters to you.
+- The VM has ordinary outbound network access. It isolates the *filesystem*, not egress. Where the
+  evidence goes after the agent reads it is still decided by where the model runs.
 
 ### Verify the separation is real and not apparent
 
@@ -267,15 +354,26 @@ This is the step people skip, and skipping it buys the appearance of isolation w
    declared write roots and that the channel is unprotected. Compare it against the configuration
    file and against the machine's listening ports. Where they disagree, believe the ports.
 
-3. **Know where the artifacts land.** Exports are written on the **server's** filesystem, under the
-   declared `exportRoots` — not on the machine running the harness. The answer says so; the file is
-   over there.
+3. **Know which filesystem the paths belong to.** Every path in the tool surface — the case that is
+   opened, the destination an export is written to — is a path on the **server's** machine.
+   `F:\cases\operation` is meaningful over there and meaningless in the isolated environment, and
+   that is correct rather than a misconfiguration. Exports land under the declared `exportRoots` on
+   the server; the answer says so, and the file is over there.
+
+   Expect the agent to have to be told this once by the skill rather than discovering it: an agent
+   that reads a Windows case path while running on Linux, concludes the case is missing and starts
+   searching its own filesystem never calls `iped_open_case` at all, and produces no error to explain
+   the silence. The skill carries that rule; if you replace it with your own prompt, carry it too.
 
 ## If something goes wrong
 
 | Symptom | What it means |
 |---|---|
 | No `iped_*` tools | The `mcp` block is wrong. Run the command by hand and read the error. |
+| The agent says the case folder does not exist | It is checking the isolated environment's filesystem. Case paths belong to the server. |
+| Log lines appear inside the JSON-RPC stream | `-Dlog4j.configurationFile=<install>/conf/Log4j2ConfigurationMcp.xml` is missing. |
+| `opencode run` produces nothing and never ends | It is waiting on stdin. Non-interactively, redirect it: `opencode run "..." < /dev/null`. |
+| Bridge prints nothing at all, not even an error | It connected but the handshake was never answered — something else is on that port. |
 | Answers still work with Ollama stopped | OpenCode is using a hosted provider. Fix before opening real cases. |
 | "The IPED installation could not be located" | `-Diped.mcp.ipedRoot` points somewhere without a `conf/` folder. |
 | `NOT_A_CASE` | Wrong folder. Use the IPED output folder, not the `iped` subfolder inside it. |

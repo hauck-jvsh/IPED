@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Logging configuration for the MCP server and for the relay/bridge.
+
+    Everything goes to SYSTEM_ERR, and that is the entire point of this file.
+
+    On these processes stdout IS the JSON-RPC channel: under the stdio transport it carries the
+    protocol to the harness, and on the relay it carries it back. A single log line written to
+    stdout lands in the middle of that stream, where the harness has to either reject the session
+    or guess — and the symptom looks like a protocol bug in the server rather than a logging
+    setting.
+
+    The other two configurations shipped in this folder both target SYSTEM_OUT, and so does Log4j's
+    own fallback when no configuration is named. That is correct for the processing CLI and the
+    analysis UI, where stdout is for people. It is wrong for these two, which is why this file has
+    to exist and has to be named explicitly:
+
+        java -Dlog4j.configurationFile=<install>/conf/Log4j2ConfigurationMcp.xml ...
+
+    Leaving that flag off does not fail loudly. It corrupts the first session that logs anything.
+-->
+<Configuration status="WARN">
+    <CustomLevels>
+        <CustomLevel name="MSG" intLevel="250" />
+    </CustomLevels>
+    <Appenders>
+        <Console name="Stderr" target="SYSTEM_ERR">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} [%t] %-5level %logger{36} - %msg%n" />
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Root level="INFO">
+            <AppenderRef ref="Stderr" />
+        </Root>
+    </Loggers>
+</Configuration>

@@ -145,17 +145,49 @@ There is no configuration in which the server listens without authentication.
 
 ### In the isolated environment
 
-Same command, one word different — the relay instead of the server:
+Claude Code launches a process and speaks stdio to it; it cannot dial a socket. So something inside
+the isolated environment has to turn stdio into the connection. Two implementations ship, speaking
+the same protocol to the same server:
+
+| | Needs | Where it is |
+|---|---|---|
+| `bridge/iped-mcp-bridge` | Python 3.6+ | `<IPED_ROOT>/bridge/` — copy both files in |
+| `iped.mcp.McpRelayMain` | a JRE and four jars | `<IPED_ROOT>/lib/` |
+
+Prefer the bridge unless the isolated environment already has a JVM: it is two files and about five
+kilobytes, against installing a second runtime to keep patched inside the environment whose whole
+value is being small enough to reason about.
 
 ```
-claude mcp add iped -- java -Diped.mcp.relay.host=127.0.0.1 -Diped.mcp.relay.port=8737 -Diped.mcp.relay.operator=perito.silva -cp "/path/to/iped-mcp.jar" iped.mcp.McpRelayMain
+export IPED_MCP_HOST=192.168.5.2
+export IPED_MCP_PORT=8737
+export IPED_MCP_SECRET_FILE=$HOME/.config/iped-mcp/secret    # chmod 600
+export IPED_MCP_OPERATOR=perito.silva                        # optional
+
+claude mcp add iped -- /opt/iped-mcp/iped-mcp-bridge
 ```
 
-The secret goes in the environment, as `IPED_MCP_SHARED_SECRET`, not on this command line — shell
-history and project configuration both outlive the session.
+The secret goes in a file or in the environment, never on the command line — shell history and
+project configuration both outlive the session.
 
-`-Diped.mcp.relay.operator` is optional and is recorded as an **unverified claim**: the secret proves
-the connection was authorized, not who is at the keyboard. It appears in the trail marked as such.
+`IPED_MCP_OPERATOR` is recorded as an **unverified claim**: the secret proves the connection was
+authorized, not who is at the keyboard. It appears in the trail marked as such.
+
+**Run the wrapper by hand before wiring the harness to it.** It should print
+`mcp-bridge: connected to ...` on stderr and then sit waiting. That is success, and it separates "the
+server is unreachable" from "the harness configuration is wrong" in one step.
+
+If the environment already has a JVM and you would rather use the relay:
+
+```
+claude mcp add iped -- java -Dlog4j.configurationFile=/path/to/conf/Log4j2ConfigurationMcp.xml -Diped.mcp.relay.host=127.0.0.1 -Diped.mcp.relay.port=8737 -Diped.mcp.relay.operator=perito.silva -cp "/path/to/lib/*" iped.mcp.McpRelayMain
+```
+
+**That `-Dlog4j.configurationFile` is not decoration.** The other two logging configurations in
+`conf/`, and Log4j's own fallback, all write to stdout — which on this process is the protocol
+channel. Without the flag a log line eventually lands in the middle of the JSON-RPC stream, and the
+symptom looks like a protocol bug in the server. The same flag belongs on the server's own command
+line.
 
 ### Verify the separation is real and not apparent
 
@@ -176,9 +208,16 @@ This is the step people skip, and skipping it buys the appearance of isolation w
    declared write roots and that the channel is unprotected. Compare it against the configuration
    file and against the machine's listening ports. Where they disagree, believe the ports.
 
-3. **Know where the artifacts land.** Exports are written on the **server's** filesystem, under the
-   declared `exportRoots` — not on the machine running the harness. The answer says so; the file is
-   over there.
+3. **Know which filesystem the paths belong to.** Every path in the tool surface — the case that is
+   opened, the destination an export is written to — is a path on the **server's** machine.
+   `F:\cases\operation` is meaningful over there and meaningless in the isolated environment, and
+   that is correct rather than a misconfiguration. Exports land under the declared `exportRoots` on
+   the server; the answer says so, and the file is over there.
+
+   Expect the agent to have to be told this once by the skill rather than discovering it: an agent
+   that reads a Windows case path while running on Linux, concludes the case is missing and starts
+   searching its own filesystem never calls `iped_open_case` at all, and produces no error to explain
+   the silence. The skill carries that rule; if you replace it with your own prompt, carry it too.
 
 ## If something goes wrong
 

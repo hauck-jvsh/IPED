@@ -37,7 +37,16 @@ iped/mcp/
 └── tools/                   # uma classe por grupo de ferramentas MCP
 ```
 
-Recursos em `src/main/resources/skill/`: `SKILL.md` (fonte canônica), `references/`, `install/`.
+Recursos em `src/main/resources/`:
+
+- `skill/` — `SKILL.md` (fonte canônica), `references/`, `install/`.
+- `bridge/` — `mcp-bridge.py` e o invólucro `iped-mcp-bridge`: a **segunda implementação do
+  intermediário**, equivalente ao `McpRelayMain` e falando o mesmo protocolo com o mesmo servidor.
+  Existe porque o ambiente isolado é onde peso custa mais caro: exigir um JRE lá dentro para uma
+  linha de handshake e dois bombeamentos de bytes acrescenta superfície e mais um runtime a manter
+  atualizado, no ambiente cujo valor inteiro é ser pequeno o bastante para se auditar (FR-037 de 006).
+  Copiado para `bridge/` no release pela execução `copy-mcp-bridge` do `iped-app/pom.xml` — cópia
+  única, sem geração e sem verificação de paridade, ao contrário da skill.
 
 ## 3. Decisões que condicionam o desenho
 
@@ -84,6 +93,7 @@ Acrescentado nesta linha de trabalho: **raízes de escrita** (`exportRoots`, sep
 | Referência a item sempre carrega o caso | contrato das ferramentas; `ToolSchemaTest` verifica |
 | Ausência ≠ vazio | `ItemView.unavailable`, `ContentAccess.unavailable` |
 | Charset explícito, logging por SLF4J | `JsonRpcCodec`, `AuditTrail`; `System.out` corromperia o próprio protocolo |
+| Nada além do protocolo alcança a saída padrão — **inclusive o que vem de fora do código** | O código respeita a linha acima; quem a contradizia era a **configuração de log da instalação**. As duas configurações distribuídas (`Log4j2ConfigurationConsoleOnly`, `Log4j2ConfigurationFile`) e o padrão da própria biblioteca apontam para `SYSTEM_OUT` — correto para a CLI e a UI, errado aqui. `conf/Log4j2ConfigurationMcp.xml` existe para isso e os comandos publicados nos guias **precisam** passá-la em `-Dlog4j.configurationFile`. Invariante mantida só no código não protege contra acoplamento por arquivo de configuração |
 | Uma mensagem malformada é respondida e descartada, nunca fatal | `JsonRpcCodec.readMessage` → `McpError.MALFORMED_MESSAGE`; `McpServerMain.start` responde `-32700` e continue. Deixar a falha do Jackson escapar derrubava a sessão inteira e todos os casos abertos nela |
 | Artefato só é gravado sob raiz declarada | `PathConfinement.resolve` chamado por `ExportTools.checkDestination` **antes** de `ArtifactWriter.write`. É lista de permissão, não de recusa, e a comparação é sobre o caminho **real** (`Path.toRealPath`) contra a raiz **real**. `File.getCanonicalPath()` **não atravessa junção de diretório no Windows** e por isso não pode voltar a ser usado aqui |
 | Recusa de destino não deixa rastro | A criação de pastas intermediárias em `ArtifactWriter` acontece depois do veredito `ALLOWED`, nunca antes |
@@ -148,6 +158,7 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | `ItemView.storedFields` | Lê do documento armazenado, não do `IItem`. Acrescentar campo aqui é barato; trocar por reconstrução de item custa a latência da página. |
 | `CasePool` | Um `IPEDSource` por caso por processo, com contagem de referências. `OpenCase.close()` **solta referência**, não fecha o handle — fechá-lo direto tira o searcher de baixo de outra sessão. O que é compartilhado é imutável depois do construtor; nada com estado mutável pode entrar aqui |
 | `AuditRecord` | **Não acrescente campo.** `AuditTrail.verify` recompõe `toNodeWithoutHash` a partir do que lê, então um campo a mais muda o resultado para registros já emitidos. Foi por isso que identidade alegada foi para o campo `operator` e transporte/origem para o `SessionManifest` |
+| `bridge/mcp-bridge.py` | Mesmas duas regras do `McpRelayMain`, e pelas mesmas razões: nada em stdout — que aqui é o canal de volta ao harness — e `shutdown(SHUT_WR)` no fim da entrada. Não tem suíte própria: é script de recurso, não classe compilada. Ao mexer, verifique à mão as duas coisas que importam — as chamadas respondem **e** o processo sai com código 0 quando o stdin fecha. A primeira sozinha não prova nada |
 | `McpRelayMain.relay` | O `shutdownOutput()` no fim da entrada **não é limpeza opcional**. Sem ele o relay não termina quando o harness fecha o stdin — que é como todo harness sai — e a sessão fica segurando o caso e a reivindicação de escrita até o teto de ociosidade. Encontrado em campo, não na suíte: um relay pendurado passa em qualquer teste de requisição/resposta. `RelayShutdownTest` fixa |
 | `HandshakeCodec` | Fora do JSON-RPC de propósito. Movê-lo para dentro de `initialize` daria ao dispatcher um estado "autenticado ou não" que toda ferramenta teria de consultar, e a primeira que esquecesse seria um vazamento |
 | `PathConfinement` | Toda a classe existe porque comparação textual de prefixo não sustenta a regra. Trocar `toRealPath()` por `getCanonicalPath()` ou por `normalize()` reabre a junção de diretório; comparar com `String.startsWith` em vez de `Path.startsWith` faz uma raiz `D:\laudo` casar com `D:\laudos`. `PathConfinementTest` fixa os dois. O veredito de prefixo estendido `\\?\` **difere entre Java 11 e versões novas** — o teste afirma "recusado", não um veredito |

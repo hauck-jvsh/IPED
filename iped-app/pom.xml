@@ -837,6 +837,27 @@
                             </resources>
                         </configuration>
                     </execution>
+                    <!-- COPY MCP BRIDGE -->
+                    <!-- The stdio<->socket bridge copied into an isolated environment so a
+                         harness there can reach the MCP server running beside the evidence.
+                         Straight from the iped-mcp source: there is one copy rather than one
+                         per harness, so it needs no generation step and no parity check. -->
+                    <execution>
+                        <id>copy-mcp-bridge</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${release.dir}/bridge</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <filtering>false</filtering>
+                                    <directory>${parent.root}/iped-mcp/src/main/resources/bridge</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
                     <!-- COPY PLUGIN RESOURCES -->
                     <execution>
                         <id>copy-plugin-resources</id>

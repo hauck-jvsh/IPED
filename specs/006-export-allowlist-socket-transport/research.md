@@ -270,3 +270,95 @@ recomputa esse nó a partir do que lê — um campo a mais mudaria o resultado p
 A alegação passou a viajar dentro do campo `operator`, que já existe, renderizada com a palavra
 "unverified" no próprio valor; transporte e origem foram para o manifesto de sessões, onde são
 propriedade da sessão e não de cada operação. Ver a seção correspondente do [data-model.md](./data-model.md).
+
+---
+
+# Achados da primeira implantação isolada (2026-08-12)
+
+As três decisões abaixo não vieram de raciocínio sobre o código. Vieram de montar a topologia
+dividida com isolamento real — máquina virtual Lima sobre QEMU, `mounts: []`, nenhum sistema de
+arquivos do hospedeiro visível no hóspede — e observar o que quebrou. **As três só existem quando os
+dois lados deixam de compartilhar disco**, que é precisamente a condição que a suíte não reproduz.
+
+## R9 — O agente presume que o caminho do caso é local
+
+**Decisão**: a regra "todo caminho pertence ao servidor" entra na **fonte canônica da skill**, não
+apenas nos guias de instalação, e vem acompanhada da proibição explícita de verificar caminho de caso
+por inspeção do sistema de arquivos local.
+
+**Medido**: com o servidor no Windows e o harness num hóspede Linux, o agente leu o caminho gravado
+(`F:\test_iped_estavel`), registrou em voz alta *"mas estamos em um ambiente Linux, esse caminho não
+existe aqui"*, e emitiu quatro chamadas sucessivas de busca no sistema de arquivos do hóspede antes
+de desistir. **Nunca chamou a ferramenta de abertura.** Chamada à mão pelo mesmo caminho, pela mesma
+conexão, ela devolveu o caso em menos de dois segundos — 781.246 itens, identificador conferindo com
+o registrado.
+
+**Rationale**: a informação existia e estava no documento errado. Os três guias de instalação dizem
+que o artefato exportado nasce do lado do servidor; nenhum deles é lido pelo agente. A orientação que
+o agente segue dizia o mesmo **apenas sobre o destino de exportação** — a extrapolação para o caminho
+do caso parece óbvia depois de enunciada e não foi feita por nenhum dos dois lados.
+
+O que torna esse defeito caro é o silêncio. Não há erro: o agente não chama a ferramenta, portanto
+não há falha para diagnosticar. O perito vê uma sessão que "não achou o caso" e um servidor cujo log
+não registra tentativa alguma.
+
+**Alternativa descartada**: traduzir caminhos automaticamente entre convenções de sistema operacional.
+Adivinhar que `F:\x` corresponde a algum caminho do hóspede exigiria um mapa que ninguém declarou, e
+acertar por acidente é pior do que recusar: produziria abertura de caso que o perito não consegue
+explicar.
+
+## R10 — O intermediário não precisa de um runtime só para ele
+
+**Decisão**: distribuir, ao lado do relay Java, um bridge equivalente em Python 3, e recomendar o
+segundo como padrão para ambiente isolado.
+
+**Medido**: para pôr o relay Java no hóspede seriam necessários um JRE e cinco jars — o classpath
+mínimo foi verificado, não estimado: `iped-mcp`, `slf4j-api`, `log4j-api`, `log4j-core` e
+`log4j-slf4j-impl`, 2,3 MB, porque as constantes que o relay usa das demais classes são de tempo de
+compilação e ficam embutidas. Os 2,3 MB não são o custo; o JRE é. O bridge em Python tem 5 KB e roda
+no interpretador que a imagem Ubuntu já traz — nenhum pacote instalado.
+
+**Rationale**: o intermediário é uma linha de handshake e dois bombeamentos de bytes. Ele não abre
+caso, não lê evidência e não grava artefato. Fazer disso a razão para instalar um runtime inteiro no
+ambiente cujo valor é ser pequeno o bastante para se auditar é pagar caro na moeda errada — mais
+superfície e mais uma coisa a manter atualizada, ali.
+
+**O que foi verificado antes de trocar**: as duas propriedades que separam um bridge que funciona de
+um bridge que parece funcionar. As chamadas respondem, e o processo **encerra com código 0 quando o
+stdin fecha** — o meio-fechamento de FR-035. É a segunda que importa: um intermediário pendurado
+responde tudo corretamente e só falha em terminar, e foi exatamente assim que o defeito do relay
+passou despercebido em campo até a Iteração 4.
+
+**Alternativa descartada**: só o relay Java, e que o ambiente isolado se vire com um JRE. É o que
+estava escrito e é o que a implantação real reprovou. **Alternativa descartada**: substituir o relay
+pelo bridge. Ambientes isolados que já têm JVM não ganham nada trocando, e o relay é o caminho com
+suíte de testes.
+
+## R11 — A configuração de log distribuída escreve no canal do protocolo
+
+**Decisão**: uma terceira configuração de log, `conf/Log4j2ConfigurationMcp.xml`, apontando para
+stderr, distribuída com a instalação e empregada pelos comandos publicados.
+
+**Medido**: na primeira subida do servidor implantado, uma linha de erro da biblioteca de log apareceu
+na saída padrão. As duas configurações que a instalação já trazia — `Log4j2ConfigurationConsoleOnly`
+e `Log4j2ConfigurationFile` — têm `target="SYSTEM_OUT"`, e o padrão da própria biblioteca, quando
+nenhuma é indicada, também. Está correto para a CLI de processamento e para a UI, onde a saída padrão
+é para pessoas. É errado para o servidor MCP sob transporte local e para o intermediário, onde a saída
+padrão **é o canal do protocolo**.
+
+**Rationale**: o módulo já sustentava a invariante "nada escreve em stdout" no código, e o código a
+respeita. O que a contradiz vem de fora dele, de um arquivo de configuração da instalação — que é
+justamente o tipo de acoplamento que uma invariante mantida só no código não protege.
+
+A correção óbvia era documentar a opção de linha de comando. Foi recusada como suficiente: os comandos
+publicados nos guias **não a traziam**, a falha não é ruidosa (corrompe a primeira sessão que registrar
+qualquer coisa) e o sintoma se parece com defeito de protocolo do servidor. Garantia que depende de
+alguém lembrar de um parâmetro não é garantia — daí FR-038 exigir que os comandos publicados a
+empreguem, e não apenas que ela exista.
+
+**Alternativa considerada e não construída**: o processo desativar programaticamente, na
+inicialização, qualquer appender que aponte para a saída padrão, antes de emitir a primeira linha.
+É mais forte do que depender do arquivo certo ser nomeado, porque sobrevive a uma instalação que
+aponte para a configuração errada. Fica registrada como evolução: exige interceptar a inicialização
+da biblioteca de log antes de qualquer registro, e a correção por configuração já satisfaz FR-038
+para os comandos que a instalação publica.

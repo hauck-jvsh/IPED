@@ -88,6 +88,49 @@ porque as respostas estão certas. O que falha é o encerramento, e nada exercit
 
 Nenhum requisito existente foi relaxado. A numeração vai a FR-001–035 e SC-001–016.
 
+### Iteração 5 — 2026-08-12 (pós-implantação isolada real)
+
+**16 de 16 mantidos.** A topologia dividida foi montada pela primeira vez com **isolamento de fato**, e
+não apenas com o transporte de rede ativo: VM Lima sobre QEMU, `mounts: []`, nenhum sistema de arquivos
+do hospedeiro visível no hóspede. A separação se verificou. Três coisas quebraram, e nenhuma delas era
+visível antes.
+
+O padrão comum vale mais do que os três achados isolados: **as três só existem quando os dois lados
+deixam de compartilhar disco**. Até esta implantação, "transporte de rede ativo" e "harness isolado"
+tinham sido a mesma coisa na prática, porque o harness sempre rodou numa máquina que enxergava o caso.
+A suíte não reproduz essa condição e não tinha como reproduzi-la.
+
+| Achado | O que faltava | Requisitos gerados |
+|---|---|---|
+| Agente procurou o caso no disco do ambiente isolado e nunca chamou a abertura | Regra "todo caminho é do servidor" existia nos guias de instalação, que o **perito** lê, e não na skill, que o **agente** segue | FR-036, SC-017 |
+| Intermediário exigiu um JRE dentro do ambiente isolado | FR-035 governava o que o intermediário faz, nada dizia sobre o que ele pode exigir | FR-037, SC-018 |
+| Linha de log na saída padrão, que é o canal do protocolo | Invariante mantida no código do módulo, contradita por arquivo de configuração da instalação | FR-038, SC-019 |
+
+**O achado do agente é o mais instrutivo, e a lição não é sobre caminhos.** É sobre onde a informação
+mora. O fato estava escrito, correto e completo — no documento errado. FR-025 exige que a documentação
+de instalação cubra a topologia dividida, e ela cobre; só que o leitor daquele documento é quem
+implanta. O agente lê outra coisa. Um requisito satisfeito pode deixar um buraco quando o destinatário
+da informação não é quem se supôs.
+
+Somado a isso, **a falha é silenciosa**: o agente que conclui que o caso sumiu não chama ferramenta
+alguma, logo não gera erro, logo não há nada para diagnosticar — nem na resposta, nem no log do
+servidor, que não registra tentativa. Foi encontrado por leitura da transcrição da sessão, não por
+sintoma.
+
+O item "Requirements are testable and unambiguous" foi reavaliado para os três novos. SC-017 e SC-019
+são observáveis por execução direta; SC-018 é medível por inventário do que precisa ser copiado.
+
+**Numeração agora: FR-001–038 e SC-001–019, ambas contíguas.**
+
+### Nota sobre a Iteração 4 vista daqui
+
+Vale registrar a coincidência de forma, porque ela sugere onde olhar da próxima vez. FR-035 (Iteração 4)
+e FR-037/FR-038 (Iteração 5) são todos sobre o **intermediário e o processo que o hospeda** — a peça
+que não é nem o servidor nem o harness, e por isso não tem dono natural em nenhuma das duas metades da
+spec. As três falhas passaram pela suíte inteira. Duas delas — o encerramento pendurado e a linha de log
+no canal — compartilham a mesma assinatura: **respondem tudo corretamente e falham em outra coisa**.
+Testes de requisição/resposta não as veem por construção.
+
 ### Verificações transversais
 
 **Vazamento de implementação**: o termo "socket", presente no pedido original, aparece apenas no campo
@@ -96,7 +139,7 @@ critérios de sucesso descrevem comportamento observável — porta aberta, recu
 equivalência de resultados, bloqueio mútuo entre sessões — sem nomear mecanismo. "Segredo
 compartilhado" é modelo de confiança, não tecnologia.
 
-**Numeração**: FR-001 a FR-035 e SC-001 a SC-016, ambos contíguos e sem lacunas. Requisitos de 001
+**Numeração**: FR-001 a FR-038 e SC-001 a SC-019, ambos contíguos e sem lacunas. Requisitos de 001
 são sempre citados com origem explícita ("FR-068 de 001"), convenção declarada na seção *Relação com
 a spec 001*.
 

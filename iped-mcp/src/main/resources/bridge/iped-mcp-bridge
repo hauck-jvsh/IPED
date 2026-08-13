@@ -1,0 +1,25 @@
+#!/bin/sh
+# Launches the stdio<->socket bridge from an isolated environment to the IPED MCP
+# server running beside the evidence.
+#
+# Run it by hand to debug, which is the first thing to try when a harness reports
+# that the server failed: it prints "mcp-bridge: connected to ..." on stderr and
+# then waits for JSON-RPC on stdin. If it prints anything else, the answer is in
+# that line.
+#
+# Every value can be overridden from the environment. Host and port have no
+# defaults on purpose: where the server lives varies by deployment, and a guess
+# that happens to connect somewhere is worse than a refusal that says what is
+# missing.
+#
+#   IPED_MCP_HOST           host running the MCP server        (required)
+#   IPED_MCP_PORT           port it listens on                 (required)
+#   IPED_MCP_SHARED_SECRET  the secret itself                  (this or the next)
+#   IPED_MCP_SECRET_FILE    file holding the shared secret
+#   IPED_MCP_OPERATOR       claimed operator name, recorded unverified (optional)
+set -e
+
+# Resolve alongside this script so the pair can be copied anywhere as a unit.
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+exec python3 "$SCRIPT_DIR/mcp-bridge.py"

@@ -1,0 +1,11 @@
+# These two files are copied verbatim into an isolated Linux environment, so they
+# must carry LF on every platform, including a Windows checkout.
+#
+# The repository default is `* text=auto`, and `*.py` is declared text without an
+# eol, so both would arrive as CRLF here. A CRLF in the wrapper's shebang makes it
+# unexecutable on Linux, and the error says nothing useful about why.
+#
+# The wrapper has no extension, so no other rule in the root .gitattributes reaches
+# it — `*.sh text eol=lf` does not apply.
+mcp-bridge.py       text eol=lf
+iped-mcp-bridge     text eol=lf

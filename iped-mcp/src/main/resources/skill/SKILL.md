@@ -35,6 +35,27 @@ field name this index does not have. **Before writing "no evidence of X was foun
 `iped_check_field` on every field you restricted on.** Field names vary between cases and between
 IPED versions. This is the single most common way to produce a confident, wrong, negative finding.
 
+## Paths belong to the server
+
+Every path these tools take — the case you open, the destination you export to — is a path on the
+**machine running the server**, which is frequently not the machine running this conversation. The
+server may be on Windows while you are on Linux, with no filesystem shared between them.
+
+A case path is therefore not something you can check. `F:\cases\operation` does not exist for you
+and never will, and that is not evidence that the case is missing. **The only way to learn whether a
+case path is good is to pass it to `iped_open_case` and read the answer.** Do not go looking for it
+first with a directory listing, a file search or a glob: those answer a question about the wrong
+machine, and a negative from them tells you nothing about the case.
+
+This is the failure mode to watch for in yourself. You read a Windows path, notice you are on Linux,
+conclude the case has moved, and start searching your own filesystem for it. Every step of that
+reasoning is wrong, and none of it produces an error message — you simply never call the tool that
+would have worked. When a recorded path looks foreign to your environment, that is expected: open
+it.
+
+`iped_open_case` says precisely what is wrong with a path it rejects. A local search says only that
+your machine does not have it, which was already true before you asked.
+
 ## Do not extrapolate
 
 Report what the returned data supports and nothing beyond it.
