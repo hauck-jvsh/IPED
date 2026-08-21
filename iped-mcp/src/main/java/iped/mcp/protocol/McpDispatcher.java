@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import iped.mcp.audit.AuditRecord;
+import iped.mcp.config.McpServerConfig;
 import iped.mcp.config.McpServerConfig.AccessMode;
 import iped.mcp.config.McpServerConfig.ContentClass;
 import iped.mcp.session.Session;
@@ -138,7 +139,13 @@ public class McpDispatcher {
     private ObjectNode listTools() {
         ObjectNode result = JsonRpcCodec.mapper().createObjectNode();
         ArrayNode array = result.putArray("tools");
+        boolean processingEnabled = McpServerConfig.get().isProcessingEnabled();
         for (ToolDescriptor tool : tools.values()) {
+            // With case creation disabled the capability is not merely refused, it is absent from
+            // the surface (FR-002). The gate in callTool covers a client that calls one anyway.
+            if (tool.isProcessingOperation() && !processingEnabled) {
+                continue;
+            }
             array.add(JsonRpcCodec.mapper().valueToTree(tool.toListEntry()));
         }
         return result;
@@ -155,6 +162,22 @@ public class McpDispatcher {
             throw new McpError(McpError.UNKNOWN_TOOL, "There is no tool named '" + name + "'.",
                     "Call tools/list and use one of the names it returns.").with("requested", name).with("available",
                             known);
+        }
+
+        // 0. Processing gate, ahead of everything else and ahead of reading any argument (FR-002).
+        // It sits before the access-mode gate because case creation is a third class of operation,
+        // not a stronger kind of curation: an installation may enable writes and still not want an
+        // agent reading a disk into a new case.
+        if (tool.isProcessingOperation() && !McpServerConfig.get().isProcessingEnabled()) {
+            McpError denial = new McpError(McpError.PROCESSING_DISABLED,
+                    "Case creation is not enabled in this installation, so '" + name + "' was refused. "
+                            + "Nothing on the filesystem was read or written.",
+                    "Enabling it is outside this conversation's reach: an examiner sets processingEnabled "
+                            + "to true in conf/McpServerConfig.txt, declares processingSourceAreas and "
+                            + "processingCaseRoots, and restarts the server. Until then, work with cases "
+                            + "that already exist.").with("tool", name);
+            auditDenial(tool, name, arguments, denial);
+            throw denial;
         }
 
         // 1. Access mode gate, before anything touches the case (FR-025).

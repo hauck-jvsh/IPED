@@ -53,6 +53,25 @@ public class McpError extends RuntimeException {
     public static final String EXPORT_FAILED = "EXPORT_FAILED";
 
     // Protocol diagnostics.
+    // Case creation (007).
+    public static final String PROCESSING_DISABLED = "PROCESSING_DISABLED";
+    public static final String SOURCE_NOT_PERMITTED = "SOURCE_NOT_PERMITTED";
+    public static final String SOURCE_AREA_UNAVAILABLE = "SOURCE_AREA_UNAVAILABLE";
+    public static final String DESTINATION_NOT_PERMITTED = "DESTINATION_NOT_PERMITTED";
+    public static final String DESTINATION_HAS_CASE = "DESTINATION_HAS_CASE";
+    /**
+     * Distinct from {@link #DESTINATION_HAS_CASE} on purpose: one is an occupied destination, the
+     * other is a scope boundary. Merging them would make a deliberate decision read as a defect.
+     */
+    public static final String APPEND_NOT_SUPPORTED = "APPEND_NOT_SUPPORTED";
+    public static final String PROFILE_NOT_PERMITTED = "PROFILE_NOT_PERMITTED";
+    public static final String JOB_ALREADY_RUNNING = "JOB_ALREADY_RUNNING";
+    public static final String JOB_NOT_RESUMABLE = "JOB_NOT_RESUMABLE";
+    /** Means "never existed in this installation", never "existed and was discarded" (FR-045). */
+    public static final String UNKNOWN_JOB = "UNKNOWN_JOB";
+    public static final String SECRET_UNRESOLVED = "SECRET_UNRESOLVED";
+    public static final String PROCESSING_MISCONFIGURED = "PROCESSING_MISCONFIGURED";
+
     public static final String UNKNOWN_TOOL = "UNKNOWN_TOOL";
     public static final String MALFORMED_MESSAGE = "MALFORMED_MESSAGE";
     public static final String INTERNAL_ERROR = "INTERNAL_ERROR";

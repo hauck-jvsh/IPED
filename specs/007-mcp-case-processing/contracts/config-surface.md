@@ -13,7 +13,7 @@ arquivo não existe; o arquivo distribuído é a autoridade.
 | `processingEnabled` | `false` | Habilita a capacidade. **Desabilitada por padrão** (FR-001). Independente do modo de acesso de leitura e curadoria: habilitar curadoria não habilita processar |
 | `processingSourceAreas` | *(vazio)* | Raízes sob as quais evidência pode ser lida, separadas por `;`. Vazio com `processingEnabled=true` é **erro de configuração**, não permissão total |
 | `processingCaseRoots` | *(vazio)* | Raízes sob as quais casos podem nascer, separadas por `;`. Distintas de `exportRoots` (FR-009) |
-| `processingProfiles` | `forensic;fastmode;triage` | Perfis que o agente pode nomear (FR-013). `blind` e `pedo` fora do padrão: têm efeito que o perito deve escolher deliberadamente |
+| `processingProfiles` | `forensic,fastmode,triage` | Perfis que o agente pode nomear (FR-013). `blind` e `pedo` fora do padrão: têm efeito que o perito deve escolher deliberadamente |
 | `processingMinFreeSpacePercentOfSource` | `50` | Percentual do **tamanho da evidência de origem** que precisa estar livre na unidade de destino. Em `50`, uma imagem de 500 GB exige 250 GB livres. Abaixo disso, adverte — **nunca recusa** (FR-044) |
 | `processingSecretsFile` | *(vazio)* | Arquivo do lado do servidor que resolve referência de segredo → senha. Diz **onde**, nunca **qual** (FR-015) |
 | `processingLocale` | `en` | Locale declarado para o processo filho. Existe porque o progresso é lido de mensagens localizadas e herdar o locale da máquina tornaria a leitura dependente da instalação (R2) |
@@ -22,8 +22,10 @@ arquivo não existe; o arquivo distribuído é a autoridade.
 
 ## Regras de leitura
 
-**Separador é `;`, não `,`.** Mesma razão de `exportRoots` na 006: caminho de arquivo carrega vírgula,
-e cortar por vírgula partiria um caminho do Windows ao meio.
+**Lista de caminhos usa `;`; lista comum usa `,`.** É a regra que o arquivo já segue desde a 006, e
+tem motivo: caminho de arquivo carrega vírgula, e cortar por vírgula partiria um caminho do Windows ao
+meio. Por isso `processingSourceAreas` e `processingCaseRoots` usam `;`, e `processingProfiles` — que
+são nomes, não caminhos — usa `,`, como as demais listas do arquivo.
 
 **Sem padrão para as raízes, de propósito.** Nem `processingSourceAreas` nem `processingCaseRoots` têm
 valor embutido. Uma raiz padrão inventada seria uma permissão que ninguém concedeu. Com
@@ -73,7 +75,7 @@ processingCaseRoots =
 
 # Profiles the agent may name. blind and pedo are deliberately absent: their effects are
 # the examiner's call, not a default.
-processingProfiles = forensic;fastmode;triage
+processingProfiles = forensic,fastmode,triage
 
 # Free space required at the destination, as a percentage of the SOURCE evidence size.
 # At 50, a 500 GB image needs 250 GB free. Below that the server warns; it never refuses

@@ -40,6 +40,10 @@ public final class McpTestSupport {
     public static final String REFERENCE_CASE_ENV = "IPED_MCP_REFERENCE_CASE";
     public static final String LARGE_CASE_PROPERTY = "iped.mcp.test.largeCase";
     public static final String LARGE_CASE_ENV = "IPED_MCP_LARGE_CASE";
+    public static final String SOURCE_EVIDENCE_PROPERTY = "iped.mcp.test.sourceEvidence";
+    public static final String SOURCE_EVIDENCE_ENV = "IPED_MCP_SOURCE_EVIDENCE";
+    public static final String CASE_ROOT_PROPERTY = "iped.mcp.test.caseRoot";
+    public static final String CASE_ROOT_ENV = "IPED_MCP_CASE_ROOT";
 
     private McpTestSupport() {
     }
@@ -52,7 +56,25 @@ public final class McpTestSupport {
         return resolve(LARGE_CASE_PROPERTY, LARGE_CASE_ENV);
     }
 
+    /**
+     * The evidence a processing suite feeds to the engine. Unlike a case, this may be a file — a
+     * forensic image — so it is resolved without the directory constraint.
+     */
+    public static File sourceEvidence() {
+        return resolveAny(SOURCE_EVIDENCE_PROPERTY, SOURCE_EVIDENCE_ENV);
+    }
+
+    /** The declared root a processing suite is allowed to create cases under. */
+    public static File caseRoot() {
+        return resolve(CASE_ROOT_PROPERTY, CASE_ROOT_ENV);
+    }
+
     private static File resolve(String property, String env) {
+        File file = resolveAny(property, env);
+        return file != null && file.isDirectory() ? file : null;
+    }
+
+    private static File resolveAny(String property, String env) {
         String path = System.getProperty(property);
         if (path == null || path.trim().isEmpty()) {
             path = System.getenv(env);
@@ -61,7 +83,7 @@ public final class McpTestSupport {
             return null;
         }
         File file = new File(path.trim());
-        return file.isDirectory() ? file : null;
+        return file.exists() ? file : null;
     }
 
     /**
@@ -87,6 +109,41 @@ public final class McpTestSupport {
                 largeCase != null);
         requireIpedConfiguration();
         return largeCase;
+    }
+
+    /**
+     * Skips the calling test when no source evidence is configured, naming what to set.
+     *
+     * <p>
+     * Same discipline as {@link #requireReferenceCase()} and for the same reason: a skipped test is
+     * not a passing test, but a bench that configured the evidence and forgot the installation asked
+     * for a real run, and reporting "nothing to do" there would hide a misconfiguration rather than
+     * surface it.
+     */
+    public static File requireSourceEvidence() {
+        File evidence = sourceEvidence();
+        Assume.assumeTrue("Source evidence not available. Set -D" + SOURCE_EVIDENCE_PROPERTY
+                + "=<path> (or " + SOURCE_EVIDENCE_ENV + ") to a small forensic image or folder. "
+                + "Without it, nothing in this suite processes anything.", evidence != null);
+        requireIpedConfiguration();
+        return evidence;
+    }
+
+    /**
+     * Skips the calling test when no case root is configured.
+     *
+     * <p>
+     * A processing suite needs somewhere it is <i>allowed</i> to create cases. Defaulting to a
+     * temporary folder would work and would also quietly stop exercising the confinement rule the
+     * feature exists to enforce, so the root is declared rather than invented.
+     */
+    public static File requireCaseRoot() {
+        File root = caseRoot();
+        Assume.assumeTrue("Case root not available. Set -D" + CASE_ROOT_PROPERTY + "=<path> (or "
+                + CASE_ROOT_ENV + ") to a writable folder with room for a case. It is declared rather "
+                + "than defaulted so the confinement rule stays exercised.", root != null);
+        requireIpedConfiguration();
+        return root;
     }
 
     /**

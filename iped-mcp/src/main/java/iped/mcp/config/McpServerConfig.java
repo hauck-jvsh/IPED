@@ -101,6 +101,18 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
     private int maxConcurrentSessions = 4;
     private int sessionIdleTimeoutSeconds = 300;
 
+    // Case creation. Off unless an examiner turns it on, and the two root lists have no default on
+    // purpose: an invented root is a permission nobody granted.
+    private boolean processingEnabled = false;
+    private List<String> processingSourceAreas = new ArrayList<>();
+    private List<String> processingCaseRoots = new ArrayList<>();
+    private List<String> processingProfiles = new ArrayList<>(Arrays.asList("forensic", "fastmode", "triage"));
+    private int processingMinFreeSpacePercentOfSource = 50;
+    private String processingSecretsFile = null;
+    private String processingLocale = "en";
+    private int processingStallThresholdSeconds = 300;
+    private String processingJvm = null;
+
     private UTF8Properties properties = new UTF8Properties();
 
     @Override
@@ -171,6 +183,18 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
         sharedSecretFile = str(properties, "sharedSecretFile", sharedSecretFile);
         maxConcurrentSessions = integer(properties, "maxConcurrentSessions", maxConcurrentSessions);
         sessionIdleTimeoutSeconds = integer(properties, "sessionIdleTimeoutSeconds", sessionIdleTimeoutSeconds);
+
+        processingEnabled = bool(properties, "processingEnabled", processingEnabled);
+        processingSourceAreas = pathList(properties, "processingSourceAreas", processingSourceAreas);
+        processingCaseRoots = pathList(properties, "processingCaseRoots", processingCaseRoots);
+        processingProfiles = list(properties, "processingProfiles", processingProfiles);
+        processingMinFreeSpacePercentOfSource = integer(properties, "processingMinFreeSpacePercentOfSource",
+                processingMinFreeSpacePercentOfSource);
+        processingSecretsFile = str(properties, "processingSecretsFile", processingSecretsFile);
+        processingLocale = str(properties, "processingLocale", processingLocale);
+        processingStallThresholdSeconds = integer(properties, "processingStallThresholdSeconds",
+                processingStallThresholdSeconds);
+        processingJvm = str(properties, "processingJvm", processingJvm);
     }
 
     private static String str(UTF8Properties p, String key, String fallback) {
@@ -510,6 +534,141 @@ public class McpServerConfig implements Configurable<UTF8Properties> {
         public boolean isUsable() {
             return state == WriteRootState.USABLE;
         }
+    }
+
+    /**
+     * Whether case creation is reachable at all. Off in the distributed configuration (FR-001).
+     *
+     * <p>
+     * Independent of {@link #getAccessMode()}: processing is a third class of operation, not a
+     * variety of curation, so enabling curation does not enable it.
+     */
+    public boolean isProcessingEnabled() {
+        return processingEnabled;
+    }
+
+    public void setProcessingEnabled(boolean enabled) {
+        this.processingEnabled = enabled;
+    }
+
+    /**
+     * Roots under which evidence may be read, exactly as declared.
+     *
+     * <p>
+     * Empty is <b>not</b> "anywhere". With processing enabled and this list empty the server refuses
+     * to process and names the missing key: an invented default root would be a permission nobody
+     * granted, and this is the one list where guessing wrong turns the server into a
+     * filesystem-to-searchable-index converter.
+     */
+    public List<String> getProcessingSourceAreas() {
+        return processingSourceAreas;
+    }
+
+    public void setProcessingSourceAreas(List<String> areas) {
+        this.processingSourceAreas = areas == null ? new ArrayList<>() : new ArrayList<>(areas);
+    }
+
+    /**
+     * Roots under which cases may be created, exactly as declared.
+     *
+     * <p>
+     * Deliberately separate from {@link #getExportRoots()}. An artifact is megabytes and a case is
+     * hundreds of gigabytes; reusing one list would silently let a folder declared for spreadsheets
+     * receive an entire index (FR-009).
+     */
+    public List<String> getProcessingCaseRoots() {
+        return processingCaseRoots;
+    }
+
+    public void setProcessingCaseRoots(List<String> roots) {
+        this.processingCaseRoots = roots == null ? new ArrayList<>() : new ArrayList<>(roots);
+    }
+
+    /** Processing profiles the agent may name (FR-013). */
+    public List<String> getProcessingProfiles() {
+        return processingProfiles;
+    }
+
+    public void setProcessingProfiles(List<String> profiles) {
+        this.processingProfiles = profiles == null ? new ArrayList<>() : new ArrayList<>(profiles);
+    }
+
+    /**
+     * Free space required at the destination, as a percentage of the source evidence size (FR-044).
+     *
+     * <p>
+     * At 50, a 500 GB image asks for 250 GB free. Below the requirement the server warns; it never
+     * refuses on this basis.
+     */
+    public int getProcessingMinFreeSpacePercentOfSource() {
+        return processingMinFreeSpacePercentOfSource;
+    }
+
+    public void setProcessingMinFreeSpacePercentOfSource(int percent) {
+        this.processingMinFreeSpacePercentOfSource = percent;
+    }
+
+    /**
+     * File that resolves a secret reference to a container password (FR-015).
+     *
+     * <p>
+     * Same shape as {@link #getSharedSecretFile()}: this key says <b>where</b> the secret is, never
+     * <b>which</b> it is.
+     */
+    public String getProcessingSecretsFile() {
+        return processingSecretsFile;
+    }
+
+    public void setProcessingSecretsFile(String file) {
+        this.processingSecretsFile = file;
+    }
+
+    /**
+     * Locale declared for the processing child process.
+     *
+     * <p>
+     * Not a cosmetic setting. The engine reports its current phase only as localized prose with no
+     * numeric anchor, so pinning the locale is what makes the phase readable at all. Inheriting the
+     * machine locale would make progress parsing depend on where the server happens to be installed.
+     */
+    public String getProcessingLocale() {
+        return processingLocale;
+    }
+
+    public void setProcessingLocale(String locale) {
+        this.processingLocale = locale;
+    }
+
+    /**
+     * Silence from the child above which progress is reported as stalled rather than merely slow
+     * (FR-047).
+     *
+     * <p>
+     * Deliberately generous: index commit on a large case is legitimately quiet for minutes. That is
+     * also why the phase is always reported alongside — the same silence means different things in
+     * different phases.
+     */
+    public int getProcessingStallThresholdSeconds() {
+        return processingStallThresholdSeconds;
+    }
+
+    public void setProcessingStallThresholdSeconds(int seconds) {
+        this.processingStallThresholdSeconds = seconds;
+    }
+
+    /**
+     * The JVM used to run the processing child, or {@code null} to derive it from the installation.
+     *
+     * <p>
+     * The executable name is the platform's, not the configuration's: {@code jre/bin/java} on Linux,
+     * {@code jre\bin\java.exe} on Windows.
+     */
+    public String getProcessingJvm() {
+        return processingJvm;
+    }
+
+    public void setProcessingJvm(String jvm) {
+        this.processingJvm = jvm;
     }
 
     /** The roots exactly as declared, before any probing. Empty means the default root is in force. */

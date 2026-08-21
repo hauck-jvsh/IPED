@@ -56,6 +56,7 @@ public class ToolDescriptor {
     private final List<Parameter> parameters = new ArrayList<>();
     private final Handler handler;
     private boolean requiresWrite;
+    private boolean requiresProcessing;
     private String contentClass;
     private PriorStateProvider priorStateProvider;
 
@@ -93,6 +94,26 @@ public class ToolDescriptor {
     public ToolDescriptor returnsContent(String contentClass) {
         this.contentClass = contentClass;
         return this;
+    }
+
+    /**
+     * Marks the tool as case creation: a third class of operation, not a variety of curation
+     * (FR-001).
+     *
+     * <p>
+     * Deliberately independent of {@link #writeOperation()}. Enabling curation lets an examiner
+     * record a bookmark; it must not also let an agent read a disk and build a case out of it. With
+     * processing disabled the dispatcher hides these tools from {@code tools/list} and refuses a
+     * forced call before any argument is read (FR-002) — both halves matter, because checking only
+     * that the tool is absent from the listing proves nothing about a client that calls it anyway.
+     */
+    public ToolDescriptor processingOperation() {
+        this.requiresProcessing = true;
+        return this;
+    }
+
+    public boolean isProcessingOperation() {
+        return requiresProcessing;
     }
 
     public ToolDescriptor capturingPriorState(PriorStateProvider provider) {
