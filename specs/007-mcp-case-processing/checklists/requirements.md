@@ -74,11 +74,44 @@ estado: a spec já passava em 16/16 antes e continua passando depois. O que a se
 Um TODO disfarçado foi eliminado: o edge case de cancelamento por terceiro dizia "precisa haver
 regra declarada" sem declarar regra alguma.
 
+### Iteração 5 — 2026-08-21 (fechamento dos achados restantes)
+
+Os oito achados abertos da análise foram fechados. Três eram lacunas reais de cobertura: a spec
+descrevia o comportamento nos edge cases e **nenhuma tarefa o construía**, que é a forma de defeito
+mais fácil de não notar — o documento parece completo porque o texto está lá.
+
+| Achado | Fechamento |
+|---|---|
+| G1 — zero itens ≠ falha | FR-048, SC-022, T067, T071 |
+| G2 — parado ≠ lento | FR-047, SC-023, chave `processingStallThresholdSeconds`, T069, T070 |
+| G3 — inacessível ≠ ilegível | FR-049, SC-024, T068, T071 |
+| G4 — raiz de caso que também é raiz de exportação | assertiva acrescentada a T040 |
+| I2 — `CasePool` fora da árvore do plano | acrescentado como colaborador lido, junto de `CaseValidator` |
+| I3 — sufixo do executável da JVM | declarado como derivado da plataforma em config-surface |
+| U2 — FR-003 sem tarefa | registrado nas Notes: satisfeito por ausência, para que ninguém "implemente o que falta" e reverta a clarificação |
+| C1 — localização dos diagnósticos | interpretação passa a ser declarada em `iped-mcp/CLAUDE.md` por T057, em vez de tácita |
+
+Nenhum item deste checklist mudou de estado: 16/16 antes e depois.
+
 ### Estado final
 
-Contagem verificada: **45 requisitos funcionais**, **20 critérios de sucesso**, **8 entradas de
-clarificação** (3 de `/speckit-specify` + 5 de `/speckit-clarify`), sem duplicatas de numeração,
-sem marcadores pendentes, todas as seções obrigatórias preenchidas.
+Contagem verificada: **49 requisitos funcionais**, **24 critérios de sucesso**, **9 entradas de
+clarificação** (3 de `/speckit-specify` + 5 de `/speckit-clarify` + 1 da análise de consistência),
+**71 tarefas**, sem duplicatas de numeração, sem marcadores pendentes, todas as seções obrigatórias
+preenchidas.
+
+### Iteração 4 — 2026-08-21 (correções da análise de consistência)
+
+Duas correções aplicadas depois de `/speckit-analyze`, ambas com o usuário decidindo:
+
+- **I1 (HIGH)** — o progresso tem **duas fontes**, não uma. Contadores vêm por forma numérica; a
+  **fase** vem só de prosa localizada, sem âncora numérica. O locale declarado deixou de ser
+  salvaguarda secundária e passou a ser o que torna a fase legível. Corrigidos `research.md` R2,
+  `contracts/job-lifecycle.md`, T029 e T031; criado T065 para a fase sem número (commit, otimização).
+- **U1/A1 (MEDIUM/LOW)** — a exigência de espaço passou a ser computável e explicável:
+  `mínimo = tamanho da origem × percentual declarado`. A quantificação saiu da chave de configuração
+  e entrou na spec, que era o defeito apontado. FR-044 reescrito; FR-046 e SC-021 criados para o
+  conjunto segmentado e para a medição que não cabe no orçamento de aceite; criado T066.
 
 Todos os 16 itens deste checklist passam. A spec está pronta para `/speckit-plan`.
 
