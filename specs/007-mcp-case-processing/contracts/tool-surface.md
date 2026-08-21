@@ -27,8 +27,13 @@ Inicia um processamento. Devolve o identificador de trabalho e retorna — nunca
 
 Argumento desconhecido é **recusa**, não é ignorado (FR-016).
 
-**Resultado**: `job_id`, `state`, `case_path`, `paths_are_server_side: true`, e `disk_warning` quando
-FR-044 advertiu.
+**Resultado**: `job_id`, `state`, `case_path`, `paths_are_server_side: true`, `disk_warning` quando
+FR-044 advertiu, e `secret_exposure_notice` sempre que `secret_ref` foi usado (FR-050) — a senha vai
+ao motor por linha de comando e fica legível a outras contas da máquina enquanto o processo existe.
+
+O aviso não é ornamento: é o que converte uma limitação conhecida em decisão informada de quem
+implanta. A alternativa que o plano chegou a prever — fechar a exposição alterando o `iped-app` — foi
+recusada por proporção, e o gatilho para revê-la está no [plan.md](../plan.md).
 
 **Recusas**: `PROCESSING_DISABLED`, `SOURCE_NOT_PERMITTED`, `SOURCE_AREA_UNAVAILABLE`,
 `DESTINATION_NOT_PERMITTED`, `DESTINATION_HAS_CASE`, `APPEND_NOT_SUPPORTED`, `PROFILE_NOT_PERMITTED`,

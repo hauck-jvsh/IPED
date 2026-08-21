@@ -140,10 +140,14 @@ Ambas usam `PathConfinement.resolve` sem alteração — a classe já recebe as 
 | `name` | o que o pedido carrega |
 | — | **não há campo de valor nesta entidade** |
 
-A resolução acontece no `SecretResolver`, do lado do servidor, e o valor resultante vai para um arquivo
-de permissão restrita passado ao motor por `-passwordFile` (R5). O valor não é campo de nenhuma
-entidade persistida, não entra no `JobStore` e não entra na trilha. É a forma da 006 — a configuração
-diz onde, nunca qual — aplicada um nível abaixo.
+A resolução acontece no `SecretResolver`, do lado do servidor, e o valor resultante é passado ao motor
+por `-p`, no esquema posicional que o IPED já usa (R5). O valor não é campo de nenhuma entidade
+persistida, não entra no `JobStore` e não entra na trilha — os quatro lugares de FR-015 ficam limpos.
+
+**A quinta via fica aberta e declarada.** `-p` põe a senha em `argv`, legível por outras contas da
+máquina enquanto o processo existe. Não é descuido: é decisão registrada em R5, e FR-050 exige que
+todo aceite com `secretRef` **diga isso ao perito**. Um teste que afirmasse ausência de senha em `argv`
+estaria afirmando o contrário do que foi decidido.
 
 ---
 

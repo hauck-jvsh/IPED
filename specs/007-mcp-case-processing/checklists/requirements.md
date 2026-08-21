@@ -74,6 +74,19 @@ estado: a spec já passava em 16/16 antes e continua passando depois. O que a se
 Um TODO disfarçado foi eliminado: o edge case de cancelamento por terceiro dizia "precisa haver
 regra declarada" sem declarar regra alguma.
 
+### Iteração 4 — 2026-08-21 (correções da análise de consistência)
+
+Duas correções aplicadas depois de `/speckit-analyze`, ambas com o usuário decidindo:
+
+- **I1 (HIGH)** — o progresso tem **duas fontes**, não uma. Contadores vêm por forma numérica; a
+  **fase** vem só de prosa localizada, sem âncora numérica. O locale declarado deixou de ser
+  salvaguarda secundária e passou a ser o que torna a fase legível. Corrigidos `research.md` R2,
+  `contracts/job-lifecycle.md`, T029 e T031; criado T065 para a fase sem número (commit, otimização).
+- **U1/A1 (MEDIUM/LOW)** — a exigência de espaço passou a ser computável e explicável:
+  `mínimo = tamanho da origem × percentual declarado`. A quantificação saiu da chave de configuração
+  e entrou na spec, que era o defeito apontado. FR-044 reescrito; FR-046 e SC-021 criados para o
+  conjunto segmentado e para a medição que não cabe no orçamento de aceite; criado T066.
+
 ### Iteração 5 — 2026-08-21 (fechamento dos achados restantes)
 
 Os oito achados abertos da análise foram fechados. Três eram lacunas reais de cobertura: a spec
@@ -93,27 +106,40 @@ mais fácil de não notar — o documento parece completo porque o texto está l
 
 Nenhum item deste checklist mudou de estado: 16/16 antes e depois.
 
+### Iteração 6 — 2026-08-21 (decisão sobre a senha)
+
+O perito escolheu **usar o `-p` existente e declarar a exposição**, em vez de acrescentar
+`-passwordFile` ao `iped-app`. Julgamento de proporção: a exposição em `argv` só se realiza quando a
+máquina da evidência tem mais de uma conta, e a estação típica não tem.
+
+Efeitos que atravessaram todos os artefatos:
+
+- **Complexity Tracking ficou vazio** e o Constitution Check passou de "PASSA com uma violação
+  justificada" para **PASSA, sem violações**. Nenhum código-fonte fora do `iped-mcp` é alterado.
+- **FR-050** e **SC-025** criados: a exposição vira fato declarado no aceite de todo pedido com
+  referência de segredo, e nas limitações conhecidas — mesmo tratamento que a 006 deu ao canal de rede
+  sem proteção.
+- **T014 foi invertida.** Ela afirmava ausência de senha em `argv`; sob esta decisão a senha **está**
+  lá, e um teste assim reprovaria uma implementação correta. Passa a afirmar os quatro lugares de
+  FR-015 mais a presença da declaração.
+- T021 reescrita (dentro do módulo), T058 reaproveitada para a documentação da limitação, T060 e o
+  quickstart sem `mvn -pl iped-app`.
+- R5 reescrito com as alternativas e o gatilho de reversão.
+
+**Uma imprecisão corrigida no mesmo passo**: chegamos a escrever "nenhuma tarefa fora do `iped-mcp`",
+o que é falso — T052 edita `iped-app/resources/config/conf/McpServerConfig.txt`. Não é código: é a
+configuração distribuída deste módulo, que mora ali desde a 001 porque é de lá que o release é
+empacotado. A afirmação agora diz **código-fonte**, que é o que de fato vale.
+
 ### Estado final
 
-Contagem verificada: **49 requisitos funcionais**, **24 critérios de sucesso**, **9 entradas de
-clarificação** (3 de `/speckit-specify` + 5 de `/speckit-clarify` + 1 da análise de consistência),
+Contagem verificada: **50 requisitos funcionais**, **25 critérios de sucesso**, **10 entradas de
+clarificação** (3 de `/speckit-specify` + 5 de `/speckit-clarify` + 2 da análise de consistência),
 **71 tarefas**, sem duplicatas de numeração, sem marcadores pendentes, todas as seções obrigatórias
 preenchidas.
 
-### Iteração 4 — 2026-08-21 (correções da análise de consistência)
-
-Duas correções aplicadas depois de `/speckit-analyze`, ambas com o usuário decidindo:
-
-- **I1 (HIGH)** — o progresso tem **duas fontes**, não uma. Contadores vêm por forma numérica; a
-  **fase** vem só de prosa localizada, sem âncora numérica. O locale declarado deixou de ser
-  salvaguarda secundária e passou a ser o que torna a fase legível. Corrigidos `research.md` R2,
-  `contracts/job-lifecycle.md`, T029 e T031; criado T065 para a fase sem número (commit, otimização).
-- **U1/A1 (MEDIUM/LOW)** — a exigência de espaço passou a ser computável e explicável:
-  `mínimo = tamanho da origem × percentual declarado`. A quantificação saiu da chave de configuração
-  e entrou na spec, que era o defeito apontado. FR-044 reescrito; FR-046 e SC-021 criados para o
-  conjunto segmentado e para a medição que não cabe no orçamento de aceite; criado T066.
-
-Todos os 16 itens deste checklist passam. A spec está pronta para `/speckit-plan`.
+Todos os 16 itens deste checklist passam. Spec, plano e tarefas estão prontos para
+`/speckit-implement`.
 
 ### Observação para o Constitution Check do plano
 
@@ -127,3 +153,7 @@ já são visíveis daqui e devem ser tratados lá, não aqui:
 - **Princípio III** — a feature é aditiva por construção (capacidade nova, desabilitada por padrão),
   mas o planejamento precisa demonstrar que ela não altera `Manager`, `Worker` nem
   `ProcessingQueues`.
+
+**Resolvido**: o plano avaliou os cinco princípios e o portão **passa sem violações**. O Princípio III
+saiu de graça pela estrutura, não pela disciplina — o motor roda em outro processo, então este módulo
+não tem como tocar invariante de concorrência do pipeline.

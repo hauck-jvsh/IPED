@@ -24,8 +24,12 @@ qualquer teste de requisição/resposta** e só aparecem em verificação escrit
 ## Path Conventions
 
 Módulo Maven multi-módulo. Fonte em `iped-mcp/src/main/java/iped/mcp/`, testes em
-`iped-mcp/src/test/java/iped/mcp/{unit,contract,integration}/`. Uma alteração sai do módulo, em
-`iped-app` e `iped-engine` — ver Complexity Tracking do [plan.md](./plan.md).
+`iped-mcp/src/test/java/iped/mcp/{unit,contract,integration}/`.
+
+**Nenhum código-fonte fora do `iped-mcp` é alterado** — Complexity Tracking do [plan.md](./plan.md)
+está vazio. A única exceção não é código: `iped-app/resources/config/conf/McpServerConfig.txt`, o
+arquivo de configuração **distribuído** deste módulo, que mora ali porque é de lá que os recursos do
+release são empacotados. É onde toda chave de `McpServerConfig` vive desde a 001.
 
 ---
 
@@ -68,7 +72,7 @@ Módulo Maven multi-módulo. Fonte em `iped-mcp/src/main/java/iped/mcp/`, testes
 - [ ] T011 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/integration/ProcessEvidenceEndToEndTest.java` para SC-001, SC-002 e SC-008: pedido aceito em **menos de 5 s cronometrados** independentemente do tamanho da evidência, trabalho até `COMPLETED`, caso aberto pela ferramenta existente, e `item_count` do desfecho **coincidindo** com a contagem do caso aberto
 - [ ] T012 [P] [US1] Acrescentar a `iped-mcp/src/test/java/iped/mcp/integration/ProcessEvidenceEndToEndTest.java` a verificação de SC-015 e do Princípio I: hash da evidência de origem antes e depois, idêntico. Repetir ao fim de **todo** desfecho, não só do sucesso — SC-015 exige a identidade em falha, cancelamento e interrupção também
 - [ ] T013 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/unit/DiskPreflightTest.java` para SC-019 e SC-021: o mínimo calculado bate com `origem × percentual` (500 GB a 50% = 250 GB); destino abaixo do mínimo é **aceito** com advertência carregando os três números; **0% de recusas** por esse motivo; imagem **segmentada** é medida pelo conjunto, não pelo primeiro `.E01`; e origem imensurável no orçamento produz exigência **indisponível**, não suposta. Um teste que afirme recusa aqui codifica a decisão contrária à que o perito tomou
-- [ ] T014 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/integration/SecretHandlingTest.java` para SC-011: processar contêiner cifrado por `secret_ref` e verificar que a senha não aparece na resposta, na trilha, no `processing.log` **nem na linha de comando do processo** — inspecionar `/proc/<pid>/cmdline` no Linux enquanto o trabalho corre. É a quarta verificação que justifica T021; com `-p` ela reprova
+- [ ] T014 [P] [US1] Criar `iped-mcp/src/test/java/iped/mcp/integration/SecretHandlingTest.java` para SC-011 e SC-025: processar contêiner cifrado por `secret_ref` e verificar que a senha não aparece **nos quatro lugares que FR-015 nomeia** — resposta, trilha, `processing.log` e pedido registrado. **Não** afirmar ausência em `argv`: a senha está lá por decisão registrada (R5), e um teste que a afirmasse ausente codificaria o contrário do que foi decidido. Em vez disso, afirmar que o aceite **carrega a declaração** de FR-050
 
 ### Implementation for User Story 1
 
@@ -81,7 +85,7 @@ Módulo Maven multi-módulo. Fonte em `iped-mcp/src/main/java/iped/mcp/`, testes
 - [ ] T019 [P] [US1] Criar `iped-mcp/src/main/java/iped/mcp/processing/DiskPreflight.java`: `mínimo = tamanho da origem × processingMinFreeSpacePercentOfSource`, comparado com o espaço livre da unidade de destino, e **adverte, nunca recusa** (FR-044). Usar `FileStore.getUsableSpace()`, não `getFreeSpace()` — o segundo ignora cota e blocos reservados e mentiria a favor. A advertência carrega os **três números** (origem, mínimo, livre) e vai no aceite e na trilha
 - [ ] T066 [P] [US1] Implementar em `DiskPreflight.java` a medição do **conjunto** de FR-046: imagem segmentada (`.E01`, `.E02`, …) somada por inteiro, pasta lógica somada recursivamente. Medir só o primeiro segmento daria uma fração do real e a advertência nunca sairia no caso que mais precisa dela. A medição é limitada pelo orçamento de aceite de 5 s de FR-018: estourando, a exigência é declarada **indisponível**, nunca suposta — somar uma pasta grande em compartilhamento de rede não cabe em 5 s
 - [ ] T020 [P] [US1] Criar `iped-mcp/src/main/java/iped/mcp/processing/SecretResolver.java`: resolve `secret_ref` por `processingSecretsFile`, do lado do servidor, e grava a senha em arquivo temporário de permissão restrita, apagado ao fim do trabalho. O valor **não** entra em `ProcessingJob`, `JobStore` nem trilha
-- [ ] T021 [US1] **Fora do módulo.** Acrescentar `-passwordFile` a `iped-app/src/main/java/iped/app/processing/CmdLineArgsImpl.java`, `getPasswordFile()` a `iped-engine/src/main/java/iped/engine/CmdLineArgs.java`, e o consumo em `iped-engine/src/main/java/iped/engine/datasource/DataSourceReader.java` ao lado do `getPasswords()` existente. Aditivo: `-p` continua funcionando idêntico. Existe porque linha de comando é legível por outros processos — `/proc/PID/cmdline` é legível por qualquer usuário no Linux — e usar `-p` cumpriria as quatro palavras de FR-015 e falharia o motivo dela (depende de T020)
+- [ ] T021 [US1] Passar a senha resolvida ao motor por `-p`, no esquema posicional que `CmdLineArgsImpl.getDataSourcePassword` já usa (`-d <origem> -p <senha>`), em `iped-mcp/src/main/java/iped/mcp/processing/JobRunner.java`. Implementar junto a declaração de FR-050: **todo aceite com `secret_ref` carrega o aviso** de que a senha vai por linha de comando e fica legível a outras contas da máquina enquanto o processo existe. A declaração não é enfeite — é o que transforma a limitação em decisão informada de quem implanta (depende de T020)
 - [ ] T022 [US1] Implementar `iped_process_evidence` em `ProcessingTools.java` conforme [contracts/tool-surface.md](./contracts/tool-surface.md): devolve `job_id` **sem aguardar a conclusão** (FR-018), declara `paths_are_server_side: true` (FR-036), recusa argumento desconhecido em vez de ignorá-lo (FR-016). Sem esse último, `-X` e opções de motor entrariam pela porta dos fundos e o confinamento seria contornável por parâmetro
 - [ ] T023 [US1] Implementar em `ProcessingTools.java` o teto de um trabalho por vez (FR-019), com `JOB_ALREADY_RUNNING` nomeando o trabalho em curso
 - [ ] T061 [US1] Implementar `display_name` → `-dname` em `iped-mcp/src/main/java/iped/mcp/processing/JobRunner.java` (FR-014), para que o caso resultante identifique a evidência como o perito espera. Ausente, o motor usa o nome do arquivo — comportamento válido, e a ausência precisa ser tratada como ausência, não como string vazia passada ao motor
@@ -165,9 +169,9 @@ Módulo Maven multi-módulo. Fonte em `iped-mcp/src/main/java/iped/mcp/`, testes
 - [ ] T055 [P] Criar `iped-mcp/src/test/java/iped/mcp/unit/JobStoreTest.java` para SC-020: registro recuperável após qualquer número de reinícios; nenhum descarte por decurso de prazo
 - [ ] T056 [P] Criar `iped-mcp/src/test/java/iped/mcp/contract/ProcessingToolSchemaTest.java`: as quatro ferramentas seguem os contratos do módulo — referência a caso sempre carrega o caso, classe de conteúdo declarada, esquemas estáveis
 - [ ] T057 Atualizar `iped-mcp/CLAUDE.md`: seção de invariantes ganha as de processamento (motor fora do processo, cancelamento destrói a árvore, órfão é destruído, log nunca no canal do protocolo, `AuditRecord` intocado), e a de limitações conhecidas ganha a adoção de órfão como evolução prevista com gatilho declarado. Registrar também, explicitamente, a leitura que o módulo já pratica sem nunca ter declarado: **diagnóstico dirigido ao agente não é "texto visível ao usuário"** do Princípio V, e por isso vive em inglês junto do resto da superfície — o que é localizado é texto de interface do IPED, em `iped-app/resources/localization/`. Deixar a interpretação tácita a faz parecer descuido a cada revisão
-- [ ] T058 Atualizar `iped-app/CLAUDE.md` registrando `-passwordFile` e por que ele existe
+- [ ] T058 Registrar a exposição de FR-050 nas limitações conhecidas de `iped-mcp/CLAUDE.md` e nos guias de instalação em `iped-mcp/src/main/resources/skill/install/`: a senha de contêiner cifrado vai ao motor por linha de comando e fica legível a outras contas da mesma máquina enquanto o processo existe. Dizer também **quando isso importa** — máquina de evidência compartilhada por mais de uma conta — e o que fazer nesse caso, porque limitação sem critério de aplicação vira ruído que o leitor aprende a pular
 - [ ] T059 Rodar o roteiro completo do [quickstart.md](./quickstart.md), cenários 0 a 8, contra instalação real com evidência de referência e evidência longa, e registrar as medições de SC-002, SC-007 e SC-014 — pass/fail sozinho não mostra a corrida se aproximando do teto, que é a razão de `ScalePerformanceTest` imprimir números
-- [ ] T060 `mvn -pl iped-mcp -am install` e `mvn -pl iped-app -am install` — o segundo é obrigatório nesta feature por causa de T021
+- [ ] T060 `mvn -pl iped-mcp -am install` e `mvn -pl iped-mcp test`. Nenhum outro módulo precisa ser **compilado** por esta feature; para ver a configuração de T052 no release é preciso reempacotar o `iped-app`, o que é passo de empacotamento e não de verificação
 
 ---
 
@@ -244,9 +248,11 @@ porque não há o que observar antes de existir o que observar.
 
 ## Notes
 
-- **T021 é a única tarefa fora do `iped-mcp`.** Está justificada em Complexity Tracking do
-  [plan.md](./plan.md) e é aditiva em tudo o que a constituição protege. É também a razão de T060
-  incluir `mvn -pl iped-app -am install`.
+- **Nenhum código-fonte fora do `iped-mcp` é alterado.** O plano previa acrescentar `-passwordFile` ao `iped-app`
+  porque `-p` põe a senha em `argv`; a decisão foi de proporção — a exposição só se realiza em máquina
+  de evidência com mais de uma conta — e ela cedeu lugar a FR-050, que **declara** a limitação em vez
+  de escondê-la. T021 e T058 são o par que implementa essa decisão: um declara no aceite, o outro
+  documenta. Se algum dia ela for revista, o gatilho está escrito no plano.
 - **Três tarefas de teste protegem defeitos que nenhum teste de requisição/resposta encontra**: T025
   (árvore de processos), T026 (órfão vivo) e T030 (log no canal do protocolo). As três vieram da
   leitura do código, não de raciocínio sobre a spec.

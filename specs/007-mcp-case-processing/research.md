@@ -162,8 +162,8 @@ falhas" (lista vazia). É a fonte certa para o desfecho por evidência.
 
 ## R5 — Como a senha alcança o motor
 
-**Decision**: acrescentar `-passwordFile` ao `iped-app`, e o servidor resolve a referência de segredo
-para um arquivo legível apenas pela conta que o executa.
+**Decision**: usar o `-p` existente, e **declarar a exposição** que ele implica. Nenhuma mudança fora
+do `iped-mcp`.
 
 **Rationale**: a busca por configuração de senha no motor não achou nenhuma — não existe
 `PasswordsConfig`, não existe arquivo em `conf/`. O único caminho é `-p` em `CmdLineArgsImpl`, e
@@ -171,16 +171,36 @@ para um arquivo legível apenas pela conta que o executa.
 
 Linha de comando é legível por outros processos: no Linux `/proc/PID/cmdline` é legível por qualquer
 usuário da máquina. FR-015 nomeia quatro lugares onde a senha não pode aparecer — pedido, resposta,
-trilha, log — e a tabela de processos não é nenhum deles. Usar `-p` cumpriria a letra e falharia o
-motivo, numa instalação (a de topologia dividida) que pode ter mais de uma conta na máquina da
-evidência.
+trilha, log — e a **tabela de processos não é nenhum deles**. Ou seja, `-p` cumpre o requisito como
+escrito e deixa aberta uma quinta via que o requisito não previu.
 
-O padrão a seguir já existe no módulo: `sharedSecretFile` da 006, onde a configuração diz **onde** o
-segredo está, nunca **qual** é. `-passwordFile` é a mesma forma, um nível abaixo.
+Uma sondagem mais funda do código mostrou que fechá-la seria mais barato do que a primeira leitura
+sugeria: `getDataSourcePassword(File)` já existe e já resolve a senha por varredura posicional dos
+argumentos, o único consumidor é `DataSourceReader.getEvidencePassword` e o único implementador é
+`CmdLineArgsImpl` — bastaria um parâmetro novo e a remoção de uma guarda redundante, **sem tocar a
+interface**.
 
-**Alternatives considered**: registrados na tabela Complexity Tracking do [plan.md](./plan.md) —
-usar `-p` e documentar; não suportar contêiner cifrado; variável de ambiente. Os três foram rejeitados
-lá, com o motivo de cada um.
+Ainda assim, a decisão foi **não fechar**, e é decisão de proporção, não de custo: a exposição só se
+realiza quando a máquina da evidência tem mais de uma conta de usuário, e a estação de perícia típica
+não tem. Alterar módulo vizinho por um risco que a implantação alvo não corre é pagar caro numa moeda
+— a de superfície de manutenção fora do módulo — para comprar pouco.
+
+O que não foi aceito é a exposição ficar tácita. **FR-050** a converte em fato declarado: no aceite de
+todo pedido com referência de segredo, e nas limitações conhecidas do módulo. É o tratamento que a 006
+deu ao canal de rede sem proteção, e pela mesma razão — uma limitação conhecida e dita é decisão
+informada de quem implanta; a mesma limitação não dita é armadilha.
+
+**Alternatives considered**:
+- **`-passwordFile` aditivo no `iped-app`** (o desenho original deste plano). Rejeitado pela
+  proporção acima. Fica como evolução prevista, com gatilho: primeira implantação em máquina de
+  evidência com mais de uma conta.
+- **`-p @arquivo`, desreferência por convenção de valor.** Não precisaria de parâmetro novo, mas
+  mudaria a semântica de um parâmetro existente: uma senha que comece com `@` passaria a quebrar.
+  Alterar comportamento vigente para acrescentar capacidade é o que o Princípio III manda evitar.
+- **Não suportar contêiner cifrado.** Rejeitado: estreitaria o escopo em silêncio, e material cifrado
+  é rotina em perícia.
+- **Variável de ambiente.** Rejeitada: exigiria a mesma mudança em `iped-app` para ser lida, sem a
+  vantagem de o segredo ficar sob permissão de arquivo.
 
 ---
 
@@ -270,7 +290,7 @@ o perito procurar erro de configuração onde só falta montar um disco.
 | R2 | Progresso, log e diagnóstico do fluxo padrão do filho, locale declarado | Escolha, com cuidado imposto pelo código |
 | R3 | `JobStore` na área de auditoria; `AuditRecord` intocado | Forçada pela invariante do hash da trilha |
 | R4 | Recusa de caso incompleto já existe; falta precisão de diagnóstico | Forçada pelo código existente |
-| R5 | `-passwordFile` aditivo no `iped-app` | Forçada pela ausência de qualquer outro caminho |
+| R5 | `-p` existente, com a exposição em `argv` declarada (FR-050) | Escolha de proporção; nada sai do módulo |
 | R6 | Cancelar destrói a árvore, não o filho | Forçada por `Bootstrap` gerar um neto |
 | R7 | Reconciliação por identificador **e** instante de início; órfão é destruído | Escolha |
 | R8 | Raízes de caso separadas das de exportação; `PathConfinement` reutilizado | Escolha |

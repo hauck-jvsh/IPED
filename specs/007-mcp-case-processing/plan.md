@@ -33,12 +33,18 @@ neto, e matar só o filho deixaria o motor rodando.
 **US3 — confinar e mostrar.** Postura consultável e registrada; recusas com diagnóstico que nomeia o
 pedido e as áreas permitidas.
 
-**Uma decisão sai do módulo.** Senha de contêiner cifrado só entra no IPED por `-p` na linha de
-comando, e linha de comando é legível por outros processos da máquina. Isso satisfaz a letra de FR-015
-— que fala de pedido, resposta, trilha e log — e contraria o motivo dela. O plano acrescenta um
-parâmetro `-passwordFile` ao `iped-app`, aditivo, no mesmo padrão de `sharedSecretFile` da 006: a
-configuração diz **onde**, nunca **qual**. É a única mudança fora do `iped-mcp` e está justificada em
-Complexity Tracking.
+**Senha entra por `-p`, e a exposição é declarada.** Senha de contêiner cifrado só tem um caminho até
+o motor: `-p` na linha de comando, que no Linux fica legível por qualquer conta da máquina. Isso
+satisfaz a letra de FR-015 — pedido, resposta, trilha e log — e não fecha a tabela de processos.
+A decisão foi de proporção: a exposição só importa quando a máquina da evidência tem mais de uma
+conta, e a estação de perícia típica não tem. Em vez de alterar `iped-app` e a interface
+`CmdLineArgs`, a limitação vira **fato declarado** — no aceite de todo pedido com referência de
+segredo e nas limitações conhecidas do módulo (FR-050). É o mesmo tratamento que a 006 deu ao canal
+de rede sem proteção: não se esconde o que não se fecha.
+
+**A feature inteira fica dentro do `iped-mcp`.** Nenhum código-fonte de outro módulo é alterado — só a
+configuração distribuída em `iped-app/resources/config/conf/`, que é de onde o release é empacotado e
+onde as chaves deste módulo vivem desde a 001. Complexity Tracking fica vazio.
 
 Nenhuma dependência nova. Tudo em `java.base`.
 
@@ -86,7 +92,7 @@ Constituição do IPED — branch 4.3.1, versão 1.0.0.
 |---|---|---|
 | **I. Integridade da evidência é inviolável** | **PASSA — e é o princípio central desta feature** | O processamento lê evidência e escreve caso novo; a origem nunca é destino de escrita. Quem abre a evidência é o motor do IPED pelos caminhos que ele já usa (`SleuthkitClient`, leitores de fonte de dados), inalterados — este plano não acrescenta nenhum caminho de acesso a evidência. FR-031 e SC-015 fixam a exigência, e SC-015 a mede por comparação bit a bit antes e depois, em todos os desfechos. O confinamento de origem (FR-006) estreita ainda mais o que é alcançável |
 | **II. Caso processado é contrato permanente** | **PASSA** | Nenhum nome de campo Lucene, nenhuma configuração de `AppAnalyzer`, nenhum método removido ou renomeado. O caso produzido nasce do **motor padrão, invocado pela linha de comando padrão** — é por construção indistinguível de um caso da CLI, que é o que FR-027 e SC-008 exigem. `AuditRecord` não ganha campo: o estado de trabalho vive em `JobStore`, arquivo novo na área de auditoria, e o vínculo sessão↔trabalho no `SessionManifest` da 006. Trilhas já emitidas permanecem verificáveis |
-| **III. Estender antes de modificar** | **PASSA com uma ressalva registrada** | O grosso é aditivo: `processing/` inteiro e `ProcessingTools` são classes novas; `PathConfinement` é **reutilizado sem alteração**. Três modificações são inerentes ao pedido — `McpServerConfig` (chaves novas), `SessionTools` (postura) e `Session` (advertência de abertura). Nenhuma toca `Manager`, `Worker`, `ProcessingQueues`, `IndexWriter`, `SleuthkitClient` ou o Aho-Corasick, e a razão é estrutural, não disciplina: o processamento roda **em outro processo**, então não há como este módulo alterar invariante de concorrência do pipeline. A ressalva é o `-passwordFile` em `iped-app` — ver Complexity Tracking |
+| **III. Estender antes de modificar** | **PASSA** | O grosso é aditivo: `processing/` inteiro e `ProcessingTools` são classes novas; `PathConfinement` é **reutilizado sem alteração**. Quatro modificações são inerentes ao pedido, todas dentro do módulo — `McpServerConfig` (chaves novas), `SessionTools` (postura), `Session` (advertência) e `CaseValidator` (diagnóstico mais preciso). Nenhuma toca `Manager`, `Worker`, `ProcessingQueues`, `IndexWriter`, `SleuthkitClient` ou o Aho-Corasick, e a razão é estrutural, não disciplina: o processamento roda **em outro processo**, então não há como este módulo alterar invariante de concorrência do pipeline. **Nenhum código-fonte fora do `iped-mcp` é alterado**; o único arquivo de outro módulo é `iped-app/resources/config/conf/McpServerConfig.txt`, a configuração distribuída deste módulo, que mora ali desde a 001 porque é de lá que o release é empacotado |
 | **IV. Comportamento configurável vive em configuração** | **PASSA — princípio dirigente do desenho** | Habilitação, áreas de leitura, raízes de caso, perfis permitidos, margem de disco e localização do repositório de segredos vão todos para `McpServerConfig` e `conf/McpServerConfig.txt`, enumerados em [contracts/config-surface.md](./contracts/config-surface.md). Habilitar ou desabilitar o processamento é edição de configuração, nunca recompilação. Nenhum perfil é embutido em código: a lista permitida é declarada |
 | **V. Nada implícito no que varia por ambiente** | **PASSA — e exige atenção nova** | Charset explícito na leitura do fluxo do filho. Logging por SLF4J no servidor; o fluxo do filho é capturado e gravado, **nunca repassado à saída padrão**. Duas exigências novas por serem específicas deste plano: o **locale do processo filho é declarado explicitamente** (`-Diped-locale`), porque o progresso é lido de mensagens que o IPED localiza, e herdar o locale da máquina tornaria a leitura dependente de onde o servidor roda; e a **JVM usada é a do release**, declarada, não a que estiver no `PATH` |
 
@@ -103,11 +109,11 @@ Constituição do IPED — branch 4.3.1, versão 1.0.0.
   release.
 
 **Fluxo de desenvolvimento**: `mvn -pl iped-mcp -am install` e `mvn -pl iped-mcp test` antes de
-qualquer commit; `mvn -pl iped-app -am install` também, por causa do `-passwordFile`.
-`iped-mcp/CLAUDE.md` precisa de seções novas — invariantes de processamento e limitações conhecidas —
-e `iped-app/CLAUDE.md` precisa registrar o parâmetro novo.
+qualquer commit. `iped-mcp/CLAUDE.md` precisa de seções novas — invariantes de processamento e
+limitações conhecidas, esta última incluindo a exposição de senha por linha de comando (FR-050).
+Nenhum outro `CLAUDE.md` muda.
 
-**Resultado do portão: PASSA com uma violação justificada.** Ver Complexity Tracking.
+**Resultado do portão: PASSA, sem violações.** A seção Complexity Tracking fica vazia.
 
 ### Re-avaliação após Phase 1
 
@@ -133,7 +139,7 @@ apenas não os violar:
 ```text
 specs/007-mcp-case-processing/
 ├── plan.md              # Este arquivo
-├── spec.md              # Requisitos — 49 FR, 24 SC, 9 clarificações
+├── spec.md              # Requisitos — 50 FR, 25 SC, 10 clarificações
 ├── research.md          # Phase 0 — oito decisões, quatro forçadas por leitura do código
 ├── data-model.md        # Phase 1 — entidades, estados e transições do trabalho
 ├── quickstart.md        # Phase 1 — roteiro de validação ponta a ponta
@@ -181,13 +187,6 @@ iped-mcp/src/main/java/iped/mcp/
 iped-mcp/src/main/resources/skill/
 └── SKILL.md                            # MODIFICADO: caminhos de evidência pertencem ao servidor (FR-037)
 
-iped-app/src/main/java/iped/app/processing/
-└── CmdLineArgsImpl.java                # MODIFICADO: -passwordFile (aditivo — ver Complexity Tracking)
-
-iped-engine/src/main/java/iped/engine/
-├── CmdLineArgs.java                    # MODIFICADO: getPasswordFile() (acréscimo em interface)
-└── datasource/DataSourceReader.java    # MODIFICADO: consome o arquivo além do -p existente
-
 iped-mcp/src/test/java/iped/mcp/
 ├── unit/       ProcessingConfinementTest, DiskPreflightTest, ProgressReaderTest, JobStoreTest
 ├── contract/   ProcessingToolSchemaTest, ProcessingPostureTest, NoProcessingByDefaultTest
@@ -195,17 +194,26 @@ iped-mcp/src/test/java/iped/mcp/
                 OrphanReconciliationTest, IncompleteCaseNotOpenableTest
 ```
 
-**Structure Decision**: extensão do `iped-mcp` com um pacote novo `processing/`, mais uma adição
-pontual e aditiva ao `iped-app`/`iped-engine` para o arquivo de senha. O isolamento que importa nesta
-feature é o **processo do motor**, não a fronteira de artefato Maven — por isso nenhum módulo novo.
+**Structure Decision**: extensão do `iped-mcp` com um pacote novo `processing/`. **Nenhum código-fonte
+fora do módulo** — só a configuração distribuída em `iped-app/resources/config/conf/`, que é onde os
+recursos do release são empacotados e onde as chaves deste módulo vivem desde a 001. O isolamento que
+importa nesta feature é o **processo do motor**, não a fronteira de artefato Maven: por isso nenhum
+módulo novo, e por isso também nenhuma alteração de código nos módulos vizinhos.
 
 ## Complexity Tracking
 
-| Violation | Why Needed | Simpler Alternative Rejected Because |
-|-----------|------------|-------------------------------------|
-| **Mudança fora do `iped-mcp`**: parâmetro `-passwordFile` em `CmdLineArgsImpl` (`iped-app`), método novo em `CmdLineArgs` (`iped-engine`) e leitura em `DataSourceReader` | Senha de contêiner cifrado só entra no IPED por `-p` na linha de comando. Linha de comando é legível por outros processos da máquina — `/proc/PID/cmdline` no Linux é legível por qualquer usuário. FR-015 existe para que a senha não vaze; entregar a feature usando `-p` cumpriria as quatro palavras do requisito (pedido, resposta, trilha, log) e falharia no motivo dele | **Usar `-p` e documentar a exposição** foi rejeitado porque transforma um requisito de segurança em nota de rodapé, e porque a exposição atinge justamente a instalação de topologia dividida, onde a máquina da evidência pode ter mais de uma conta. **Não suportar contêiner cifrado** foi rejeitado porque estreitaria o escopo em silêncio: material cifrado é rotina em perícia, e a spec o trata como caso de borda esperado, não como fora de escopo. **Variável de ambiente** foi rejeitada porque exigiria a mesma mudança em `iped-app` para ser lida, sem a vantagem de o segredo ficar sob permissão de arquivo |
+**Vazio — nenhuma violação a justificar.**
 
-A adição é aditiva em todos os sentidos que a constituição protege: nenhum método é removido ou
-renomeado, `CmdLineArgs` ganha um método e não perde nenhum, `-p` continua funcionando exatamente como
-hoje, e nenhum componente da lista do Princípio III é tocado. O custo é que `mvn -pl iped-app -am
-install` passa a fazer parte do fluxo de verificação desta feature.
+Houve uma, e ela caiu por decisão do perito. O plano previa acrescentar `-passwordFile` ao `iped-app`
+e um método à interface `CmdLineArgs`, porque `-p` põe a senha em `argv` e no Linux `/proc/PID/cmdline`
+é legível por qualquer conta da máquina. A decisão foi de proporção: a exposição só se realiza quando
+a máquina da evidência tem mais de uma conta, e a estação de perícia típica não tem — não compensa
+alterar dois módulos e uma interface por um risco que a implantação alvo não corre.
+
+O que **não** foi aceito é a exposição ficar tácita. FR-050 a converte em fato declarado, no aceite de
+todo pedido com referência de segredo e nas limitações conhecidas do módulo, no mesmo tratamento que a
+006 deu ao canal de rede sem proteção. Uma limitação conhecida e dita é decisão informada de quem
+implanta; a mesma limitação não dita é armadilha.
+
+Fica registrada como evolução prevista, com gatilho declarado: a primeira implantação em máquina de
+evidência com mais de uma conta de usuário.

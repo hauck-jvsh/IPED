@@ -24,7 +24,6 @@ teste que passou**. Quando a evidência está configurada mas a instalação ou 
 
 ```bash
 mvn -pl iped-mcp test                       # sem evidência: unitários e de contrato
-mvn -pl iped-app -am install                # obrigatório: -passwordFile vive aqui
 mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java.exe \
     -Diped.mcp.test.sourceEvidence=<evidência> -Diped.mcp.test.caseRoot=<raiz>
 ```
@@ -169,11 +168,16 @@ ativa, ele é suprimido pela mesma fronteira que suprime texto de item, **não**
 | Segundo pedido com um trabalho em andamento | `JOB_ALREADY_RUNNING`, identificando o trabalho em curso |
 | Pedido cujo destino tem menos livre que `origem × percentual` | **Aceito**, com `disk_warning` trazendo os três números; advertência na trilha; **0% de recusas** por esse motivo |
 | Origem segmentada em vários `.E01` | O mínimo é calculado sobre o **conjunto**; medir o primeiro segmento daria uma fração e a advertência não sairia (SC-021) |
-| Processar contêiner cifrado com `secret_ref` | Sucesso, e a senha **não aparece** na resposta, na trilha, no `processing.log`, nem na linha de comando do processo |
+| Processar contêiner cifrado com `secret_ref` | Sucesso; a senha **não aparece** na resposta, na trilha, no `processing.log` nem no pedido registrado; e o aceite **carrega a declaração** de FR-050 |
 
-A última linha é a que justifica R5 e o `-passwordFile`. Verificá-la exige inspecionar a **tabela de
-processos** enquanto o trabalho corre — `/proc/<pid>/cmdline` no Linux — e não apenas os quatro lugares
-que FR-015 nomeia. Com `-p`, essa verificação falha; é a razão de o parâmetro novo existir.
+A última linha tem uma armadilha que vale nomear, porque ela se parece com um teste esquecido. A
+senha **está** em `argv` enquanto o processo corre, e isso é decisão registrada em R5, não descuido:
+fechá-la custaria alterar `iped-app` e a interface `CmdLineArgs` por um risco que só se realiza em
+máquina de evidência com mais de uma conta.
+
+Portanto o teste afirma os **quatro lugares** que FR-015 nomeia, e afirma a **presença da
+declaração** — nunca ausência em `argv`. Um teste que afirmasse ausência ali estaria codificando o
+contrário da decisão tomada, e reprovaria uma implementação correta.
 
 ---
 
