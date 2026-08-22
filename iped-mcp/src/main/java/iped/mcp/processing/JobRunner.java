@@ -8,7 +8,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.lang3.SystemUtils;
@@ -70,6 +72,29 @@ public final class JobRunner {
 
     private final AtomicReference<ProcessingJob> active = new AtomicReference<>();
     private final AtomicReference<Process> activeProcess = new AtomicReference<>();
+
+    private static JobRunner processInstance;
+
+    /**
+     * The one runner this process has.
+     *
+     * <p>
+     * Process-wide rather than per-session, for the same reason {@code CasePool} is: the limit of one
+     * job at a time (FR-019) is a property of the machine, not of a conversation. Two sessions must
+     * see the same running job, and the second request to arrive must be refused by the first
+     * session's job rather than by a per-session counter that knows nothing about it.
+     */
+    public static synchronized JobRunner forProcess(McpServerConfig config, File ipedRoot) {
+        if (processInstance == null) {
+            processInstance = new JobRunner(config, ipedRoot, new JobStore(config.getAuditArea()));
+        }
+        return processInstance;
+    }
+
+    /** Replaces the process instance. For tests, which need one runner per temporary audit area. */
+    public static synchronized void setProcessInstance(JobRunner runner) {
+        processInstance = runner;
+    }
 
     public JobRunner(McpServerConfig config, File ipedRoot, JobStore store) {
         this.config = config;
@@ -188,6 +213,37 @@ public final class JobRunner {
     }
 
     /**
+     * Ends whatever is running because the server is going down (FR-024).
+     *
+     * <p>
+     * A job does not outlive the server that started it. Recording the interruption here is what
+     * makes the difference between a later session reading {@code INTERRUPTED} — and being able to
+     * resume — and reading {@code RUNNING} for a process that no longer exists, which is one of the
+     * two answers FR-024 forbids.
+     *
+     * <p>
+     * Runs on a shutdown hook, so it is best-effort by nature: a hook does not run on {@code kill -9}
+     * or on power loss. {@link OrphanReconciler} is what covers those, on the way back up.
+     */
+    public void endActiveJobForShutdown() {
+        ProcessingJob job = getActive();
+        if (job == null) {
+            return;
+        }
+        Process process = activeProcess.get();
+        if (process != null) {
+            destroyTree(process);
+        }
+        job.setState(State.INTERRUPTED);
+        job.setEndedAt(Instant.now());
+        JobOutcome outcome = job.getOutcome() == null ? new JobOutcome() : job.getOutcome();
+        outcome.setCauseDetail("The server shut down while this job was running.");
+        outcome.setResumable(true);
+        job.setOutcome(outcome);
+        persist(job);
+    }
+
+    /**
      * Destroys the whole process tree, descendants first.
      *
      * <p>
@@ -196,23 +252,31 @@ public final class JobRunner {
      * hook has the call commented out — so this cannot be delegated.
      */
     static void destroyTree(Process process) {
+        destroyTree(process.toHandle());
+    }
+
+    /**
+     * Same for a process this server did not start — the one a previous server left behind, which
+     * reconciliation finds by id and start instant, and for which no {@link Process} object exists.
+     */
+    static void destroyTree(ProcessHandle root) {
         List<ProcessHandle> descendants = new ArrayList<>();
-        process.toHandle().descendants().forEach(descendants::add);
+        root.descendants().forEach(descendants::add);
         for (ProcessHandle handle : descendants) {
             handle.destroy();
         }
-        process.destroy();
+        root.destroy();
         try {
-            if (!process.waitFor(GRACEFUL_STOP_SECONDS, TimeUnit.SECONDS)) {
-                descendants.forEach(ProcessHandle::destroyForcibly);
-                process.destroyForcibly();
-                process.waitFor(GRACEFUL_STOP_SECONDS, TimeUnit.SECONDS);
-            }
+            root.onExit().get(GRACEFUL_STOP_SECONDS, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException e) {
+            descendants.forEach(ProcessHandle::destroyForcibly);
+            root.destroyForcibly();
         }
         // A descendant can outlive the child it was spawned from, so they are checked again rather
-        // than assumed gone once the parent has exited.
+        // than assumed gone once the parent has exited. This is the half that matters: the engine is
+        // the grandchild, and Bootstrap does not kill it.
         for (ProcessHandle handle : descendants) {
             if (handle.isAlive()) {
                 handle.destroyForcibly();

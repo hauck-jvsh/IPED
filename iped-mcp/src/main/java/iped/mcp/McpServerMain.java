@@ -34,10 +34,13 @@ import iped.mcp.session.WriteClaims;
 import iped.mcp.transport.SocketTransport;
 import iped.mcp.transport.StdioTransport;
 import iped.mcp.transport.Transport;
+import iped.mcp.processing.JobRunner;
+import iped.mcp.processing.OrphanReconciler;
 import iped.mcp.tools.AuditTools;
 import iped.mcp.tools.BookmarkTools;
 import iped.mcp.tools.ExportTools;
 import iped.mcp.tools.ItemTools;
+import iped.mcp.tools.ProcessingTools;
 import iped.mcp.tools.QueryTools;
 import iped.mcp.tools.SelectionTools;
 import iped.mcp.tools.SessionTools;
@@ -108,6 +111,10 @@ public class McpServerMain implements AutoCloseable {
         tools.addAll(new SelectionTools(session, bookmarkWriter).descriptors());
         tools.addAll(new ExportTools(session, pagedSearcher, artifactWriter).descriptors());
         tools.addAll(new AuditTools(session).descriptors());
+        // Process-wide, like the case pool: one job at a time is a property of the machine, so two
+        // sessions have to see the same running job rather than one counter each.
+        tools.addAll(new ProcessingTools(session, JobRunner.forProcess(config, Diagnostics.resolveIpedRoot()))
+                .descriptors());
         dispatcher.registerAll(tools);
 
         LOGGER.info("Registered {} MCP tools", tools.size());
@@ -208,6 +215,19 @@ public class McpServerMain implements AutoCloseable {
             // the server still starts and lets the first tool call report the specific problem.
             LOGGER.warn("Starting with {} failed diagnostic check(s); see the entries above",
                     diagnostics.getFailures().size());
+        }
+
+        if (config.isProcessingEnabled()) {
+            JobRunner runner = JobRunner.forProcess(config, ipedRoot);
+            // Before serving anything: a job this server was running when it was killed abruptly is
+            // still marked running in the store, and its engine may still be alive. FR-024 forbids
+            // both wrong answers — "still running" and "no such job" — so it is settled here, once,
+            // rather than left for whoever asks first.
+            new OrphanReconciler(runner.getStore()).reconcile();
+            // The orderly path. Without it, closing the server would leave the engine running and
+            // reading evidence: Bootstrap's own shutdown hook has its destroy() commented out.
+            Runtime.getRuntime().addShutdownHook(new Thread(runner::endActiveJobForShutdown,
+                    "iped-mcp-processing-shutdown"));
         }
 
         // The case pool and the write register belong to the process, not to a session: under the
