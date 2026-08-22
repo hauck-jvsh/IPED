@@ -12,6 +12,7 @@ import iped.mcp.processing.JobProgress;
 import iped.mcp.processing.JobRunner;
 import iped.mcp.processing.ProcessingJob;
 import iped.mcp.processing.ProcessingRequest;
+import iped.mcp.processing.ProgressReader;
 import iped.mcp.processing.SecretResolver;
 import iped.mcp.protocol.McpError;
 import iped.mcp.protocol.ToolDescriptor;
@@ -133,7 +134,7 @@ public class ProcessingTools {
         result.put("log_path", job.getLogPath());
         result.put("progress", describeProgress(job.getProgress()));
         if (job.getOutcome() != null) {
-            result.put("outcome", describeOutcome(job.getOutcome()));
+            result.put("outcome", describeOutcome(job.getOutcome(), job.getLogPath()));
         }
         if (job.getCancelledBy() != null) {
             result.put("cancelled_by", job.getCancelledBy());
@@ -200,7 +201,7 @@ public class ProcessingTools {
         return described;
     }
 
-    private static Map<String, Object> describeOutcome(JobOutcome outcome) {
+    private static Map<String, Object> describeOutcome(JobOutcome outcome, String logPath) {
         Map<String, Object> described = new LinkedHashMap<>();
         if (outcome.getCasePath() != null) {
             described.put("case_path", outcome.getCasePath());
@@ -212,8 +213,15 @@ public class ProcessingTools {
             described.put("cause_detail", outcome.getCauseDetail());
             described.put("resumable", outcome.isResumable());
         }
-        if (outcome.getDiagnosticExcerpt() != null) {
-            described.put("diagnostic_excerpt", outcome.getDiagnosticExcerpt());
+        // Derived from the log rather than carried in the record, so a session that did not run
+        // the job — or one opened after a restart — gets the same explanation the original one did
+        // (FR-022 + FR-043). Evidence-derived content either way, governed by the egress policy at
+        // the tool boundary.
+        String excerpt = outcome.getDiagnosticExcerpt() != null ? outcome.getDiagnosticExcerpt()
+                : ProgressReader.excerptFromLog(logPath == null ? null : new java.io.File(logPath),
+                        ProgressReader.excerptLines());
+        if (excerpt != null) {
+            described.put("diagnostic_excerpt", excerpt);
         }
         if (outcome.getRemainingAtDestination() != null) {
             described.put("remaining_at_destination", outcome.getRemainingAtDestination());

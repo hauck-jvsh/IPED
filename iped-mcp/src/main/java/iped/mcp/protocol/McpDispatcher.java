@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import iped.mcp.audit.AuditRecord;
-import iped.mcp.config.McpServerConfig;
 import iped.mcp.config.McpServerConfig.AccessMode;
 import iped.mcp.config.McpServerConfig.ContentClass;
 import iped.mcp.session.Session;
@@ -139,7 +138,7 @@ public class McpDispatcher {
     private ObjectNode listTools() {
         ObjectNode result = JsonRpcCodec.mapper().createObjectNode();
         ArrayNode array = result.putArray("tools");
-        boolean processingEnabled = McpServerConfig.get().isProcessingEnabled();
+        boolean processingEnabled = session.getConfig().isProcessingEnabled();
         for (ToolDescriptor tool : tools.values()) {
             // With case creation disabled the capability is not merely refused, it is absent from
             // the surface (FR-002). The gate in callTool covers a client that calls one anyway.
@@ -168,7 +167,7 @@ public class McpDispatcher {
         // It sits before the access-mode gate because case creation is a third class of operation,
         // not a stronger kind of curation: an installation may enable writes and still not want an
         // agent reading a disk into a new case.
-        if (tool.isProcessingOperation() && !McpServerConfig.get().isProcessingEnabled()) {
+        if (tool.isProcessingOperation() && !session.getConfig().isProcessingEnabled()) {
             McpError denial = new McpError(McpError.PROCESSING_DISABLED,
                     "Case creation is not enabled in this installation, so '" + name + "' was refused. "
                             + "Nothing on the filesystem was read or written.",

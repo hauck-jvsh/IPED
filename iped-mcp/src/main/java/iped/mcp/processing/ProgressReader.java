@@ -323,4 +323,42 @@ public final class ProgressReader {
         }
         return String.join(System.lineSeparator(), tail);
     }
+
+    /**
+     * The same excerpt, read back from a job's log file.
+     *
+     * <p>
+     * This is how the excerpt reaches a session that did not run the job — one opened afterwards, or
+     * after the server was restarted (FR-022). Deriving it rather than storing a second copy keeps
+     * one source of truth: the log already sits in the job's folder, and a copy inside
+     * {@code job.json} beside it would only widen where evidence-derived content lives without
+     * adding anything.
+     *
+     * @return the last lines of the log, or {@code null} when there is no readable log
+     */
+    public static String excerptFromLog(File logFile, int lines) {
+        if (logFile == null || !logFile.isFile()) {
+            return null;
+        }
+        Deque<String> lastLines = new ArrayDeque<>();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                java.nio.file.Files.newInputStream(logFile.toPath()), StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                lastLines.addLast(line);
+                while (lastLines.size() > lines) {
+                    lastLines.removeFirst();
+                }
+            }
+        } catch (IOException e) {
+            LOGGER.warn("The job log at {} could not be read for its excerpt", logFile.getAbsolutePath(), e);
+            return null;
+        }
+        return lastLines.isEmpty() ? null : String.join(System.lineSeparator(), lastLines);
+    }
+
+    /** How many trailing lines an excerpt read back from a log carries. */
+    public static int excerptLines() {
+        return EXCERPT_LINES;
+    }
 }
