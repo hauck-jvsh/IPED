@@ -74,6 +74,9 @@ public final class ProgressReader {
     /** How many trailing lines the failure excerpt carries. */
     private static final int EXCERPT_LINES = 40;
 
+    /** How long the stream gets to drain after the engine exits, before the reader gives up on it. */
+    private static final long DRAIN_TIMEOUT_MILLIS = 15000;
+
     private final ProcessingJob job;
     private final File logFile;
     private final Charset childCharset;
@@ -110,14 +113,34 @@ public final class ProgressReader {
         pump.start();
     }
 
+    /**
+     * Waits for the stream to drain, then stops.
+     *
+     * <p>
+     * <b>Draining first is the point.</b> This is called right after the engine process exits, and a
+     * pipe still holds whatever was written just before that — which is precisely the tail: the last
+     * counters, the closing message, and on a failure the lines that say why. Setting the loop flag
+     * before joining, as this first did, threw exactly those away and left the diagnostic excerpt
+     * (FR-043) empty in the one case it exists for.
+     *
+     * <p>
+     * The flag stays as a last resort for a stream that never reaches end-of-file — a descendant
+     * holding the pipe open past its parent's death.
+     */
     public void stop() {
-        running = false;
-        if (pump != null) {
-            try {
-                pump.join(2000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
+        if (pump == null) {
+            return;
+        }
+        try {
+            pump.join(DRAIN_TIMEOUT_MILLIS);
+            if (pump.isAlive()) {
+                LOGGER.warn("The engine output stream for job {} did not reach end-of-file; stopping the "
+                        + "reader with output possibly unread", job.getJobId());
+                running = false;
+                pump.join(1000);
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
