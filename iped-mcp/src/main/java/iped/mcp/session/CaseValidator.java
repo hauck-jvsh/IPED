@@ -8,6 +8,8 @@ import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
 import iped.engine.data.IPEDSource;
+import iped.mcp.processing.JobStore;
+import iped.mcp.processing.ProcessingJob;
 import iped.mcp.protocol.McpError;
 
 /**
@@ -54,9 +56,50 @@ public class CaseValidator {
     }
 
     private final String supportedVersionPrefix;
+    private final JobStore jobStore;
 
     public CaseValidator(String supportedVersionPrefix) {
+        this(supportedVersionPrefix, null);
+    }
+
+    /**
+     * @param jobStore
+     *            the processing jobs this installation ran, so a refusal can name the one that
+     *            produced this folder. Optional — without it the diagnostic is the generic one.
+     */
+    public CaseValidator(String supportedVersionPrefix, JobStore jobStore) {
         this.supportedVersionPrefix = supportedVersionPrefix;
+        this.jobStore = jobStore;
+    }
+
+    /**
+     * Turns "reprocess it" into something the examiner can act on.
+     *
+     * <p>
+     * The mechanism that refuses an unfinished case has been here since 001 and needed nothing. What
+     * it could not do was say <i>why</i> this particular folder is unfinished. When this installation
+     * is the one that produced it, it knows: which job, how it ended, and whether it can be resumed
+     * rather than started over — which is a materially different instruction from "reprocess".
+     */
+    private String knownJobAdvice(File caseDir) {
+        if (jobStore == null) {
+            return "";
+        }
+        String requested = caseDir.getAbsolutePath();
+        for (ProcessingJob job : jobStore.loadAll()) {
+            String destination = job.getRequest() == null ? null : job.getRequest().getDestinationPath();
+            if (destination == null || !new File(destination).getAbsolutePath().equals(requested)) {
+                continue;
+            }
+            StringBuilder advice = new StringBuilder(" This folder was produced by job ").append(job.getJobId())
+                    .append(", which ended as ").append(job.getState()).append('.');
+            if (job.getOutcome() != null && job.getOutcome().isResumable()) {
+                advice.append(" It can be continued with iped_resume_job rather than started again, which "
+                        + "keeps the work already done.");
+            }
+            return advice.toString();
+        }
+        return "";
     }
 
     /**
@@ -105,7 +148,8 @@ public class CaseValidator {
                     "The case at " + caseDir.getAbsolutePath() + " is still being processed: its index is still "
                             + "in the temporary folder.",
                     "Wait for processing to finish and try again. Querying a case mid-processing would give "
-                            + "answers over an incomplete collection.").with("path", caseDir.getAbsolutePath());
+                            + "answers over an incomplete collection." + knownJobAdvice(caseDir))
+                                    .with("path", caseDir.getAbsolutePath());
         }
 
         if (!IPEDSource.checkIfIsCaseFolder(caseDir)) {
@@ -114,7 +158,7 @@ public class CaseValidator {
             throw new McpError(McpError.CASE_INCOMPLETE,
                     "The case at " + caseDir.getAbsolutePath() + " is incomplete; missing: " + missing.trim() + ".",
                     "This case did not finish processing, or was copied partially. Reprocess it, or copy the "
-                            + "whole output folder including the 'iped' subfolder.")
+                            + "whole output folder including the 'iped' subfolder." + knownJobAdvice(caseDir))
                                     .with("path", caseDir.getAbsolutePath()).with("missing", missing.trim());
         }
 

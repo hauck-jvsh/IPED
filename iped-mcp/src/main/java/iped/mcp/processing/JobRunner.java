@@ -70,6 +70,12 @@ public final class JobRunner {
     private final SecretResolver secrets;
     private final DiskPreflight preflight;
 
+    /**
+     * The process's open cases, consulted to refuse writing over one (FR-010). Optional: a runner
+     * built for a unit test has none, and the check simply does not apply there.
+     */
+    private volatile iped.mcp.session.CasePool casePool;
+
     private final AtomicReference<ProcessingJob> active = new AtomicReference<>();
     private final AtomicReference<Process> activeProcess = new AtomicReference<>();
 
@@ -107,6 +113,11 @@ public final class JobRunner {
 
     public JobStore getStore() {
         return store;
+    }
+
+    /** Gives the runner the process's case pool, so it can refuse to write over an open case. */
+    public void setCasePool(iped.mcp.session.CasePool casePool) {
+        this.casePool = casePool;
     }
 
     /** The running job, or {@code null}. */
@@ -571,7 +582,43 @@ public final class JobRunner {
         if (!destination.isAllowed()) {
             throw destinationRefusal(destination);
         }
+        refuseIfInsideAnOpenCase(destination.getResolved());
         return new Validated(source.getResolved(), destination.getResolved());
+    }
+
+    /**
+     * Refuses a destination that is, or sits inside, a case a session has open right now (FR-010).
+     *
+     * <p>
+     * The more dangerous half of that rule. Writing over a <i>finished</i> case is refused as a
+     * scope boundary and nothing is lost; writing over one being queried corrupts both sides at once
+     * — the reader's index from underneath it, and the writer's own output.
+     *
+     * <p>
+     * Compared on real paths, like every other confinement decision here, so a junction or a symlink
+     * into an open case does not slip past.
+     */
+    private void refuseIfInsideAnOpenCase(java.nio.file.Path destination) {
+        if (casePool == null || destination == null) {
+            return;
+        }
+        for (File open : casePool.openCaseFolders()) {
+            java.nio.file.Path real;
+            try {
+                real = open.toPath().toRealPath();
+            } catch (IOException e) {
+                continue;
+            }
+            if (destination.startsWith(real) || real.startsWith(destination)) {
+                throw new McpError(McpError.DESTINATION_HAS_CASE,
+                        "A session has the case at " + real + " open, and the requested destination overlaps "
+                                + "it.",
+                        "Creating a case there would write over an index being read right now, damaging both. "
+                                + "Close the case first, or choose a destination outside it.")
+                                        .with("requested", destination.toString())
+                                        .with("open_case", real.toString());
+            }
+        }
     }
 
     private static McpError sourceRefusal(ResolvedSource source) {

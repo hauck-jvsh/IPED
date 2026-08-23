@@ -43,7 +43,11 @@ public class CaseRegistry implements AutoCloseable {
     public CaseRegistry(McpServerConfig config, AuditSync auditSync, ConcurrencyGuard concurrencyGuard,
             CasePool casePool, SessionManifest manifest) {
         this.config = config;
-        this.validator = new CaseValidator(config.getSupportedVersionPrefix());
+        // The job store is handed over only when this installation creates cases. Then a refusal to
+        // open an unfinished folder can name the job that produced it and say whether it can be
+        // resumed — a different instruction from the generic "reprocess it" (FR-028).
+        this.validator = new CaseValidator(config.getSupportedVersionPrefix(),
+                config.isProcessingEnabled() ? new iped.mcp.processing.JobStore(config.getAuditArea()) : null);
         this.auditSync = auditSync;
         this.concurrencyGuard = concurrencyGuard;
         this.casePool = casePool;

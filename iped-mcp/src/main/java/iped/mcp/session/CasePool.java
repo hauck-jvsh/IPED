@@ -1,7 +1,9 @@
 package iped.mcp.session;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -105,6 +107,26 @@ public class CasePool implements AutoCloseable {
         entries.put(caseId, entry);
         LOGGER.info("Case {} opened into the pool", caseId);
         return new Handle(entry.source, entry.vocabulary);
+    }
+
+    /**
+     * The folders of the cases this process currently holds open.
+     *
+     * <p>
+     * Used to refuse creating a case on top of one being queried right now (FR-010). That collision
+     * is the more dangerous of the two the rule covers: writing a new case over a finished one is
+     * refused as a scope boundary, but writing over one a session has open corrupts both at once —
+     * the reader's index underneath it and the writer's output.
+     */
+    public synchronized List<File> openCaseFolders() {
+        List<File> folders = new ArrayList<>();
+        for (Entry entry : entries.values()) {
+            File caseDir = entry.source.getCaseDir();
+            if (caseDir != null) {
+                folders.add(caseDir);
+            }
+        }
+        return folders;
     }
 
     /** Drops one reference, closing the engine handle when the last session lets go. */

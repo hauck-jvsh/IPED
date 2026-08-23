@@ -217,8 +217,17 @@ public class McpServerMain implements AutoCloseable {
                     diagnostics.getFailures().size());
         }
 
+        // The case pool and the write register belong to the process, not to a session: under the
+        // network transport several sessions share them, and under stdio there simply happens to be
+        // one (FR-014).
+        CasePool casePool = new CasePool();
+        WriteClaims writeClaims = new WriteClaims();
+
         if (config.isProcessingEnabled()) {
             JobRunner runner = JobRunner.forProcess(config, ipedRoot);
+            // So a request to create a case on top of one being queried right now is refused
+            // (FR-010) — the collision that damages both sides, unlike writing over a finished case.
+            runner.setCasePool(casePool);
             // Before serving anything: a job this server was running when it was killed abruptly is
             // still marked running in the store, and its engine may still be alive. FR-024 forbids
             // both wrong answers — "still running" and "no such job" — so it is settled here, once,
@@ -230,11 +239,6 @@ public class McpServerMain implements AutoCloseable {
                     "iped-mcp-processing-shutdown"));
         }
 
-        // The case pool and the write register belong to the process, not to a session: under the
-        // network transport several sessions share them, and under stdio there simply happens to be
-        // one (FR-014).
-        CasePool casePool = new CasePool();
-        WriteClaims writeClaims = new WriteClaims();
         try (Transport transport = createTransport(config, casePool, writeClaims)) {
             transport.serve();
         } catch (Exception e) {

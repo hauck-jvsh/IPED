@@ -119,6 +119,15 @@ public class Session implements Closeable {
             openingWarnings.add("Access mode is READ_WRITE. Bookmark and selection changes will be written into "
                     + "the case, each one recorded in the audit trail with its prior state.");
         }
+        if (config.isProcessingEnabled()) {
+            // A third class of operation, and the most consequential one on the surface: it reads a
+            // disk for hours and turns it into content this session can then query. The examiner is
+            // told at the door rather than discovering it from a tool list (FR-005).
+            openingWarnings.add("Case creation is enabled in this installation. Processing tools can read "
+                    + "evidence from the declared source areas and create cases under the declared case "
+                    + "roots, taking the machine for as long as the work lasts. Ask iped_session_info for "
+                    + "the areas and roots in force before requesting one.");
+        }
         LOGGER.info("MCP session {} started for operator {} in {} mode", sessionId, operator, config.getAccessMode());
     }
 
@@ -210,6 +219,7 @@ public class Session implements Closeable {
         posture.put("write_roots", roots);
         posture.put("write_roots_are_declared", !config.getExportRoots().isEmpty());
         posture.put("allow_export_into_case_folder", config.isAllowExportIntoCaseFolder());
+        posture.put("processing", describeProcessingPosture());
 
         List<Map<String, Object>> claims = new ArrayList<>();
         for (OpenCase openCase : caseRegistry.getOpenCases()) {
@@ -226,6 +236,49 @@ public class Session implements Closeable {
     }
 
     /** Full session state, as returned by {@code iped_session_info}. */
+    /**
+     * Whether this installation creates cases, from where and to where (FR-004).
+     *
+     * <p>
+     * Declared areas are reported with whether they are <b>present right now</b>, not merely with
+     * what the file says. An area on a volume that is not mounted is a different situation from an
+     * area that was never declared, and the examiner acts differently on each: one is a disk to
+     * plug in, the other is a line to add. Resolving here rather than at startup is also what
+     * FR-039 requires — media mounted after the server came up has to work without a restart.
+     */
+    public Map<String, Object> describeProcessingPosture() {
+        Map<String, Object> processing = new LinkedHashMap<>();
+        processing.put("enabled", config.isProcessingEnabled());
+        processing.put("source_areas", describeDeclaredPaths(config.getProcessingSourceAreas()));
+        processing.put("case_roots", describeDeclaredPaths(config.getProcessingCaseRoots()));
+        processing.put("allowed_profiles", config.getProcessingProfiles());
+        processing.put("min_free_space_percent_of_source", config.getProcessingMinFreeSpacePercentOfSource());
+        if (config.isProcessingEnabled()) {
+            // Empty is a misconfiguration, not a grant. Saying so here means the examiner sees it
+            // before a request fails rather than after.
+            processing.put("source_areas_declared", !config.getProcessingSourceAreas().isEmpty());
+            processing.put("case_roots_declared", !config.getProcessingCaseRoots().isEmpty());
+        }
+        return processing;
+    }
+
+    private static List<Map<String, Object>> describeDeclaredPaths(List<String> declared) {
+        List<Map<String, Object>> described = new ArrayList<>();
+        for (String path : declared) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("declared", path);
+            java.io.File file = new java.io.File(path);
+            entry.put("present", file.isDirectory());
+            try {
+                entry.put("resolved", file.isDirectory() ? file.toPath().toRealPath().toString() : null);
+            } catch (java.io.IOException e) {
+                entry.put("resolved", null);
+            }
+            described.add(entry);
+        }
+        return described;
+    }
+
     public Map<String, Object> describe() {
         Map<String, Object> info = new LinkedHashMap<>();
         info.put("session_id", sessionId);
