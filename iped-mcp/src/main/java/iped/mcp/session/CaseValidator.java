@@ -81,6 +81,56 @@ public class CaseValidator {
      * is the one that produced it, it knows: which job, how it ended, and whether it can be resumed
      * rather than started over — which is a materially different instruction from "reprocess".
      */
+    /**
+     * Refuses a folder this installation produced with a job that did not finish (FR-028, SC-009).
+     *
+     * <p>
+     * The structural checks are not enough for this, and the gap is not obvious. They catch a case
+     * whose index is still in the temporary folder — the state a case is in early on. But a run
+     * interrupted <i>mid-processing</i> leaves {@code iped/index}, {@code iped/data} and
+     * {@code iped/lib} all in place, with a committed index holding however many items had been
+     * processed by then. Structurally it is indistinguishable from a finished case, and it opens,
+     * and it answers queries: over a collection that silently stops partway through the evidence.
+     *
+     * <p>
+     * That is the worst shape a defect can take here. Nothing errors, nothing looks wrong, and the
+     * examiner draws conclusions from a fraction of the material without being told it is a
+     * fraction. When this installation ran the job, it knows better than the folder does.
+     */
+    private void refuseIfAnUnfinishedJobProducedThis(File caseDir) {
+        ProcessingJob job = jobFor(caseDir);
+        if (job == null || job.getState() == ProcessingJob.State.COMPLETED) {
+            return;
+        }
+        throw new McpError(McpError.CASE_INCOMPLETE,
+                "The case at " + caseDir.getAbsolutePath() + " was produced by job " + job.getJobId()
+                        + ", which ended as " + job.getState() + " — it holds only what had been processed "
+                        + "when the run stopped.",
+                "It looks structurally complete and it is not: querying it would give answers over part of "
+                        + "the evidence, with nothing to indicate which part."
+                        + (job.getOutcome() != null && job.getOutcome().isResumable()
+                                ? " Continue it with iped_resume_job first."
+                                : " Process the evidence again."))
+                                        .with("path", caseDir.getAbsolutePath())
+                                        .with("job_id", job.getJobId())
+                                        .with("job_state", job.getState().name());
+    }
+
+    /** The job this installation ran into that folder, or {@code null}. */
+    private ProcessingJob jobFor(File caseDir) {
+        if (jobStore == null) {
+            return null;
+        }
+        String requested = caseDir.getAbsolutePath();
+        for (ProcessingJob job : jobStore.loadAll()) {
+            String destination = job.getRequest() == null ? null : job.getRequest().getDestinationPath();
+            if (destination != null && new File(destination).getAbsolutePath().equals(requested)) {
+                return job;
+            }
+        }
+        return null;
+    }
+
     private String knownJobAdvice(File caseDir) {
         if (jobStore == null) {
             return "";
@@ -161,6 +211,8 @@ public class CaseValidator {
                             + "whole output folder including the 'iped' subfolder." + knownJobAdvice(caseDir))
                                     .with("path", caseDir.getAbsolutePath()).with("missing", missing.trim());
         }
+
+        refuseIfAnUnfinishedJobProducedThis(caseDir);
 
         if (findSegmentsFile(indexDir) == null) {
             throw new McpError(McpError.CASE_INCOMPLETE,

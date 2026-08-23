@@ -142,7 +142,7 @@ public final class JobRunner {
      */
     public synchronized ProcessingJob start(ProcessingRequest request, String requestedBy) {
         requireNoActiveJob();
-        Validated validated = validate(request);
+        Validated validated = validate(request, false);
 
         String jobId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         ProcessingJob job = new ProcessingJob(jobId, request, requestedBy, Instant.now());
@@ -180,7 +180,8 @@ public final class JobRunner {
                             + "continued. Start a new job instead.").with("job_id", jobId)
                                     .with("state", job.getState().name());
         }
-        Validated validated = validate(job.getRequest());
+        requireContinuableDestination(job);
+        Validated validated = validate(job.getRequest(), true);
         job.setState(State.ACCEPTED);
         job.setEndedAt(null);
         launch(job, validated, true);
@@ -221,6 +222,43 @@ public final class JobRunner {
         job.setOutcome(outcome);
         persist(job);
         return job;
+    }
+
+    /**
+     * Refuses a resume the engine would refuse anyway, with an explanation it does not give.
+     *
+     * <p>
+     * The engine accepts {@code --continue} only when the destination already has its {@code iped}
+     * subfolder, and answers otherwise with "you cannot use --append, --continue or --restart with an
+     * inexistent or invalid case folder" — true, and no help at all to someone who asked to continue
+     * a job this server itself recorded as interrupted.
+     *
+     * <p>
+     * A job cut short before the engine laid down that folder has nothing to continue: there is no
+     * work to keep, so continuing and starting over would be the same run. Saying so, and saying what
+     * to do instead, is better than either a cryptic engine failure or silently deleting a
+     * destination the examiner may want to look at first.
+     *
+     * <p>
+     * <b>Necessary, not sufficient.</b> The folder appears seconds before anything has been
+     * processed, and a resume from that point still fails inside the engine on state this check
+     * cannot see. Predicting that reliably would mean reimplementing the engine's own continue
+     * logic; when it happens the job ends as {@code FAILED} carrying the engine's own words, which
+     * is the honest outcome rather than a guess dressed as a guarantee.
+     */
+    private void requireContinuableDestination(ProcessingJob job) {
+        File destination = new File(job.getRequest().getDestinationPath());
+        if (new File(destination, "iped").exists()) {
+            return;
+        }
+        throw new McpError(McpError.JOB_NOT_RESUMABLE,
+                "Job " + job.getJobId() + " stopped before the engine produced anything that can be "
+                        + "continued.",
+                "It was interrupted too early: there is no partial case at " + destination.getAbsolutePath()
+                        + " to build on, so continuing and starting over would do the same work. Remove that "
+                        + "folder if it exists and request a new processing.")
+                                .with("job_id", job.getJobId())
+                                .with("destination", destination.getAbsolutePath());
     }
 
     /**
@@ -404,7 +442,22 @@ public final class JobRunner {
                 Thread.currentThread().interrupt();
             }
             reader.stop();
-            if (job.getState() == State.CANCELLED) {
+            // A watcher speaks only for the process it watched.
+            //
+            // Two ways it can be out of date. Its own job object may already carry a deliberate
+            // verdict — a cancellation — and overwriting that would replace "cancelled by X" with a
+            // bare "failed", losing why. Or the record may have moved on to a different run
+            // entirely: a resume keeps the job id, so a stale watcher from the previous run would
+            // otherwise conclude the new one on the strength of the old one's exit code.
+            if (job.getState() != State.RUNNING) {
+                LOGGER.debug("Job {} was already concluded as {}; the watcher leaves it alone",
+                        job.getJobId(), job.getState());
+                return;
+            }
+            ProcessingJob recorded = store.load(job.getJobId());
+            if (recorded != null && recorded.getPid() != job.getPid()) {
+                LOGGER.debug("Job {} now belongs to process {}, not {}; the watcher leaves it alone",
+                        job.getJobId(), recorded.getPid(), job.getPid());
                 return;
             }
             finish(job, exit, reader, resuming);
@@ -564,7 +617,14 @@ public final class JobRunner {
         }
     }
 
-    Validated validate(ProcessingRequest request) {
+    /**
+     * @param resuming
+     *            whether this is a continuation. A destination that already holds a partial case is
+     *            a refusal when creating and the whole premise when resuming, so the occupancy rule
+     *            belongs to creation only. A <i>finished</i> case stays refused either way: that is
+     *            the append boundary, not a collision.
+     */
+    Validated validate(ProcessingRequest request, boolean resuming) {
         if (!profiles.isPermitted(request.getProfile())) {
             throw new McpError(McpError.PROFILE_NOT_PERMITTED,
                     "The profile '" + request.getProfile() + "' is not permitted in this installation.",
@@ -579,7 +639,15 @@ public final class JobRunner {
 
         ResolvedCaseRoot destination = CaseRootConfinement.resolve(request.getDestinationPath(),
                 config.getProcessingCaseRoots());
-        if (!destination.isAllowed()) {
+        // Occupancy is a creation-time concern and nothing else. On a resume the destination is
+        // supposed to hold the partial case, and the structural verdict cannot tell that from a
+        // finished one anyway — index, data and lib are all in place either way. The append boundary
+        // is therefore enforced where it is actually knowable: resume() refuses a job whose recorded
+        // state is COMPLETED, which is authoritative in a way the folder shape is not.
+        boolean occupancyExpected = resuming
+                && (destination.getVerdict() == CaseRootConfinement.Verdict.DESTINATION_OCCUPIED
+                        || destination.getVerdict() == CaseRootConfinement.Verdict.HAS_FINISHED_CASE);
+        if (!destination.isAllowed() && !occupancyExpected) {
             throw destinationRefusal(destination);
         }
         refuseIfInsideAnOpenCase(destination.getResolved());

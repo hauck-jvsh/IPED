@@ -104,7 +104,7 @@ public final class DiskPreflight {
         if (sourceBytes < 0) {
             return new Assessment(false, 0, 0, 0, null);
         }
-        long required = sourceBytes / 100 * percentOfSource;
+        long required = requiredFor(sourceBytes);
         long free = usableSpaceAt(destination);
         if (free < 0) {
             return new Assessment(true, sourceBytes, required, 0, null);
@@ -119,6 +119,22 @@ public final class DiskPreflight {
                         + "saying so.",
                 gigabytes(free), gigabytes(required), percentOfSource, gigabytes(sourceBytes));
         return new Assessment(true, sourceBytes, required, free, warning);
+    }
+
+    /**
+     * The requirement, saturating instead of wrapping.
+     *
+     * <p>
+     * A percentage large enough to overflow is a misconfiguration, and wrapping would turn it into a
+     * <i>negative</i> requirement that every destination satisfies — the failure mode that suppresses
+     * the warning entirely, which is the direction that matters.
+     */
+    private long requiredFor(long sourceBytes) {
+        long perPercent = sourceBytes / 100;
+        if (perPercent > 0 && percentOfSource > Long.MAX_VALUE / perPercent) {
+            return Long.MAX_VALUE;
+        }
+        return perPercent * percentOfSource;
     }
 
     /**
@@ -151,9 +167,6 @@ public final class DiskPreflight {
         }
         String stem = name.substring(0, dot);
         String extension = name.substring(dot + 1);
-        if (!looksLikeSegment(extension)) {
-            return first.length();
-        }
         File folder = first.getParentFile();
         File[] siblings = folder == null ? null : folder.listFiles();
         if (siblings == null) {
@@ -166,7 +179,7 @@ public final class DiskPreflight {
             if (siblingDot <= 0 || !siblingName.substring(0, siblingDot).equals(stem)) {
                 continue;
             }
-            if (looksLikeSegment(siblingName.substring(siblingDot + 1))) {
+            if (isSiblingSegment(extension, siblingName.substring(siblingDot + 1))) {
                 total += sibling.length();
             }
         }
@@ -174,15 +187,36 @@ public final class DiskPreflight {
     }
 
     /**
-     * Whether an extension is a forensic image segment: a letter followed by two digits or two
-     * letters, as EWF ({@code E01}, {@code Ex01}) and split raw ({@code 001}) name them.
+     * Whether a sibling belongs to the same segment set as the file that was named.
+     *
+     * <p>
+     * Anchored on the named file's own extension rather than on a general pattern, and that is the
+     * whole point. A general "letter plus two alphanumerics" matches {@code E01} — and equally
+     * matches {@code csv}, {@code txt} and {@code log}, which is what acquisition tools leave beside
+     * an image. Counting those inflates the requirement with data that is not evidence.
+     *
+     * <p>
+     * So a sibling qualifies only when it shares the reference's length and first character and
+     * differs after it: {@code E01} accepts {@code E02} and {@code EAA}, which is how EWF numbers
+     * its overflow, and {@code 001} accepts {@code 002}. Neither accepts {@code csv}.
      */
-    private static boolean looksLikeSegment(String extension) {
-        String upper = extension.toUpperCase(Locale.ROOT);
-        if (upper.length() == 3 && Character.isLetter(upper.charAt(0))) {
-            return Character.isLetterOrDigit(upper.charAt(1)) && Character.isLetterOrDigit(upper.charAt(2));
+    private static boolean isSiblingSegment(String reference, String candidate) {
+        if (reference.length() != candidate.length() || reference.length() != 3) {
+            return false;
         }
-        return upper.length() == 3 && upper.chars().allMatch(Character::isDigit);
+        String referenceUpper = reference.toUpperCase(Locale.ROOT);
+        String candidateUpper = candidate.toUpperCase(Locale.ROOT);
+        if (referenceUpper.charAt(0) != candidateUpper.charAt(0)) {
+            return false;
+        }
+        for (int i = 1; i < 3; i++) {
+            if (!Character.isLetterOrDigit(candidateUpper.charAt(i))) {
+                return false;
+            }
+        }
+        // The reference itself must look like a segment, or a plain ".dat" file would drag in every
+        // three-character sibling sharing its first letter.
+        return Character.isDigit(referenceUpper.charAt(1)) || Character.isDigit(referenceUpper.charAt(2));
     }
 
     private static long sumFolder(Path folder, long deadline, AtomicBoolean overBudget) {
