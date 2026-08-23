@@ -55,6 +55,8 @@ public final class ProcessingJob {
     private Instant startedAt;
     private Instant endedAt;
     private String cancelledBy;
+    private String sessionId;
+    private String authorizedUnder;
     private String logPath;
     private String diskWarning;
     private JobProgress progress = new JobProgress();
@@ -141,6 +143,40 @@ public final class ProcessingJob {
 
     public void setCancelledBy(String cancelledBy) {
         this.cancelledBy = cancelledBy;
+    }
+
+    /**
+     * The session that asked for this job, linking it to that session's audit trail (FR-034).
+     *
+     * <p>
+     * Recorded here rather than in the case's session manifest, and not by preference: the manifest
+     * is per case, and when a processing job starts the case does not exist yet. The link has to
+     * live where it can be written at the moment it becomes true.
+     */
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
+    }
+
+    /**
+     * The processing posture in force when this job was accepted (FR-038).
+     *
+     * <p>
+     * Authorization here is granted by configuration rather than per request, so it happens before
+     * the request exists and leaves no record of its own. Without this, a trail could show that a
+     * job ran and never show under what permission — which areas were readable, which roots
+     * writable — and that is precisely what a second examiner needs to judge whether it should have
+     * run at all.
+     */
+    public String getAuthorizedUnder() {
+        return authorizedUnder;
+    }
+
+    public void setAuthorizedUnder(String authorizedUnder) {
+        this.authorizedUnder = authorizedUnder;
     }
 
     /** Where the engine's own log was written, declared in the outcome always (FR-042). */

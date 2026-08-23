@@ -185,3 +185,80 @@ maxConcurrentSessions = 4
 # An authenticated connection that issues no request is closed after
 # this long, so it does not hold a session slot indefinitely.
 sessionIdleTimeoutSeconds = 300
+
+# ---------------------------------------------------------------------
+# Case creation (feature 007)
+# ---------------------------------------------------------------------
+# Creating a case reads evidence for hours and turns it into content
+# this server can then query and export. It is a third class of
+# operation, independent of accessMode: enabling curation lets an
+# examiner record a bookmark, and must not also let an agent read a disk
+# into a new case.
+processingEnabled = false
+
+# Where evidence may be read from, and where cases may be created.
+# Semicolon-separated, not comma: a file path carries commas.
+#
+# Neither has a default, and empty is NOT "anywhere" -- it is a
+# configuration error the server reports. An invented root would be a
+# permission nobody granted, and this is the one list where guessing
+# wrong turns the server into a filesystem-to-searchable-index
+# converter: whatever it reads becomes queryable and exportable through
+# the surface that already exists.
+#
+# Resolved when a request arrives rather than at startup, so media
+# mounted after the server came up works without restarting it. A
+# declared area that is absent right now is reported as unavailable,
+# which is a different answer from "not permitted" -- one is a disk to
+# plug in, the other a line to add.
+#
+# processingSourceAreas = E:\evidencias;F:\aquisicoes
+# processingCaseRoots = H:\casos
+processingSourceAreas =
+processingCaseRoots =
+
+# Profiles the agent may name. Comma-separated: these are names, not
+# paths. blind and pedo are deliberately absent -- their effects are the
+# examiner's call, not something to inherit from a default.
+processingProfiles = forensic,fastmode,triage
+
+# Free space required at the destination, as a percentage of the SOURCE
+# evidence size. At 50, a 500 GB image asks for 250 GB free.
+#
+# Below the requirement the server WARNS and starts the job anyway. It
+# never refuses on this basis: how much an index occupies depends on the
+# profile, the material and whether item export is on, and blocking
+# legitimate work on that estimate is worse than letting a job start
+# that may not fit. The decision stays with whoever asked.
+#
+# Segmented images count as the whole set, not the first segment.
+processingMinFreeSpacePercentOfSource = 50
+
+# Where container passwords are resolved from, as name=password lines.
+# This key says WHERE the secret is, never WHICH it is -- the same shape
+# as sharedSecretFile above.
+#
+# Known and accepted limitation: the password reaches the engine on its
+# command line, so it is readable by other accounts on this machine
+# while the job runs. It matters when the evidence machine is shared;
+# on a single-account workstation it does not. Every request that uses
+# a secret reference is told this in its answer.
+#
+# processingSecretsFile = D:\pericia\senhas-conteineres.txt
+processingSecretsFile =
+
+# Locale declared for the processing child process.
+#
+# Not cosmetic. The engine reports its current phase only as localized
+# prose with no numeric anchor, so pinning the locale is what makes the
+# phase readable at all. Item counters survive a locale change; the
+# phase does not, and the phase is the only thing that answers "is it
+# alive?" during index commit and optimization, which emit no numbers
+# and can last minutes on a large case.
+processingLocale = en
+
+# Silence from the engine above this is reported as stalled rather than
+# merely slow. Deliberately generous: an index commit on a large case is
+# legitimately quiet for minutes, which is why the phase is always
+# reported alongside.
+processingStallThresholdSeconds = 300

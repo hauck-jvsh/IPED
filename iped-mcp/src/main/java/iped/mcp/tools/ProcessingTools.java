@@ -94,6 +94,9 @@ public class ProcessingTools {
                 Args.optionalString(arguments, "display_name", null), Args.optionalString(arguments, "secret_ref", null));
 
         ProcessingJob job = runner.start(request, session.getOperator().describe());
+        // Links the job to this session's trail. The case does not exist yet, so the case-scoped
+        // session manifest cannot carry the link at the moment it becomes true (FR-034).
+        job.setSessionId(session.getSessionId());
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("job_id", job.getJobId());
@@ -131,6 +134,10 @@ public class ProcessingTools {
         result.put("job_id", job.getJobId());
         result.put("state", job.getState().name());
         result.put("requested_by", job.getRequestedBy());
+        result.put("session_id", job.getSessionId());
+        // Under which standing permission it was accepted. Authorization is granted by
+        // configuration, so it precedes the request and leaves no record of its own (FR-038).
+        result.put("authorized_under", job.getAuthorizedUnder());
         result.put("log_path", job.getLogPath());
         result.put("progress", describeProgress(job.getProgress()));
         if (job.getOutcome() != null) {

@@ -1,6 +1,6 @@
 # Módulo `iped-mcp`
 
-> **Servidor MCP.** Expõe casos IPED já processados a agentes de LLM, por JSON-RPC 2.0 sobre stdio, e distribui a skill que ensina o agente a usá-lo com disciplina pericial.
+> **Servidor MCP.** Expõe casos IPED a agentes de LLM, por JSON-RPC 2.0 sobre stdio, e distribui a skill que ensina o agente a usá-lo com disciplina pericial. Desde a 007 também **cria** caso, processando evidência com o motor do IPED fora do processo.
 
 > Este módulo **não modifica nenhuma classe existente**. Consome apenas API pública do `iped-engine` e do `iped-api`. Os dois únicos arquivos existentes tocados são aditivos: o `pom.xml` da raiz (registro do módulo) e `iped-app/pom.xml` (empacotamento no release).
 
@@ -14,8 +14,9 @@
 - **Trilha de auditoria** append-only encadeada por hash, gravada antes de cada operação.
 - **Artefatos de saída**: xlsx, CSV e JSON do conjunto completo, sem trafegar pela conversa.
 - **Política de egresso** opcional, aplicada no servidor.
+- **Criação de caso**: processa evidência com o motor do IPED em processo externo, com acompanhamento, cancelamento e retomada. Desabilitada por padrão.
 
-Versão `4.3.1`. Java 11. Spec: [`specs/001-iped-llm-integration/`](../specs/001-iped-llm-integration/).
+Versão `4.3.1`. Java 11. Specs: [`001-iped-llm-integration`](../specs/001-iped-llm-integration/), [`006-export-allowlist-socket-transport`](../specs/006-export-allowlist-socket-transport/), [`007-mcp-case-processing`](../specs/007-mcp-case-processing/).
 
 ## 2. Estrutura
 
@@ -32,6 +33,7 @@ iped/mcp/
 ├── McpRelayMain.java        # relay stdio↔socket, para o harness em outra máquina
 ├── transport/               # Transport, StdioTransport, SocketTransport, HandshakeCodec
 ├── audit/                   # AuditRecord, AuditTrail, AuditSync, SessionManifest
+├── processing/              # criação de caso: JobRunner, ProgressReader, JobStore, confinamentos
 ├── egress/EgressPolicy      # opcional, inativa por padrão
 ├── export/ArtifactWriter    # xlsx (POI streaming), CSV, JSON
 └── tools/                   # uma classe por grupo de ferramentas MCP
@@ -73,7 +75,9 @@ Duas consequências práticas menos óbvias:
 
 Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constituição), nunca em constante de código: área de auditoria, modo de acesso, política de egresso, tetos de página, de lote e de conteúdo, faixa de versão suportada, destino de exportação, reparo de nome de campo (`autoEscapeFieldNames`, desligado por padrão — ligado, uma expressão que só falha por colon não escapado é corrigida contra o vocabulário real do caso e o reparo vem declarado em `query_normalized`).
 
-Acrescentado nesta linha de trabalho: **raízes de escrita** (`exportRoots`, separadas por `;` — vírgula cortaria caminho do Windows ao meio) e **transporte** (`transport`, `listenAddress`, `listenPort`, `sharedSecretFile`, `maxConcurrentSessions`, `sessionIdleTimeoutSeconds`). Endereço e porta **não têm padrão**, de propósito. O segredo tampouco vive aqui: a chave diz **onde** encontrá-lo.
+Acrescentado na 007: **criação de caso** (`processingEnabled`, `processingSourceAreas`, `processingCaseRoots`, `processingProfiles`, `processingMinFreeSpacePercentOfSource`, `processingSecretsFile`, `processingLocale`, `processingStallThresholdSeconds`, `processingJvm`). As duas listas de raízes **não têm padrão**, e vazio é erro de configuração, não permissão total — inventar raiz seria conceder o que ninguém concedeu, e é a lista onde errar transforma o servidor em conversor de sistema de arquivos em índice consultável.
+
+Acrescentado na 006: **raízes de escrita** (`exportRoots`, separadas por `;` — vírgula cortaria caminho do Windows ao meio) e **transporte** (`transport`, `listenAddress`, `listenPort`, `sharedSecretFile`, `maxConcurrentSessions`, `sessionIdleTimeoutSeconds`). Endereço e porta **não têm padrão**, de propósito. O segredo tampouco vive aqui: a chave diz **onde** encontrá-lo.
 
 `McpServerConfig` implementa `Configurable<UTF8Properties>` e é carregado pelo `ConfigurationManager`. Os valores no código são **fallback de último recurso** para quando o arquivo não existe (teste isolado, instalação quebrada); o arquivo distribuído é a autoridade e carrega os mesmos valores.
 
@@ -100,6 +104,13 @@ Acrescentado nesta linha de trabalho: **raízes de escrita** (`exportRoots`, sep
 | Sucesso de exportação implica artefato existente | `ArtifactWriter.verifyArtifact` confere existência e tamanho depois de escrever. Contenção não é integridade: `<raiz>\NUL` fica dentro da raiz, aceita a escrita e não guarda nada |
 | Nenhum erro devolve uma grafia que não parseia | `PagedSearcher.plan` verifica a correção contra o caso antes de sugeri-la; `FieldNames.toQueryForm` em todo remedy que cita nome de campo |
 | Consulta reescrita é sempre declarada | `PagedSearcher.declareNormalization` → `query_normalized` no resultado de busca, agregação e exportação |
+| **O motor nunca roda dentro do processo do servidor** | `iped-app` depende de `iped-mcp`, então chamar `Bootstrap` seria circular e o build recusa. `JobRunner` executa o `iped.jar` da instalação. Quem tentar `new Manager(...)` no pacote `processing/` descobre pelo erro de compilação — o `package-info.java` existe para que descubra antes |
+| Instalação padrão não cria caso | `processingEnabled = false`; com ele desligado as ferramentas **não aparecem** em `tools/list` e uma chamada forçada é recusada antes de ler argumento. `NoProcessingByDefaultTest` verifica as duas metades — só a ausência da listagem não prova nada sobre cliente que chame assim mesmo |
+| Cancelar destrói a **árvore**, não o filho | `Bootstrap` gera um neto e é o neto que lê evidência; o shutdown hook dele tem `process.destroy()` **comentado**. `JobRunner.destroyTree` mata descendentes antes do filho. `CancelJobTest` espera o neto existir antes de cancelar, senão não testa nada |
+| Um trabalho não sobrevive ao servidor | Gancho de desligamento no caminho ordenado; `OrphanReconciler` no abrupto. Órfão vivo é **destruído**, não adotado, e a identidade é confirmada por PID **e** instante de início — só o PID mataria estranho por coincidência de numeração |
+| Nada do motor alcança o canal do protocolo | O fluxo do filho é lido por tubo e gravado em `<auditoria>/jobs/<id>/processing.log`; nunca repassado. `ProcessingLogTest` afirma que toda linha escrita pelo servidor parseia como JSON-RPC |
+| Caso de trabalho não concluído nunca abre como completo | `CaseValidator` consulta o `JobStore`. A verificação estrutural **não basta**: uma interrupção mid-processing deixa `index`, `data` e `lib` no lugar com índice comitado, indistinguível de caso pronto |
+| `AuditRecord` continua sem campo novo | Estado de trabalho vive no `JobStore`; vínculo sessão↔trabalho e postura vigente vivem no próprio registro do trabalho |
 
 ## 6. Dependências
 
@@ -122,7 +133,21 @@ mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java
     -Diped.mcp.test.referenceCase=<path>                         # + suítes de integração
 mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java.exe \
     -Diped.mcp.test.largeCase=<path>                             # + SC-002 e SC-015
+
+# Processamento real (007): evidência de origem e raiz de caso declaradas.
+mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> \
+    -Diped.mcp.test.sourceEvidence=<imagem> -Diped.mcp.test.caseRoot=<raiz>
 ```
+
+As suítes de processamento precisam de duas coisas a mais, pelo mesmo motivo das de caso: uma
+evidência para processar e uma raiz onde criar caso. Sem elas **pulam**. A raiz é declarada em vez de
+cair num diretório temporário de propósito — defaultar ali funcionaria e deixaria de exercitar a
+regra de confinamento que a feature existe para impor.
+
+Duas medições da bancada de referência (imagem E01 de 8,57 GB, 48 núcleos), úteis para calibrar
+expectativa: processamento completo em **103 s** com `fastmode`, e o teste ponta a ponta inteiro —
+que inclui SHA-256 da evidência antes e depois — em **181 s**. Verificação real aqui é barata, o que
+muda o que vale a pena testar de verdade em vez de simular.
 
 Abrir caso real no harness exige duas coisas que o teste unitário não exige, e nenhuma das duas é opcional:
 
@@ -165,6 +190,10 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | `McpServerConfig.exportRoots` | Separador `;`, não `,`: caminho de arquivo carrega vírgula. Sem raiz declarada vale uma raiz padrão criada sob demanda, para que instalação existente continue funcionando ao atualizar (FR-024) |
 | `allowExportIntoCaseFolder` | **Semântica estreitada.** Suprime só o veredito `INSIDE_CASE`; não reabre o resto do sistema de arquivos. Antes fazia `checkDestination` retornar antes de qualquer verificação |
 | `FieldNames.escapeKnownFieldNames` | Só reescreve nome que **este caso tem**, fora de aspas e seguido de `:`. Afrouxar qualquer uma das três condições faz o servidor inventar restrição de campo ou alterar a frase que o perito procurava. |
+| `ProgressReader` | Duas fontes, não uma. Contadores por **forma numérica** (`n/m`, `(p%)`), que sobrevivem a troca de locale; **fase** só por prosa localizada, sem âncora nenhuma — por isso o locale do filho é fixado, e não como salvaguarda secundária. O separador das linhas do motor é **tabulação**, e a saída é **CP1252** no Windows, não UTF-8: as duas coisas foram medidas contra o motor real, não supostas. E `stop()` **drena antes** de parar; inverter isso descarta justamente a cauda que explica uma falha |
+| `DiskPreflight.isSiblingSegment` | Ancorado na extensão do arquivo nomeado, não num padrão geral. "Letra mais dois alfanuméricos" casa com `E01` e igualmente com `csv`, `txt` e `log` — que é o que ferramenta de aquisição deixa ao lado da imagem |
+| `JobRunner.validate(request, resuming)` | Ocupação de destino é regra **de criação**. Numa retomada o destino tem que conter o caso parcial, e `HAS_FINISHED_CASE` vem da mesma verificação estrutural que não distingue concluído de interrompido. A fronteira do append é aplicada pelo estado registrado do trabalho, que é autoritativo |
+| Watcher do `JobRunner` | Só conclui o processo que observou. Retomada mantém o `job_id`, então um watcher obsoleto concluiria a execução nova com o código de saída da antiga — guardado por PID |
 | `Cursor` | A posição vem de `FieldDoc.fields[0]`, **nunca** de `ScoreDoc.score` — o `TopFieldCollector` deixa `NaN` ali. O formato do cursor decorre de `Cursor.SORT`: mudar a ordenação sem mudar o cursor faz a paginação reiniciar em silêncio. |
 
 ## 10. Limitações conhecidas
@@ -173,4 +202,7 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 - **O canal do transporte de rede não é protegido.** Autenticação por segredo compartilhado, conteúdo em claro. Adequado quando o trânsito fica dentro de uma máquina física — VM ou contêiner falando com o hospedeiro — ou em segmento confiável. Entre máquinas físicas em rede compartilhada, o conteúdo de evidência trafega legível para quem observe o segmento. Autenticação mútua por certificados é evolução prevista e não construída; o gatilho para retomá-la é a primeira implantação entre máquinas físicas distintas.
 - **Trilha por sessão, não por caso**, agora com o `SessionManifest` como resposta: uma linha por sessão que tocou o caso, na subpasta de auditoria, respondendo "são todas?" e "em que ordem?". A limitação em si permanece — o que mudou é que ela deixou de impedir a reconstituição. Uma sessão que abre dois casos sincroniza o mesmo arquivo para dentro dos dois. Sob a decisão D2 — estação individual, um caso por vez — isso é o comportamento certo; com dois casos abertos juntos, o perito vê ambos de qualquer forma.
 - **Snippet custa reextração de texto**, limitado por orçamento. Itens além do orçamento vêm com o trecho declarado ausente.
+- **A senha de contêiner cifrado vai ao motor pela linha de comando.** É a única via que o IPED oferece — não existe configuração de senha no motor —, e ela fica legível a outras contas da mesma máquina enquanto o processo existe (`/proc/<pid>/cmdline` no Linux). Decisão tomada por proporção: a exposição só se realiza em máquina de evidência com **mais de uma conta**, e a estação típica tem uma. Não é tácita: todo aceite que usa referência de segredo declara isso na resposta. Fechá-la exigiria acrescentar `-passwordFile` ao `iped-app`; o gatilho para retomar essa opção é a primeira implantação em máquina de evidência compartilhada.
+- **Retomada não é garantida por antecedência.** `--continue` só é aceito quando o destino já tem a pasta `iped`, e o servidor recusa antes com explicação própria quando não tem. Mas a verificação é **necessária, não suficiente**: uma interrupção logo após a pasta aparecer ainda falha dentro do motor, por estado que essa checagem não vê. Prever isso exigiria reimplementar a lógica de continuação do motor; quando acontece, o trabalho termina `FAILED` carregando as palavras do próprio motor.
+- **Diagnóstico dirigido ao agente não é "texto visível ao usuário"** do Princípio V, e por isso vive em inglês junto do resto da superfície. O que é localizado é interface do IPED, em `iped-app/resources/localization/`. A interpretação já era praticada desde a 001 e está escrita aqui para parar de parecer descuido a cada revisão.
 - **A versão do caso é lida do nome dos jars em `iped/lib`.** Um caso com essa pasta podada é recusado com `VERSION_UNSUPPORTED` em vez de ser aberto sob suposição.

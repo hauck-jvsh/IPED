@@ -200,6 +200,33 @@ pode ganhar campo, então corrigir seria mudar o desenho, não o teste.
 
 ---
 
+## Última execução — 2026-08-23
+
+Bancada: `RockPi4.E01`, 8,57 GB, segmento único; instalação `C:\iped\iped-mcp\iped-4.3.1` com JRE
+11.0.13; raiz de caso em `H:\iped-cases`; 48 núcleos.
+
+**273 testes, 0 falhas, 52 pulados** — os pulados são as suítes que exigem *caso* de referência
+(`referenceCase`, `largeCase`), não evidência. Todas as suítes de processamento executaram.
+
+| Medição | Resultado | Teto |
+|---|---|---|
+| Processamento completo, `fastmode`, 319.641 itens | **103 s** | — |
+| Aceite do pedido (SC-002) | abaixo do teto, cronometrado no teste | 5.000 ms |
+| Ponta a ponta com SHA-256 antes e depois (SC-001, SC-008, SC-015) | **181 s** | — |
+| Cancelamento de árvore, das duas suítes (SC-014) | **6,4 s** para dois casos | 60.000 ms |
+| Reconciliação de órfão, incluindo a guarda de reuso de PID | **0,14 s** | — |
+| Retomada completa: interromper, reconciliar, continuar, validar | **242 s** | — |
+| Consulta durante processamento (FR-025) | **62 s** para dois casos, ambos sob o orçamento | 15.000 ms |
+
+A linha que mais importa é a última: o servidor responde enquanto o motor toma a máquina. É a
+propriedade que justifica todo o arranjo fora do processo, e é barata de verificar — mas um servidor
+que só responde depois que o processamento acaba é, para quem espera, indistinguível de um morto.
+
+**O que não foi exercitado**: contêiner cifrado de verdade. A bancada não tem um, então SC-011 e
+SC-025 são verificados com uma referência de segredo resolvida sobre evidência não cifrada — o que
+prova que a senha não aparece nos quatro lugares e que o aviso sai, mas não que a decifragem
+funciona. Fica registrado como lacuna de verificação, não como requisito não construído.
+
 ## Cobertura
 
 | Critério | Cenário |

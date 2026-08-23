@@ -147,6 +147,10 @@ public final class JobStore {
         node.put("pid", job.getPid());
         putInstant(node, "processStart", job.getProcessStart());
         node.put("cancelledBy", job.getCancelledBy());
+        node.put("sessionId", job.getSessionId());
+        // The standing authorization, snapshotted at accept time. Granted by configuration rather
+        // than per request, it precedes the request and would otherwise leave no trace of its own.
+        node.put("authorizedUnder", job.getAuthorizedUnder());
         node.put("logPath", job.getLogPath());
         node.put("diskWarning", job.getDiskWarning());
 
@@ -212,6 +216,8 @@ public final class JobStore {
         job.setPid(node.path("pid").asLong());
         job.setProcessStart(instant(node, "processStart"));
         job.setCancelledBy(text(node, "cancelledBy"));
+        job.setSessionId(text(node, "sessionId"));
+        job.setAuthorizedUnder(text(node, "authorizedUnder"));
         job.setLogPath(text(node, "logPath"));
         job.setDiskWarning(text(node, "diskWarning"));
 

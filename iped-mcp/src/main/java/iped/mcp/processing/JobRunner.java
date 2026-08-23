@@ -147,6 +147,7 @@ public final class JobRunner {
         String jobId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         ProcessingJob job = new ProcessingJob(jobId, request, requestedBy, Instant.now());
         job.setLogPath(store.logFile(jobId).getAbsolutePath());
+        job.setAuthorizedUnder(describePostureInForce());
 
         DiskPreflight.Assessment assessment = preflight.assess(validated.source.toFile(),
                 new File(request.getDestinationPath()));
@@ -523,12 +524,40 @@ public final class JobRunner {
      * still there, the engine could not read what is there, which is a different problem and changes
      * what the examiner does next.
      */
-    private FailureCause classify(ProcessingJob job) {
+    public FailureCause classify(ProcessingJob job) {
         File source = new File(job.getRequest().getSourcePath());
         if (!source.exists() || !source.canRead()) {
+            // Whatever else went wrong, the source is not reachable now. Media unplugged, share
+            // dropped, permission lost — an environment problem, and worth retrying once fixed.
             return FailureCause.SOURCE_INACCESSIBLE;
         }
-        return FailureCause.SOURCE_UNREADABLE;
+        if (engineMarkedTheEvidenceFailed(job)) {
+            return FailureCause.SOURCE_UNREADABLE;
+        }
+        // Deliberately not SOURCE_UNREADABLE by default. A failure with the source sitting right
+        // there may have nothing to do with the evidence — an unknown profile fails this way — and
+        // telling the examiner their material is damaged when the problem is configuration sends
+        // them to re-acquire a disk that is fine. The claim is only made on the engine's own record.
+        return FailureCause.ENGINE_FAILURE;
+    }
+
+    /**
+     * Whether the engine itself recorded this evidence as failed.
+     *
+     * <p>
+     * Read from {@code iped/data/evidences_processing_status}, which the engine maintains, rather
+     * than guessed from log text. Log text is localized and its wording is not a contract; this map
+     * is the engine stating the outcome per evidence.
+     */
+    private boolean engineMarkedTheEvidenceFailed(ProcessingJob job) {
+        try {
+            List<String> failed = new EvidenceStatus(new File(job.getRequest().getDestinationPath()))
+                    .getFailedEvidences();
+            return failed != null && !failed.isEmpty();
+        } catch (RuntimeException e) {
+            // No readable status is not a statement about the evidence either way.
+            return false;
+        }
     }
 
     /**
@@ -586,6 +615,20 @@ public final class JobRunner {
             LOGGER.error("Job {} could not be persisted; reconciliation after a restart will not see it",
                     job.getJobId(), e);
         }
+    }
+
+    /**
+     * The permission this job runs under, as one readable line (FR-038).
+     *
+     * <p>
+     * Kept as text rather than a structure on purpose: this is evidence for a person reading a trail
+     * months later, not something the server queries. A sentence survives being pasted into a report;
+     * a nested object does not.
+     */
+    private String describePostureInForce() {
+        return "processing enabled; source areas: " + String.join(", ", config.getProcessingSourceAreas())
+                + "; case roots: " + String.join(", ", config.getProcessingCaseRoots())
+                + "; profiles: " + String.join(", ", config.getProcessingProfiles());
     }
 
     private void requireNoActiveJob() {

@@ -56,6 +56,32 @@ it.
 `iped_open_case` says precisely what is wrong with a path it rejects. A local search says only that
 your machine does not have it, which was already true before you asked.
 
+**The same holds for evidence.** If this installation creates cases, `iped_process_evidence` takes a
+source path and a destination path, and both are the server's, exactly like a case path. An
+`E:\hds\...` that means nothing on your filesystem is not a missing disk — it is a disk on the other
+machine. Pass it and read the answer. The refusal, if there is one, names where reading is permitted;
+your own directory listing names nothing useful.
+
+## Creating a case takes hours, and you do not wait for it
+
+If `iped_process_evidence` is available at all, this installation has been configured to allow it.
+Three things about it are not like the other tools:
+
+- **It returns immediately with a `job_id` and nothing has happened yet.** Follow it with
+  `iped_job_status`. Do not treat the accept as a result.
+- **Progress has two parts and they answer different questions.** Counters say how far along it is;
+  `phase` says what it is doing. During index commit and optimization there are no counters for
+  minutes at a time — that is normal, and `measurable: false` is the tool saying so rather than
+  progress having stopped. `stalled: true` is the one that means something is wrong, and even that
+  has to be read together with the phase.
+- **The case does not exist until the job completes.** A destination from an unfinished job is
+  refused by `iped_open_case`, and that refusal is protecting you: the folder can look structurally
+  complete while holding only what was processed before the run stopped, with nothing to say which
+  part of the evidence is missing.
+
+If a job fails, `iped_job_status` carries the engine's own last lines. Report the cause from those
+rather than guessing from the fact of failure.
+
 ## Do not extrapolate
 
 Report what the returned data supports and nothing beyond it.
