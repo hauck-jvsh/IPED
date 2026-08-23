@@ -154,6 +154,62 @@ Abrir caso real no harness exige duas coisas que o teste unitário não exige, e
 - **`-Diped.mcp.ipedRoot`** — a configuração do engine (`IndexTaskConfig`, `AnalysisConfig`, `CategoryConfig`) tem que ser carregada de uma instalação antes de abrir caso, exatamente como o `McpServerMain.main` faz. Sem isso o `iped_open_case` falha com `CASE_INACCESSIBLE` e `IndexTaskConfig` nulo. `McpTestSupport.requireIpedConfiguration()` cuida disso, chamado de `requireReferenceCase()`/`requireLargeCase()`.
 - **`-Djvm` apontando para o JRE 11 do release** — carregar o task installer arrasta o FST, que reflete em interno do JDK (`String.value`, `BigDecimal.intVal`, e mais conforme registra suas classes padrão). Java permite até a 15 e recusa a partir da 16. Em JVM ≥ 16 o harness **recusa antes de falhar**, com o comando pronto; abrir pacote a pacote com `--add-opens` é caça sem fim e um conjunto incompleto só desloca a confusão.
 
+### O que um caso de referência diferente do da receita revela
+
+Rodar as suítes contra um caso real que **não** é o da receita
+([`src/test/resources/reference-case/README.md`](src/test/resources/reference-case/README.md))
+expôs cinco suítes com problema. Duas eram defeitos reais e foram corrigidas; três são suposições que
+só valem para a receita. Nenhuma era regressão — as cinco estavam intocadas desde o commit da 001.
+
+**Corrigidos.** Valiam para qualquer caso, e ninguém via porque as suítes pulavam:
+
+| O quê | Diagnóstico |
+|---|---|
+| `McpSessionRule` não declarava raiz de escrita | A 006 tornou destino de artefato **lista de permissão**; a regra é da 001 e nunca foi atualizada. As quatro falhas do `ArtifactExportTest` eram `DESTINATION_REFUSED`. Quebrado desde a 006, invisível porque a suíte pula sem caso |
+| `commons-io` divergente entre teste e release | O Maven resolve **2.11.0** no `iped-mcp` e **2.16.1** no `iped-app`. `commons-compress` 1.27.1 chama `BoundedInputStream.builder()`, ausente na 2.11.0 → `NoSuchMethodError` ao ler conteúdo de item do armazenamento SQLite. **Produção nunca foi afetada**; o errado era o módulo ser *testado* contra biblioteca diferente da que executa. Fixado no pom |
+
+**Não corrigidos**, por serem suposição do teste e não do servidor:
+
+| Suíte | Por que falha em outro caso |
+|---|---|
+| `InvestigationBatteryTest` | Procura arquivos **plantados pela receita** (`apagado-recibo.txt` em Q06). Um caso real não os tem |
+| `PaginationTest.pagingCoversEverythingExactlyOnce` | Teto de **5000 páginas × 20 = 100.000 itens**. Contra caso maior o laço bate no teto. Vale corrigir para o teto escalar com `total_matches` |
+| `VocabularyTest` (3) | Três suposições da receita: que o caso **não** tem campo `mediaType` (aqui tem, então vem `QUERY_SYNTAX` em vez de `UNKNOWN_FIELD`); que `campo:*` vale para todo campo (num campo **numérico** o parser recusa com `Unparseable number: "*"`); e que a sugestão nunca é namespaced — o teste concatena o nome cru em vez de usar o `query_form` que o servidor devolve exatamente para isso |
+
+**Em aberto**, caracterizado mas não resolvido:
+
+`CaseOpenTest.closingReleasesTheCaseWithoutLeavingALock` falha com `AccessDeniedException` ao renomear
+a pasta do caso depois de `iped_close_case`. Medido: falha com **um único ciclo abrir→fechar**,
+isolada do resto da classe, e o rename **funciona** quando nenhum processo nosso está vivo. Não é
+contaminação entre suítes nem processo externo — é a sessão ainda segurando algo em
+`<caso>/mcp-audit/` depois de o caso fechar, provavelmente o alvo do `AuditSync`. Se é defeito ou
+expectativa do teste mais estrita que o desenho, é questão da 001.
+
+**Cuidado ao rodar essa suíte contra material de trabalho**: ela renomeia a pasta do caso e a renomeia
+de volta. Aqui o primeiro rename falhou, mas se tivesse funcionado e o segundo falhasse, o caso
+ficaria renomeado.
+
+Rodando contra caso fora da receita, exclua as três incompatíveis:
+
+```bash
+mvn -pl iped-mcp test -Dtest='!InvestigationBatteryTest,!PaginationTest,!VocabularyTest' \
+    -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java.exe \
+    -Diped.mcp.test.referenceCase=<caso>
+```
+
+### Escrita em caso de referência: faça backup do `bookmarks.iped`
+
+As suítes de curadoria escrevem marcadores no caso e **se restauram no fim** — `BookmarkWriteTest`
+tem limpeza explícita para que sejam repetíveis. Mas a restauração é do fim: **uma execução
+interrompida no meio deixa o caso alterado**. Medido, não suposto: uma rodada cortada por timeout
+mudou o `bookmarks.iped` de um caso real, e só o backup prévio permitiu devolvê-lo bit a bit.
+
+Antes de apontar as suítes para caso que não seja descartável, copie
+`<caso>/iped/bookmarks.iped` e guarde o SHA-256; confira e restaure ao fim.
+
+A trilha de auditoria em `<caso>/mcp-audit/` **cresce a cada rodada** e é append-only por construção
+— isso não se desfaz, e não deveria.
+
 As suítes que precisam de caso **pulam** quando ele não está configurado, e **um teste pulado não é um teste que passou**. Quando o caso está configurado mas a instalação ou o runtime não, o harness **falha** em vez de pular: alguém pediu execução real, e pular ali reportaria "nada a fazer" para bancada mal configurada. A receita reprodutível do caso de referência está em [`src/test/resources/reference-case/README.md`](src/test/resources/reference-case/README.md).
 
 `ScalePerformanceTest` contra o caso grande é inegociável: uma implementação que materializa o conjunto passa em todas as outras suítes deste módulo e só falha em campo. Ele imprime as medições ao final — pass/fail sozinho não mostra a corrida se aproximando do teto. Última execução, caso de **15.061.999 itens**:

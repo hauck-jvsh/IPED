@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.rules.ExternalResource;
 import org.junit.rules.TemporaryFolder;
 
+import java.util.Collections;
+
 import iped.mcp.McpServerMain;
 import iped.mcp.McpTestSupport;
 import iped.mcp.config.McpServerConfig;
@@ -44,6 +46,16 @@ public class McpSessionRule extends ExternalResource {
     protected void before() throws Throwable {
         McpServerConfig config = McpTestSupport.configWithTempAudit(temp.getRoot());
         config.setAccessMode(accessMode);
+        // Declares the temporary folder as a write root, because feature 006 turned artifact
+        // destinations into an allowlist and this rule predates it: without a root, the default one
+        // under the user's home is in force and every export to a temp folder is refused. The
+        // suites that export were skipping for want of a reference case, so the breakage stayed
+        // invisible from 006 until one was configured.
+        //
+        // Resolved to the real path for the reason McpTestSupport.realDirectory documents: on
+        // Windows a temp path routinely carries an 8.3 short name, and the server compares resolved
+        // paths.
+        config.setExportRoots(Collections.singletonList(temp.getRoot().toPath().toRealPath().toString()));
         server = new McpServerMain(config);
     }
 

@@ -54,6 +54,20 @@
             <artifactId>lucene-queryparser</artifactId>
             <version>${lucene.version}</version>
         </dependency>
+        <!--
+            Pinned to the version the release actually ships, which is not the one this module's
+            transitive graph resolves to on its own: Maven picks commons-io 2.11.0 here and 2.16.1 in
+            iped-app, so the tests ran against an older library than production uses. The gap is not
+            cosmetic — commons-compress 1.27.1 calls BoundedInputStream.builder(), which 2.11.0 does
+            not have, and reading item content out of the SQLite storage failed with
+            NoSuchMethodError in tests while working in the release. Aligning the two removes the
+            divergence rather than adding a dependency: this jar is already in the release.
+        -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.16.1</version>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-core</artifactId>
