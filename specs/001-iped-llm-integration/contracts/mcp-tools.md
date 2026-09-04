@@ -87,6 +87,7 @@ Todos os campos indexados de um item — descoberta de vocabulário por exemplo 
 |---|---|---|---|
 | `case_id` | string | sim | |
 | `query` | string | sim | |
+| `bookmark` | string | não | sem filtro de marcador |
 | `page_size` | inteiro | não | limitado por teto do servidor |
 | `cursor` | string | não | primeira página |
 | `timeout_ms` | inteiro | não | |
@@ -97,12 +98,17 @@ Retorna:
 |---|---|---|
 | `total_matches` | **sim** | Contagem exata, independente do que foi devolvido (FR-012) |
 | `items` | sim | `ItemView` já enriquecida, com `snippet` quando aplicável (FR-014, FR-015) |
+| `bookmark` | não | Presente quando a busca foi restringida ao marcador informado |
 | `next_cursor` | não | Ausente na última página |
 | `partial` | sim | `true` se houve esgotamento de tempo (FR-018) |
 
 **Nunca** devolve o conjunto completo de uma consulta ampla (FR-013). Ordenação determinística (FR-019).
 
-**Erros**: `QUERY_SYNTAX` com posição do problema (FR-017); `UNKNOWN_FIELD` com campos sugeridos (FR-008).
+Quando `bookmark` é informado, a busca retorna a interseção entre a expressão e os itens atualmente
+associados ao marcador, sem materializar previamente sua lista de ids.
+
+**Erros**: `QUERY_SYNTAX` com posição do problema (FR-017); `UNKNOWN_FIELD` com campos sugeridos
+(FR-008); `BOOKMARK_NOT_FOUND` quando o nome do marcador não existe no caso.
 
 ### `iped_aggregate`
 | Parâmetro | Tipo | Obrigatório |

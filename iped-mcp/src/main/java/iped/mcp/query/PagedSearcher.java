@@ -25,6 +25,7 @@ import org.apache.lucene.search.TimeLimitingCollector;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldCollector;
 
+import iped.data.IBookmarks;
 import iped.data.IItem;
 import iped.engine.data.IPEDSource;
 import iped.engine.search.QueryBuilder;
@@ -199,18 +200,23 @@ public class PagedSearcher {
     /**
      * Runs one page.
      *
+     * @param bookmark
+     *            exact bookmark name to filter on, or {@code null} for no bookmark filter
      * @param cursor
      *            continuation from a previous page, or {@code null} for the first
      * @return {@code total_matches}, {@code items}, {@code next_cursor} and {@code partial}
      */
-    public Map<String, Object> search(OpenCase openCase, String expression, Integer pageSize, String cursor,
-            Long timeoutMs, boolean includeSnippets) {
+    public Map<String, Object> search(OpenCase openCase, String expression, String bookmark, Integer pageSize,
+            String cursor, Long timeoutMs, boolean includeSnippets) {
         IPEDSource source = openCase.getSource();
         IndexSearcher searcher = source.getSearcher();
 
         QueryPlan plan = plan(openCase, expression);
         Query parsed = plan.getQuery();
         Query query = forItems(openCase, parsed);
+        if (bookmark != null) {
+            query = withBookmarkFilter(openCase, query, bookmark);
+        }
         int size = clampPageSize(pageSize);
         FieldDoc after = Cursor.decode(cursor);
         long budget = timeoutMs == null || timeoutMs <= 0 ? config.getQueryTimeoutMs() : timeoutMs;
@@ -264,6 +270,9 @@ public class PagedSearcher {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("case_id", openCase.getCaseId());
         result.put("query", expression);
+        if (bookmark != null) {
+            result.put("bookmark", bookmark);
+        }
         declareNormalization(result, plan);
         result.put("total_matches", totalMatches);
         result.put("page_size", size);
@@ -279,6 +288,28 @@ public class PagedSearcher {
             result.put("next_cursor", next);
         }
         return result;
+    }
+
+    /**
+     * Intersects an item query with the current membership of one bookmark.
+     *
+     * <p>
+     * Membership is deliberately a Lucene filter rather than a materialized list of ids. A
+     * bookmark may contain millions of items, and turning those ids into clauses or collecting the
+     * query first would defeat the bounded-memory pagination this class exists to provide.
+     */
+    private Query withBookmarkFilter(OpenCase openCase, Query itemQuery, String bookmark) {
+        IPEDSource source = openCase.getSource();
+        IBookmarks bookmarks = source.getBookmarks();
+        int bookmarkId = bookmarks == null ? -1 : bookmarks.getBookmarkId(bookmark);
+        if (bookmarkId == -1) {
+            throw new McpError(McpError.BOOKMARK_NOT_FOUND, "There is no bookmark named '" + bookmark + "'.",
+                    "Call iped_list_bookmarks to see the exact names this case has.").with("name", bookmark);
+        }
+        BooleanQuery.Builder builder = new BooleanQuery.Builder();
+        builder.add(itemQuery, Occur.MUST);
+        builder.add(new BookmarkQuery(bookmarks, bookmarkId, bookmark), Occur.FILTER);
+        return builder.build();
     }
 
     /** Exact match count without collecting anything. */

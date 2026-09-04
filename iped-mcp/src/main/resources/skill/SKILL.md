@@ -17,8 +17,9 @@ Querying before you know the shape of the collection produces queries aimed at a
 
 **2. Narrow progressively.** Start broad enough to see the shape, then restrict. `iped_aggregate`
 counts by category, media type, period, evidence or bookmark without inspecting a single item — use
-it to decide where to look before you list anything. A `total_matches` in the hundreds of thousands
-is a signal to narrow, not to start paging.
+it to decide where to look before you list anything. To inspect one curated set, pass its exact name
+as `bookmark` to `iped_search`; it is intersected with the query and keeps the same pagination. A
+`total_matches` in the hundreds of thousands is a signal to narrow, not to start paging.
 
 **3. Sample when the volume is high.** With a large result set, read the first page, aggregate to
 understand the distribution, and refine. Do not page through ten thousand items hoping to recognize

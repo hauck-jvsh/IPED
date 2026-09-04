@@ -42,8 +42,8 @@ public class QueryTools {
                 "Searches a case with IPED query syntax and returns one page of enriched items plus the exact "
                         + "total number of matches. total_matches is always exact and independent of how many "
                         + "items came back, so a large total means narrow the query rather than page through "
-                        + "it. Page with next_cursor. Ordering is deterministic: the same query returns the "
-                        + "same page in the same order.",
+                        + "it. Optionally restrict the result to one bookmark. Page with next_cursor. Ordering "
+                        + "is deterministic: the same query and bookmark return the same page in the same order.",
                 arguments -> search(arguments))
                         .required("case_id", "string", "Case identifier returned by iped_open_case.")
                         .required("query", "string",
@@ -51,6 +51,9 @@ public class QueryTools {
                                         + "for a restriction, quotes for phrases, AND/OR/NOT to combine, and "
                                         + "field:[a TO b] for ranges. Call iped_list_fields for the field names "
                                         + "this case has.")
+                        .optional("bookmark", "string",
+                                "Restrict results to items in this bookmark. Pass the exact name returned by "
+                                        + "iped_list_bookmarks. The bookmark is combined with query as a filter.")
                         .optional("page_size", "integer",
                                 "Items per page. Defaults to the server default and is capped by its ceiling.")
                         .optional("cursor", "string", "next_cursor from the previous page. Omit for the first page.")
@@ -84,7 +87,8 @@ public class QueryTools {
         String query = Args.requiredString(arguments, "query",
                 "Pass a query expression. Use an empty-ish broad query only with iped_aggregate; here it would "
                         + "just return the first page of the whole case.");
-        return pagedSearcher.search(openCase, query, Args.optionalInt(arguments, "page_size"),
+        String bookmark = Args.optionalString(arguments, "bookmark", null);
+        return pagedSearcher.search(openCase, query, bookmark, Args.optionalInt(arguments, "page_size"),
                 Args.optionalString(arguments, "cursor", null), Args.optionalLong(arguments, "timeout_ms"),
                 Args.optionalBoolean(arguments, "include_snippets", true));
     }

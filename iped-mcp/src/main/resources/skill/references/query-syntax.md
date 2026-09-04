@@ -140,7 +140,7 @@ zero rather than an error.
 | `md5`, `sha1` | `hash` — the algorithm is a processing setting |
 | `date`, `timestamp` | `created` / `modified` / `accessed`, or `timeStamp` |
 | `isDeleted` | `deleted` |
-| `label`, `tag` | bookmarks are not a query field; use `iped_list_bookmarks` |
+| `label`, `tag` | bookmarks are not query fields; pass `bookmark` separately to `iped_search` |
 | `p2p:fileType:"mp3"` | `p2p\:fileType:"mp3"` — see the colon section above |
 
 **Whenever a field-restricted query returns zero, call `iped_check_field` before drawing any

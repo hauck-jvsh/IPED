@@ -7,7 +7,9 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -158,6 +160,56 @@ public class BookmarkWriteTest {
                 error.path("remedy").asText().contains("iped_add_to_bookmark"));
 
         cleanUp(caseId);
+    }
+
+    @Test
+    public void searchCanPageAndIntersectOneBookmark() throws Exception {
+        File caseDir = McpTestSupport.requireReferenceCase();
+        String caseId = session.openCase(caseDir);
+        cleanUp(caseId);
+
+        List<Integer> candidates = firstItemIds(caseId, 4);
+        int[] bookmarked = candidates.subList(0, 3).stream().mapToInt(Integer::intValue).toArray();
+        session.call("iped_create_bookmark", "case_id", caseId, "name", BOOKMARK);
+        session.call("iped_add_to_bookmark", "case_id", caseId, "name", BOOKMARK, "item_ids", bookmarked);
+
+        Set<Integer> found = new HashSet<>();
+        String cursor = null;
+        long total;
+        do {
+            JsonNode page = session.call("iped_search", "case_id", caseId, "query", "*:*", "bookmark", BOOKMARK,
+                    "page_size", 2, "cursor", cursor, "include_snippets", false);
+            assertEquals(BOOKMARK, page.path("bookmark").asText());
+            total = page.path("total_matches").asLong();
+            for (JsonNode item : page.path("items")) {
+                found.add(item.path("item_id").asInt());
+            }
+            cursor = page.has("next_cursor") ? page.path("next_cursor").asText() : null;
+        } while (cursor != null);
+
+        Set<Integer> expected = new HashSet<>();
+        for (int itemId : bookmarked) {
+            expected.add(itemId);
+        }
+        assertEquals(bookmarked.length, total);
+        assertEquals(expected, found);
+
+        int outside = candidates.get(3);
+        JsonNode intersection = session.call("iped_search", "case_id", caseId, "query", "id:" + outside,
+                "bookmark", BOOKMARK, "include_snippets", false);
+        assertEquals("query and bookmark must be intersected", 0, intersection.path("total_matches").asLong());
+
+        cleanUp(caseId);
+    }
+
+    @Test
+    public void searchDiagnosesAnUnknownBookmark() {
+        String caseId = session.openCase(McpTestSupport.requireReferenceCase());
+
+        JsonNode error = session.expectError(McpError.BOOKMARK_NOT_FOUND, "iped_search", "case_id", caseId,
+                "query", "*:*", "bookmark", "bookmark-that-does-not-exist");
+
+        assertTrue(error.path("remedy").asText().contains("iped_list_bookmarks"));
     }
 
     private int bookmarkCount(String caseId, String name) {

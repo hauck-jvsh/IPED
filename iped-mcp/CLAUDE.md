@@ -7,6 +7,7 @@
 ## 1. Propósito
 
 - **Consulta paginada** de um caso, com contagem exata independente do que é devolvido.
+- **Filtro opcional por bookmark na busca**, intersectado com a consulta sem materializar seus ids.
 - **Agregações** por dimensão sem materializar itens.
 - **Descoberta de vocabulário** de campos, com sugestão de nomes próximos.
 - **Inspeção de item**: metadados, texto, miniatura, conteúdo bruto, hierarquia — todos com teto de volume e ausência declarada.
@@ -70,6 +71,9 @@ Duas consequências práticas menos óbvias:
 
 - **O campo `content` é indexado mas não armazenado.** Snippet exige reextrair o texto do item, o que é caro. Por isso `SnippetBuilder` trabalha sob três orçamentos (itens por página, bytes por item, tempo por página) e declara ausência quando estoura, em vez de devolver vazio.
 - **Registro precede ação.** Como a trilha é append-only, cada operação gera **dois** registros encadeados: `STARTED` antes de executar (com parâmetros e estado anterior) e o desfecho depois, ligado por `refSeq`. Se o `STARTED` não puder ser gravado, a operação é recusada e não executa.
+- **Bookmark na busca é filtro Lucene, não expansão de ids.** `BookmarkQuery` percorre o DocValues
+  numérico de `id` e consulta a associação corrente no `IBookmarks`. Ela declara
+  `isCacheable = false` porque o marcador pode mudar enquanto o searcher permanece aberto.
 
 ## 4. Configuração
 

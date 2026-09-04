@@ -149,6 +149,14 @@ public class ToolSchemaTest {
     }
 
     @Test
+    public void searchExposesBookmarkAsAnOptionalFilter() {
+        JsonNode schema = find("iped_search").path("inputSchema");
+        assertEquals("string", schema.path("properties").path("bookmark").path("type").asText());
+        assertFalse("bookmark must remain optional so existing search calls keep working",
+                schema.path("required").toString().contains("bookmark"));
+    }
+
+    @Test
     public void thereIsNoToolThatWritesToTheAuditTrail() {
         // FR-034: the trail is append-only by the server and not alterable by the agent.
         for (String name : names()) {
