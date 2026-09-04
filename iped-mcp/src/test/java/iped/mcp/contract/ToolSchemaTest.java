@@ -122,6 +122,10 @@ public class ToolSchemaTest {
         }
     }
 
+    /** Item types a parameter may declare. An array of anything else is a schema a client cannot fill. */
+    private static final Set<String> ITEM_TYPES = new HashSet<>(
+            Arrays.asList("integer", "string", "number", "boolean"));
+
     @Test
     public void arrayParametersDeclareTheirItemType() {
         for (JsonNode tool : tools) {
@@ -129,8 +133,10 @@ public class ToolSchemaTest {
             properties.fieldNames().forEachRemaining(field -> {
                 JsonNode property = properties.path(field);
                 if ("array".equals(property.path("type").asText())) {
-                    assertEquals("array parameter " + field + " of " + tool.path("name").asText()
-                            + " must declare its item type", "integer", property.path("items").path("type").asText());
+                    String itemType = property.path("items").path("type").asText();
+                    assertTrue("array parameter " + field + " of " + tool.path("name").asText()
+                            + " must declare a scalar item type, got '" + itemType + "'",
+                            ITEM_TYPES.contains(itemType));
                 }
             });
         }

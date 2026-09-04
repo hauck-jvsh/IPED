@@ -50,6 +50,23 @@ xcopy /E /I "<IPED_ROOT>\skills\claude-code\iped-forensics" "%USERPROFILE%\.clau
 cp -r "<IPED_ROOT>/skills/claude-code/iped-forensics" ~/.claude/skills/
 ```
 
+`~/.claude/skills/` makes it available everywhere. A `.claude/skills/` inside a project scopes it to
+that project instead — useful when the case work lives in one folder.
+
+**If you would rather not duplicate it**, link to the installation you already keep updated, and
+edits show up without a second install:
+
+```
+ln -s "<IPED_ROOT>/skills/claude-code/iped-forensics" ~/.claude/skills/iped-forensics
+```
+
+```
+mklink /J "%USERPROFILE%\.claude\skills\iped-forensics" "<IPED_ROOT>\skills\claude-code\iped-forensics"
+```
+
+`/J` is a directory junction and needs no administrator; `/D` does. Confirm it took by running
+`/skills` — if a linked skill does not appear, copy it instead.
+
 The skill is what teaches the agent to work the case with forensic discipline — cite items, validate
 field names before claiming absence, confirm before writing. Without it the tools still work, and
 the answers are worse.

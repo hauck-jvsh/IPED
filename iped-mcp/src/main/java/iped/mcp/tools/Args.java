@@ -71,6 +71,46 @@ final class Args {
         return node == null || node.isNull() ? fallback : node.asBoolean(fallback);
     }
 
+    /**
+     * A list of names, or {@code null} when the parameter was not given.
+     *
+     * <p>
+     * An empty array is refused rather than read as "no names": for a projection it would mean asking
+     * for nothing and getting items with no properties, which reads like items that have none.
+     */
+    static List<String> optionalStringList(JsonNode arguments, String name, String hint, int maxSize) {
+        JsonNode node = arguments.get(name);
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isArray()) {
+            throw new McpError(McpError.INVALID_ARGUMENT,
+                    "The parameter '" + name + "' must be an array of strings.", hint).with("parameter", name);
+        }
+        if (node.size() == 0) {
+            throw new McpError(McpError.INVALID_ARGUMENT, "The parameter '" + name + "' is an empty array.",
+                    "Omit '" + name + "' entirely to get the default. An empty list asks for nothing, and the "
+                            + "answer to it would look like items that have nothing.").with("parameter", name);
+        }
+        if (node.size() > maxSize) {
+            throw new McpError(McpError.INVALID_ARGUMENT,
+                    "The parameter '" + name + "' has " + node.size() + " entries, past the server batch ceiling of "
+                            + maxSize + ".",
+                    "Ask for at most " + maxSize + " at a time.").with("parameter", name)
+                            .with("received", node.size()).with("maxBatchSize", maxSize);
+        }
+        List<String> values = new ArrayList<>(node.size());
+        for (JsonNode entry : node) {
+            if (!entry.isTextual() || entry.asText().isEmpty()) {
+                throw new McpError(McpError.INVALID_ARGUMENT,
+                        "The array '" + name + "' contains an entry that is not a non-empty string.", hint)
+                                .with("parameter", name).with("received", entry.toString());
+            }
+            values.add(entry.asText());
+        }
+        return values;
+    }
+
     static List<Integer> requiredIntList(JsonNode arguments, String name, String hint, int maxSize) {
         JsonNode node = arguments.get(name);
         if (node == null || !node.isArray() || node.size() == 0) {

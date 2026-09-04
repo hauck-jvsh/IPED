@@ -85,6 +85,18 @@ Este é o cenário que separa a entrega da POC.
 
 ---
 
+## Cenário 4a — Projeção de campos escolhidos *(FR-080)*
+
+1. `iped_search` para obter um lote de ids; `iped_item_fields` em um deles para descobrir um campo específico daquele caso.
+2. `iped_get_items` com esse campo e `name` em `fields` → só esses campos, com as chaves pedidas, para todos os ids em **uma** chamada.
+3. Conferir contra a resposta sem `fields` do mesmo lote: mesmos `item_id`, e tamanho número, timestamp instante ISO e flag booleana nas duas formas.
+4. Repetir com um nome que o caso não tem → `UNKNOWN_FIELD` com `details.similar` e `details.recognized_fields`, **nenhum item devolvido**.
+5. Pedir `content` → recusa explicada apontando `iped_item_text`.
+
+**Esperado**: nenhum caminho devolve item com o campo silenciosamente ausente — a projeção não é via para afirmar ausência. Coberto por `integration/FieldProjectionTest`.
+
+---
+
 ## Cenário 5 — Agregação *(SC-015)*
 
 1. `iped_aggregate` por `category` no caso grande, cronometrando.

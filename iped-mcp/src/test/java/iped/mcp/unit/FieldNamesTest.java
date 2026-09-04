@@ -47,6 +47,25 @@ public class FieldNamesTest {
     }
 
     @Test
+    public void theQueryFormReadsBackAsThePlainName() {
+        // Round trip, because an agent hands the spelling it just used to the next call: a parameter
+        // that takes a name has to accept the form the parameter that takes an expression required.
+        assertEquals("p2p:fileType", FieldNames.fromQueryForm("p2p\\:fileType"));
+        assertEquals("ai:csamDetector:status", FieldNames.fromQueryForm("ai\\:csamDetector\\:status"));
+        assertEquals("odd name", FieldNames.fromQueryForm("odd\\ name"));
+        for (String name : new String[] { "p2p:fileType", "contentType", "Content-Type", "odd name" }) {
+            assertEquals(name, FieldNames.fromQueryForm(FieldNames.toQueryForm(name)));
+        }
+    }
+
+    @Test
+    public void aNameWithNoEscapeSurvivesUnescapingUntouched() {
+        assertSame("contentType", FieldNames.fromQueryForm("contentType"));
+        // A backslash that escapes nothing the parser cares about is part of the name, not syntax.
+        assertEquals("odd\\name", FieldNames.fromQueryForm("odd\\name"));
+    }
+
+    @Test
     public void theFormHandedOutIsOneTheParserAccepts() throws Exception {
         assertParsesAsField("p2p:fileType", "mp3");
         assertParsesAsField("ufed:UserID", "12345");

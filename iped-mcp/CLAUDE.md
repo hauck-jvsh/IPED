@@ -11,6 +11,7 @@
 - **Agregações** por dimensão sem materializar itens.
 - **Descoberta de vocabulário** de campos, com sugestão de nomes próximos.
 - **Inspeção de item**: metadados, texto, miniatura, conteúdo bruto, hierarquia — todos com teto de volume e ausência declarada.
+- **Projeção de campos escolhidos** sobre um lote de ids: `iped_get_items` com `fields` devolve só os campos nomeados, resolvidos contra o vocabulário do caso antes de ler qualquer documento.
 - **Curadoria**: marcadores e seleção, desabilitados por padrão.
 - **Trilha de auditoria** append-only encadeada por hash, gravada antes de cada operação.
 - **Artefatos de saída**: xlsx, CSV e JSON do conjunto completo, sem trafegar pela conversa.
@@ -29,7 +30,7 @@ iped/mcp/
 ├── protocol/                # JsonRpcCodec, McpError, ToolDescriptor, McpDispatcher
 ├── session/                 # Session, CaseRegistry, CaseValidator, OpenCase, ConcurrencyGuard
 ├── query/                   # PagedSearcher, Aggregator, SnippetBuilder, FieldVocabulary, FieldNames, Cursor
-├── item/                    # ItemView, ContentAccess
+├── item/                    # ItemView, FieldSelection, ContentAccess
 ├── curation/BookmarkWriter  # marcadores e seleção sobre Bookmarks/saveState
 ├── McpRelayMain.java        # relay stdio↔socket, para o harness em outra máquina
 ├── transport/               # Transport, StdioTransport, SocketTransport, HandshakeCodec
@@ -77,7 +78,7 @@ Duas consequências práticas menos óbvias:
 
 ## 4. Configuração
 
-Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constituição), nunca em constante de código: área de auditoria, modo de acesso, política de egresso, tetos de página, de lote e de conteúdo, faixa de versão suportada, destino de exportação, reparo de nome de campo (`autoEscapeFieldNames`, desligado por padrão — ligado, uma expressão que só falha por colon não escapado é corrigida contra o vocabulário real do caso e o reparo vem declarado em `query_normalized`).
+Tudo o que varia vive em `conf/McpServerConfig.txt` (Princípio IV da constituição), nunca em constante de código: área de auditoria, modo de acesso, política de egresso, tetos de página, de lote e de conteúdo (o `maxBatchSize` limita tanto quantos ids quanto quantos **nomes de campo** uma projeção pede — não há teto novo para isso), faixa de versão suportada, destino de exportação, reparo de nome de campo (`autoEscapeFieldNames`, desligado por padrão — ligado, uma expressão que só falha por colon não escapado é corrigida contra o vocabulário real do caso e o reparo vem declarado em `query_normalized`).
 
 Acrescentado na 007: **criação de caso** (`processingEnabled`, `processingSourceAreas`, `processingCaseRoots`, `processingProfiles`, `processingMinFreeSpacePercentOfSource`, `processingSecretsFile`, `processingLocale`, `processingStallThresholdSeconds`, `processingJvm`). As duas listas de raízes **não têm padrão**, e vazio é erro de configuração, não permissão total — inventar raiz seria conceder o que ninguém concedeu, e é a lista onde errar transforma o servidor em conversor de sistema de arquivos em índice consultável.
 
@@ -99,7 +100,8 @@ Acrescentado na 006: **raízes de escrita** (`exportRoots`, separadas por `;` �
 | Política de egresso não contornável por escolha de ferramenta | classe de conteúdo declarada em `ToolDescriptor.returnsContent`, aplicada na fronteira do dispatcher |
 | Estado anterior antes de operação destrutiva | `ToolDescriptor.capturingPriorState`, avaliado antes do `recordStart` |
 | Referência a item sempre carrega o caso | contrato das ferramentas; `ToolSchemaTest` verifica |
-| Ausência ≠ vazio | `ItemView.unavailable`, `ContentAccess.unavailable` |
+| Ausência ≠ vazio | `ItemView.unavailable`, `ContentAccess.unavailable`, `FieldSelection.project` |
+| Projeção com nome que o caso não tem **recusa a chamada**, não devolve itens sem o campo | `FieldSelection.resolve` roda antes de ler documento e lança `UNKNOWN_FIELD` com os nomes próximos. Devolver a página com o campo ausente em todo item é indistinguível de itens que realmente não o têm — é a forma de "nada encontrado" errado que a FR-047 existe para impedir |
 | Charset explícito, logging por SLF4J | `JsonRpcCodec`, `AuditTrail`; `System.out` corromperia o próprio protocolo |
 | Nada além do protocolo alcança a saída padrão — **inclusive o que vem de fora do código** | O código respeita a linha acima; quem a contradizia era a **configuração de log da instalação**. As duas configurações distribuídas (`Log4j2ConfigurationConsoleOnly`, `Log4j2ConfigurationFile`) e o padrão da própria biblioteca apontam para `SYSTEM_OUT` — correto para a CLI e a UI, errado aqui. `conf/Log4j2ConfigurationMcp.xml` existe para isso e os comandos publicados nos guias **precisam** passá-la em `-Dlog4j.configurationFile`. Invariante mantida só no código não protege contra acoplamento por arquivo de configuração |
 | Uma mensagem malformada é respondida e descartada, nunca fatal | `JsonRpcCodec.readMessage` → `McpError.MALFORMED_MESSAGE`; `McpServerMain.start` responde `-32700` e continue. Deixar a falha do Jackson escapar derrubava a sessão inteira e todos os casos abertos nela |
@@ -130,7 +132,7 @@ Nenhum artefato novo entra no release além do próprio `iped-mcp.jar`: POI e Ja
 ## 7. Testes
 
 ```bash
-mvn -pl iped-mcp test                                            # sem caso: 99 testes efetivos
+mvn -pl iped-mcp test                                            # sem caso: 216 efetivos de 297 (81 pulam)
 
 # Com caso, são necessários mais dois parâmetros — ver abaixo por quê:
 mvn -pl iped-mcp test -Diped.mcp.ipedRoot=<release> -Djvm=<release>/jre/bin/java.exe \
@@ -179,6 +181,12 @@ só valem para a receita. Nenhuma era regressão — as cinco estavam intocadas 
 | `InvestigationBatteryTest` | Procura arquivos **plantados pela receita** (`apagado-recibo.txt` em Q06). Um caso real não os tem |
 | `PaginationTest.pagingCoversEverythingExactlyOnce` | Teto de **5000 páginas × 20 = 100.000 itens**. Contra caso maior o laço bate no teto. Vale corrigir para o teto escalar com `total_matches` |
 | `VocabularyTest` (3) | Três suposições da receita: que o caso **não** tem campo `mediaType` (aqui tem, então vem `QUERY_SYNTAX` em vez de `UNKNOWN_FIELD`); que `campo:*` vale para todo campo (num campo **numérico** o parser recusa com `Unparseable number: "*"`); e que a sugestão nunca é namespaced — o teste concatena o nome cru em vez de usar o `query_form` que o servidor devolve exatamente para isso |
+
+`FieldProjectionTest` é **agnóstico ao conteúdo de propósito**, para não entrar nessa lista: tira os ids
+da própria busca e o campo específico do próprio `iped_list_fields`, em vez de esperar arquivo plantado
+ou vocabulário conhecido. Verificado contra caso fora da receita (release `4.4.0-SNAPSHOT`), 7 de 7,
+nenhum pulado. É só leitura — `iped_search`, `iped_get_items`, `iped_list_fields`,
+`iped_case_overview` — então não precisa do cuidado com `bookmarks.iped` da seção abaixo.
 
 **Em aberto**, caracterizado mas não resolvido:
 
@@ -232,6 +240,26 @@ A linha que importa é a da paginação profunda: a página 10 é **mais rápida
 
 Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harness são gerados no build (`generate-resources`) para `iped-app/resources/skills/{claude-code,codex,opencode}/iped-forensics/` e copiados para `skills/` no release. **Não edite os invólucros** — são regenerados a cada build e ignorados pelo git. `SkillParityTest` verifica que os três são byte a byte idênticos à fonte: orientação divergente entre harnesses produziria análises divergentes sobre a mesma evidência.
 
+### Rotas de instalação, revisadas em 2026-09-04
+
+O `install/codex.md` mandava copiar a pasta e escrever ponteiro no `AGENTS.md`, o único mecanismo que
+existia quando foi escrito. **O Codex ganhou diretório nativo de skills**: verificado no
+`codex-cli 0.153.2`, as preinstaladas ficam em `$CODEX_HOME/skills/.system/<nome>/` com `SKILL.md` +
+`references/`, e o `skill-installer` da própria OpenAI declara instalar em
+`$CODEX_HOME/skills/<nome>`. O frontmatter que elas usam (`name`, `description`) é o que a nossa skill
+já carrega, então ela entra sem edição. O guia passa a ramificar por versão — pasta de skills quando
+existe, `AGENTS.md` quando não —, porque instalação que assume o mecanismo novo falha em silêncio no
+build antigo. **Se `~/.codex/skills/` seguir link simbólico não foi verificado**; o guia diz para
+confirmar e cair no `AGENTS.md`, que aceita caminho absoluto e não depende disso.
+
+Também documentado, e medido em vez de suposto: **Codex dentro do WSL2 lançando o `java.exe` do
+Windows** por interop (`command = /mnt/c/.../jre/bin/java.exe`, argumentos com caminho Windows). 25
+ferramentas em `tools/list`, stdout só com JSON-RPC, log do engine no stderr. É a melhor das opções
+porque o caminho continua sendo do Windows — o que mantém as `exportRoots` do `McpServerConfig.txt`
+casando e o índice sendo lido nativamente —, e porque o `jre/` do release é Windows e não roda sob
+Linux. O que ela **não** é: isolamento. Depende de `/mnt/c`, e aí o agente alcança a pasta do caso
+por fora da superfície de ferramentas.
+
 ## 9. ⚠️ Áreas sensíveis
 
 | Área | Cuidado |
@@ -241,6 +269,7 @@ Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harnes
 | Portão de escrita no `McpDispatcher` | Precisa continuar antes de qualquer leitura de argumento, ou "sem tocar o caso" deixa de ser verdade. |
 | `ConcurrencyGuard` | A UI do IPED 4.3.1 não trava o caso. A detecção é cooperativa entre processos `iped-mcp` e best-effort para a UI — ausência de conflito **não** prova ausência de outro leitor. |
 | `ItemView.storedFields` | Lê do documento armazenado, não do `IItem`. Acrescentar campo aqui é barato; trocar por reconstrução de item custa a latência da página. |
+| `FieldSelection` | Tipagem tem que **concordar com o `ItemView`** campo a campo: tamanho é número, timestamp é instante ISO, flag é booleano nas duas formas — quem compara as duas respostas está comparando o mesmo item. Duas armadilhas do índice moram aqui: `isRoot` só é gravado quando verdadeiro, então **ausência é `false`**, não indeterminado; e campo binário (`thumbnail`, features, KnnVector) tem `stringValue()` nulo e é declarado em `unavailable` apontando a ferramenta que devolve bytes — projetá-lo como vazio seria mentir sobre o item. |
 | `CasePool` | Um `IPEDSource` por caso por processo, com contagem de referências. `OpenCase.close()` **solta referência**, não fecha o handle — fechá-lo direto tira o searcher de baixo de outra sessão. O que é compartilhado é imutável depois do construtor; nada com estado mutável pode entrar aqui |
 | `AuditRecord` | **Não acrescente campo.** `AuditTrail.verify` recompõe `toNodeWithoutHash` a partir do que lê, então um campo a mais muda o resultado para registros já emitidos. Foi por isso que identidade alegada foi para o campo `operator` e transporte/origem para o `SessionManifest` |
 | `bridge/mcp-bridge.py` | Mesmas duas regras do `McpRelayMain`, e pelas mesmas razões: nada em stdout — que aqui é o canal de volta ao harness — e `shutdown(SHUT_WR)` no fim da entrada. Não tem suíte própria: é script de recurso, não classe compilada. Ao mexer, verifique à mão as duas coisas que importam — as chamadas respondem **e** o processo sai com código 0 quando o stdin fecha. A primeira sozinha não prova nada |

@@ -107,6 +107,11 @@ public class McpSessionRule extends ExternalResource {
                 for (int entry : (int[]) value) {
                     array.add(entry);
                 }
+            } else if (value instanceof String[]) {
+                com.fasterxml.jackson.databind.node.ArrayNode array = arguments.putArray(key);
+                for (String entry : (String[]) value) {
+                    array.add(entry);
+                }
             } else {
                 arguments.put(key, String.valueOf(value));
             }

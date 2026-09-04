@@ -70,6 +70,36 @@ public final class FieldNames {
     }
 
     /**
+     * The name as it is spelled everywhere <b>except</b> inside a query expression: the escapes the
+     * parser needs, removed.
+     *
+     * <p>
+     * The inverse of {@link #toQueryForm(String)}, for arguments that take a name rather than an
+     * expression — {@code iped_check_field}, an aggregation dimension, the {@code fields} of
+     * {@code iped_get_items}. An agent that has just written {@code p2p\:fileType} into a query
+     * pastes the same spelling into the next call, and refusing it there over one backslash sends it
+     * looking for the problem in the case instead of in the punctuation.
+     *
+     * @return {@code p2p:fileType} for {@code p2p\:fileType}; the name unchanged when it carries no
+     *         escape
+     */
+    public static String fromQueryForm(String field) {
+        if (field == null || field.indexOf('\\') < 0) {
+            return field;
+        }
+        StringBuilder plain = new StringBuilder(field.length());
+        for (int i = 0; i < field.length(); i++) {
+            char c = field.charAt(i);
+            if (c == '\\' && i + 1 < field.length() && SPECIAL.indexOf(field.charAt(i + 1)) >= 0) {
+                // The backslash is punctuation of the query language, not a character of the name.
+                continue;
+            }
+            plain.append(c);
+        }
+        return plain.toString();
+    }
+
+    /**
      * Rewrites an expression so that every field name of this case that appears in it unescaped is
      * spelled the way the parser needs.
      *

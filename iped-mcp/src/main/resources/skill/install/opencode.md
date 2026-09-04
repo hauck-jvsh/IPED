@@ -110,8 +110,17 @@ cp -r "<IPED_ROOT>/skills/opencode/iped-forensics" ~/.config/opencode/
 Then reference it from `~/.config/opencode/AGENTS.md`:
 
 ```markdown
-When working with IPED forensic cases, follow ~/.config/opencode/iped-forensics/SKILL.md.
+When working with IPED forensic cases, read ~/.config/opencode/iped-forensics/SKILL.md before
+anything else. The files it links under references/ are relative to that folder.
 ```
+
+Name the folder, not just the file: without it the two references — the query syntax and the worked
+workflows — are never opened, and those carry the field-name escaping rule that makes metadata
+queries work.
+
+**The copy is not required.** The pointer takes any absolute path, so it can name the installation you
+already keep updated — `<IPED_ROOT>/skills/opencode/iped-forensics/SKILL.md` — and then there is one
+copy on the machine instead of two drifting apart.
 
 The text is identical to what the other harnesses load. Divergent guidance would produce divergent
 analyses of the same evidence, which is why there is one canonical source and thin wrappers.

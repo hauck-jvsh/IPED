@@ -27,7 +27,9 @@ which categories dominate, which period the material spans. It usually reframes 
    restrict — `contract AND category:"Documents"`.
 3. Small total: read the snippets. They show why each item matched, which is usually enough to tell
    relevant from incidental without opening anything.
-4. `iped_get_items` for a batch of the promising ones, `iped_item_text` for the few that matter.
+4. `iped_get_items` for a batch of the promising ones, `iped_item_text` for the few that matter. When
+   what you need is one or two specific fields rather than the whole item, pass `fields` — it returns
+   just those, for the whole batch.
 5. Cite ids in the conclusion.
 
 If a term produces zero, try it as a fragment (`transfer*`), check spelling variants, and consider
@@ -58,7 +60,9 @@ evidence.
    `category:"Chats"` — the exact name varies.
 2. `iped_item_fields` on one message item. This is the fastest way to learn what this case calls
    conversation, sender and recipient.
-3. Query by theme within the chats: `category:"Chats" AND "the term"`.
+3. Query by theme within the chats: `category:"Chats" AND "the term"`. Then `iped_get_items` with
+   `fields` set to those sender and recipient names, over the ids the query returned: one call gives
+   you who spoke to whom across the whole set, instead of one call per message.
 4. `iped_item_tree` on a conversation item to see its messages, or on a message to see its
    conversation.
 5. For the deliverable: `iped_export_artifact` with `group_by_conversation: true` — it writes the
@@ -101,7 +105,9 @@ These are different things and the difference matters when you write it up.
 1. `iped_item_fields` on one email item to learn the field names this case uses for sender and
    recipient.
 2. Query by address: `<from-field>:"person@example.com"`, and the same for the recipient field.
-3. `iped_aggregate` on `period` over that query to see the correspondence over time.
+3. `iped_aggregate` on `period` over that query to see the correspondence over time. For the
+   correspondents themselves, `iped_get_items` with `fields` set to the sender and recipient names
+   reads them for the whole result set in one call.
 4. `iped_item_tree` on an email to see its attachments — attachments are subitems, and they are
    frequently the point.
 5. Cite the email and its attachments together.

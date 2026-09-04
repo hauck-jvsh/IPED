@@ -57,7 +57,8 @@ Three things that trip agents here, in the order they cause trouble:
   server receives `p2p\:fileType`. Emitting a bare `\:` inside a JSON string is invalid JSON and the
   call is rejected before it reaches the case.
 - **The escape belongs only inside a query expression.** `iped_check_field`, the keys returned by
-  `iped_item_fields` and the `dimension` argument of `iped_aggregate` all take the plain name.
+  `iped_item_fields`, the `dimension` argument of `iped_aggregate` and the `fields` of
+  `iped_get_items` all take the plain name.
 
 `iped_list_fields` and `iped_item_fields` return the plain names and, when any of them need it, a
 `query_form` with the spelling to paste into a query. `iped_check_field` returns `query_form` for a
@@ -76,6 +77,12 @@ without checking — it is a processing-time setting.
 These are the basic properties present on essentially every 4.x case. Anything beyond them —
 parser-produced metadata, EXIF, message fields — varies by case and must come from
 `iped_list_fields` or `iped_item_fields`.
+
+Once you know the name, read it across a whole set in one call: `iped_get_items` with `fields`
+returns exactly the fields you name for a batch of ids. That is the pair to use — `iped_item_fields`
+on one item to learn what the case calls something, then `iped_get_items` with `fields` to read it
+for every id the search returned. A name this case does not have is refused with the near names
+attached, so a projection never comes back as an absence you might report as a finding.
 
 ### Identity and structure
 

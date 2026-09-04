@@ -126,12 +126,17 @@ Alvo: < 15 s em caso de 10 M (SC-015).
 ## Inspeção de item
 
 ### `iped_get_items`
-| Parâmetro | Tipo | Obrigatório |
-|---|---|---|
-| `case_id` | string | sim |
-| `item_ids` | lista de inteiro | sim |
+| Parâmetro | Tipo | Obrigatório | Default |
+|---|---|---|---|
+| `case_id` | string | sim | |
+| `item_ids` | lista de inteiro | sim | |
+| `fields` | lista de string | não | propriedades essenciais |
 
-Propriedades essenciais de um **lote**, em uma chamada, com teto de tamanho (FR-024). Existe para evitar N chamadas.
+Propriedades de um **lote**, em uma chamada, com teto de tamanho (FR-024). Existe para evitar N chamadas.
+
+Sem `fields`, devolve as propriedades essenciais no formato plano de sempre. Com `fields`, devolve **só** os campos nomeados, em `items[].fields` com as chaves que o chamador pediu, mais `projection` e `projection_note` no topo — o que foi lido tem que ser legível na própria resposta. Nomes são os **planos** que `iped_list_fields`/`iped_item_fields` devolvem (a grafia de query, com colon escapado, também é aceita e vem declarada em `resolved_fields`), assim como as chaves que o servidor publica no item (`content_type`, `parent_id`, `bookmarks`, `selected`).
+
+Nome que este caso não tem **recusa a chamada inteira** com `UNKNOWN_FIELD`, `details.similar` por nome rejeitado e `details.recognized_fields` — responder com itens sem o campo é indistinguível de itens que não o têm, e é assim que se produz um "nada encontrado" errado (FR-047). `content` é recusado com explicação própria: é indexado e não armazenado, então nenhuma projeção o devolve.
 
 ### `iped_item_metadata`
 Metadados extraídos (EXIF, GPS, cabeçalhos, codec).

@@ -23,7 +23,10 @@ as `bookmark` to `iped_search`; it is intersected with the query and keeps the s
 
 **3. Sample when the volume is high.** With a large result set, read the first page, aggregate to
 understand the distribution, and refine. Do not page through ten thousand items hoping to recognize
-something. If the examiner needs all of them, that is what `iped_export_artifact` is for.
+something. If the examiner needs all of them, that is what `iped_export_artifact` is for. When the
+question turns on one or two specific fields rather than on whole items, pass `fields` to
+`iped_get_items`: it returns exactly the fields you name for the whole batch of ids, which is how you
+read a sender, a coordinate or an EXIF tag across a result set without one call per item.
 
 **4. Cite items in every conclusion.** Every statement of fact about the case carries the item ids
 that support it. "There are messages discussing the transfer" is not a finding; "items 48213,
@@ -93,6 +96,11 @@ Report what the returned data supports and nothing beyond it.
   everything.
 - An absent field is absent, with a reason attached in `unavailable`. It is not an empty value, and
   it is not a fact about the world — an item with no GPS metadata is not an item that was nowhere.
+- A projection carries only what you asked for. When you pass `fields`, the answer lists what was
+  read in `projection`; a field outside that list was never looked at and says nothing about the
+  items. A field inside it that an item does not have is declared in that item's `unavailable`, with
+  the reason. And a field name this case does not have does not come back quietly empty — the call is
+  refused with the near names, precisely so a typo cannot become a finding of absence.
 - A `total_matches` you have not paged through is a count, not a set you have inspected.
 
 If the examiner asks something the data cannot answer, say so and say what would answer it.

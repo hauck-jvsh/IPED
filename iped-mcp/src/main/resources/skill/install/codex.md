@@ -48,36 +48,88 @@ shown.
 
 ## Step 2 — Install the guidance
 
-Codex reads project and user instructions from `AGENTS.md`. Copy the skill's content in:
+**Look for `~/.codex/skills/` first** (`%USERPROFILE%\.codex\skills` on Windows). Recent Codex builds
+load skills from there, one folder each, and that is the shorter route. Older ones have no such
+folder and read guidance only from `AGENTS.md`. Both routes are below; use the one your build
+supports.
+
+### If `~/.codex/skills/` exists
+
+Drop the folder in and you are done — no pointer, no editing. `$CODEX_HOME/skills/<name>/SKILL.md`
+with a `references/` beside it is exactly the layout Codex's own preinstalled skills use, and the
+frontmatter this skill already carries (`name`, `description`) is the format they use.
 
 **Windows**
 
 ```
-xcopy /E /I "<IPED_ROOT>\skills\codex\iped-forensics" "%USERPROFILE%\.codex\iped-forensics"
+xcopy /E /I "<IPED_ROOT>\skills\codex\iped-forensics" "%USERPROFILE%\.codex\skills\iped-forensics"
 ```
 
 **Linux**
 
 ```
+cp -r "<IPED_ROOT>/skills/codex/iped-forensics" ~/.codex/skills/
+```
+
+If you set `CODEX_HOME`, that is the root the skills folder hangs off — not `~/.codex`.
+
+### If it does not
+
+Codex reads project and user instructions from `AGENTS.md`. Put the folder anywhere readable:
+
+```
 cp -r "<IPED_ROOT>/skills/codex/iped-forensics" ~/.codex/
 ```
 
-Then add a pointer at the top of the `AGENTS.md` of the project you work cases in — or to
+and add a pointer at the top of the `AGENTS.md` of the project you work cases in — or to
 `~/.codex/AGENTS.md` for all of them:
 
 ```markdown
-When working with IPED forensic cases, follow ~/.codex/iped-forensics/SKILL.md.
+When working with IPED forensic cases, read ~/.codex/iped-forensics/SKILL.md before anything else.
+The files it links under references/ are relative to that folder.
 ```
+
+Name the folder, not just the file: without it the two references — the query syntax and the worked
+workflows — are never opened, and those carry the field-name escaping rule that makes metadata
+queries work.
+
+### Pointing instead of copying
+
+Nothing here needs a copy. If you already have the skill on disk — from a clone of the IPED source,
+or from an installation you keep updated — link to it instead, and edits show up without a second
+install:
+
+```
+ln -s "<IPED_ROOT>/skills/codex/iped-forensics" ~/.codex/skills/iped-forensics
+```
+
+```
+mklink /J "%USERPROFILE%\.codex\skills\iped-forensics" "<IPED_ROOT>\skills\codex\iped-forensics"
+```
+
+`/J` is a directory junction and needs no administrator; `/D` does. **Confirm it took**: ask Codex
+which skills it has. If a linked skill does not show up, this build is not following links — copy it,
+or use the `AGENTS.md` pointer, which takes an absolute path anywhere and never depends on that.
 
 The guidance is the same text used by every harness. That is deliberate: divergent guidance would
 produce divergent analyses of the same evidence.
 
 ## Step 3 — Check it
 
-Start Codex and ask it to list its available tools. Tools named `iped_*` should be there.
+Start Codex and ask it to list its available tools. Tools named `iped_*` should be there. Ask it for
+its skills too: `iped-forensics` should be among them if you took the skills-folder route.
 
-If they are not, run the command from step 1 by hand in a terminal. The server logs its startup
-diagnostics; each failure says what to fix.
+If the tools are not there, run the command from step 1 by hand in a terminal. The server logs its
+startup diagnostics; each failure says what to fix. You can also check the surface without a harness
+at all — feed it two lines and read the answer:
+
+```
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"check","version":"1"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list"}
+```
+
+A healthy server answers both on stdout and puts nothing else there. Startup logging belongs on
+stderr, which is what the `-Dlog4j.configurationFile` above is for.
 
 ## Step 4 — Ask something
 
@@ -106,6 +158,63 @@ Find documents mentioning "contract" that were modified in 2024.
 1. Open `<IPED_ROOT>/conf/McpServerConfig.txt`.
 2. Set `accessMode = READ_WRITE`.
 3. Restart Codex.
+
+## Codex in WSL, case on Windows
+
+A common setup on a Windows workstation: Codex installed inside a WSL2 distribution, the IPED
+installation and the cases on the Windows side. Two things to know before anything else.
+
+**The WSL Codex has its own `~/.codex`.** `/home/<you>/.codex` and `C:\Users\<you>\.codex` are
+different directories with different `config.toml`, `AGENTS.md` and credentials. Configuring one does
+nothing for the other, and that is the most common way this setup appears broken.
+
+**The `jre/` in the release is Windows.** `jre/bin/java.exe` will not run under Linux, so you have two
+options and they are not equivalent.
+
+### Launch the Windows JVM from WSL (recommended)
+
+WSL runs Windows executables directly. Point `command` at `java.exe` through `/mnt/c`, and give the
+arguments as **Windows** paths, because the process that reads them is a Windows process:
+
+```toml
+[mcp_servers.iped]
+command = "/mnt/c/path/to/IPED/jre/bin/java.exe"
+args = [
+  "-Diped.mcp.ipedRoot=C:/path/to/IPED",
+  "-Dlog4j.configurationFile=file:///C:/path/to/IPED/conf/Log4j2ConfigurationMcp.xml",
+  "-cp", "C:/path/to/IPED/lib/*",
+  "iped.mcp.McpServerMain"
+]
+startup_timeout_sec = 30
+```
+
+Forward slashes are fine for the JVM on Windows, and TOML strings in single quotes take backslashes
+raw if you prefer them. `startup_timeout_sec` matters: loading the engine configuration takes a few
+seconds before the server answers.
+
+Two things follow, and both are why this is the recommended option:
+
+- **Every path in the tool surface stays a Windows path.** You open `D:\cases\operation`, and the
+  `exportRoots` in `conf/McpServerConfig.txt` — written as Windows paths — match what the server
+  checks.
+- **The index is read natively.** Reading a large Lucene index through `/mnt/c` costs real time; here
+  only the launch crosses the boundary.
+
+### Or run a Linux JVM inside WSL
+
+You supply the JVM — Java 11 through 15; the serialization library the engine loads cannot reflect on
+16 and later. Then `command` is your `java`, and `-Diped.mcp.ipedRoot`, `-cp` and every case path you
+ever pass become `/mnt/c/...` paths. Expect two frictions: the `exportRoots` in
+`McpServerConfig.txt` no longer match the paths the server now sees, and every index read goes through
+`/mnt/c`.
+
+### What this arrangement is not
+
+It is **not** isolation. Both options above depend on `/mnt/c`, and WSL2 mounts the Windows drives
+there by default, writable, as your user — the agent can reach the case folder directly, whatever the
+tool surface says. If isolation is the goal, that is the next section, and it requires
+`automount.enabled=false` in `/etc/wsl.conf` to be real. You cannot have the convenience of `/mnt/c`
+and the isolation at the same time.
 
 ## Running the server on another machine
 
@@ -146,6 +255,13 @@ sharedSecretFile = D:\pericia\segredo-mcp.txt
 `127.0.0.1` keeps the port on loopback, which is what you want when the harness is a VM on this same
 host reaching it through a forwarded port. Widen it only if the harness is genuinely on another
 machine.
+
+**From WSL, whether loopback is enough depends on one setting.** With `networkingMode=mirrored` in
+`%USERPROFILE%\.wslconfig`, the distribution reaches the host's loopback, so `127.0.0.1` on both sides
+is all you need. With the default NAT networking it is not: the server has to listen on an interface
+the distribution can reach, the client has to use the host's address rather than `127.0.0.1`, and
+Windows Firewall has to allow the port. Prefer mirrored — it removes two moving parts, and remember
+that removing it later breaks a configuration that was working.
 
 If no secret resolves, **the endpoint is not established** and the startup diagnostic says why.
 There is no configuration in which the server listens without authentication.

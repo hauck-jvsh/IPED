@@ -53,6 +53,15 @@ Teste de cobertura sobre caso real de 781.246 itens e 455 campos indexados, exer
   - **T079** — nunca executada contra harness de modelo local. **FR-065 não verificado** e, com ele, a salvaguarda operacional da decisão D3: como a política de egresso é inativa por padrão (FR-039), rodar contra modelo local é o que mantém conteúdo de evidência na estação. Enquanto isso não for verificado, o material de um caso trafega para o provedor do modelo em uso — o que o servidor declara na abertura de toda sessão, como manda FR-043.
 - Q: Encerrar altera algum requisito? → A: **Não.** Nenhum FR foi removido ou relaxado. O escopo entregue é o que as tarefas marcadas concluídas descrevem; o que não foi verificado permanece escrito como não verificado.
 
+### Session 2026-09-04 — projeção de campos escolhidos sobre um lote
+
+Pedido de campo: devolver **uma lista de campos específica a partir de uma lista de ids**. Era o que faltava para fechar a economia de chamadas que o FR-024 começou — as propriedades essenciais são as mesmas em todo caso, e o campo que decide uma investigação costuma ser específico do caso (`ufed:UserID`, `p2p:fileType`, um EXIF).
+
+- Q: Ferramenta nova ou parâmetro na existente? → A: **Parâmetro opcional `fields` no `iped_get_items`.** A superfície de ferramentas fica fixa (o `ToolSchemaTest` a fixa por contrato) e a semântica é exatamente "o lote, projetado". Sem o parâmetro, a resposta é **idêntica** à anterior, chave por chave — cliente que já chamava a ferramenta não vê diferença.
+- Q: Nome de campo que o caso não tem deve ser ignorado ou recusar a chamada? → A: **Recusa a chamada inteira**, com os nomes próximos, antes de ler qualquer documento. Devolver os itens sem o campo é indistinguível de itens que não o possuem: é a forma que a afirmação falsa de ausência do FR-047 assume dentro de uma projeção. Um erro de digitação não pode virar achado. **FR-080 criado.**
+- Q: A projeção pode devolver o texto do item (`content`)? → A: **Não**, e a recusa é explicada em vez de vir como ausência: `content` é indexado para busca e não armazenado como propriedade. Declarar isso é o que evita a leitura de "caso sem texto". A resposta aponta `iped_item_text` e os trechos de `iped_search`.
+- Q: Os nomes aceitos são só os do índice? → A: **Também as chaves que o próprio servidor publica no item** (`content_type`, `parent_id`, `is_dir`, `bookmarks`, `selected`) e a grafia de consulta com colon escapado. Tudo que o servidor entrega tem que poder ser devolvido a ele; recusar `content_type` depois de tê-lo publicado seria armadilha posta pelo próprio servidor. A correspondência vem declarada em `resolved_fields`.
+
 ---
 
 ## User Scenarios & Testing *(mandatory)*
@@ -212,6 +221,7 @@ O perito pede ao assistente que processe uma evidência bruta (imagem forense, e
 - **FR-022**: O sistema MUST informar de forma explícita quando um recurso não estiver disponível para o item (sem texto extraído, sem miniatura, evidência inacessível, item cifrado), distinguindo indisponibilidade de conteúdo vazio.
 - **FR-023**: O sistema MUST permitir navegar a hierarquia de um item (contêiner pai e itens contidos) sem construção manual de consultas.
 - **FR-024**: O sistema MUST permitir recuperar as propriedades essenciais de um lote de itens em uma única operação, com limite de tamanho de lote.
+- **FR-080**: O sistema MUST permitir recuperar, para um lote de itens em uma única operação, **exatamente o conjunto de campos que o consumidor nomear**, aceitando os nomes como as ferramentas de vocabulário os devolvem. Quando qualquer nome não existir no caso, o sistema MUST recusar a operação **inteira** indicando os nomes próximos, em vez de devolver os itens sem aquele campo: as duas respostas são indistinguíveis para quem lê, e a segunda transforma erro de digitação na afirmação de ausência que o FR-047 proíbe. O resultado MUST declarar quais campos foram lidos, de modo que uma projeção estreita não seja lida como o conjunto completo do item.
 
 #### Marcadores e seleção
 

@@ -4,12 +4,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
 import org.apache.lucene.document.Document;
 
 import iped.mcp.item.ContentAccess;
+import iped.mcp.item.FieldSelection;
 import iped.mcp.item.ItemView;
 import iped.mcp.protocol.McpError;
 import iped.mcp.protocol.ToolDescriptor;
@@ -24,6 +26,14 @@ import iped.mcp.session.Session;
  * {@code iped_get_items} takes a batch in one call (FR-024). It is what keeps an agent from making
  * one call per item after a search — the pattern that makes a fifty-item result set cost fifty
  * round trips.
+ *
+ * <p>
+ * Its {@code fields} parameter closes the other half of that gap. The default projection is the
+ * essential properties, which are the same for every case; the fields that decide an investigation
+ * are often case-specific — {@code ufed:UserID}, {@code p2p:fileType}, an EXIF tag — and reaching
+ * those used to mean one {@code iped_item_fields} call per item. {@link FieldSelection} resolves the
+ * names against this case before anything is read, so a misspelled one fails the call instead of
+ * coming back as an absence in every item.
  *
  * <p>
  * Each content tool declares its content class, so the egress policy applies at the dispatcher
@@ -43,12 +53,22 @@ public class ItemTools {
         List<ToolDescriptor> tools = new ArrayList<>();
 
         tools.add(new ToolDescriptor("iped_get_items",
-                "Essential properties of a batch of items in one call. Use this instead of calling a per-item "
-                        + "tool in a loop.",
+                "Properties of a batch of items in one call. Use this instead of calling a per-item tool in a "
+                        + "loop. Returns the essential properties by default, or exactly the fields named in "
+                        + "'fields' — which is how you read a case-specific field, such as a chat sender or an "
+                        + "EXIF tag, across a whole result set.",
                 arguments -> getItems(arguments))
                         .required("case_id", "string", "Case identifier returned by iped_open_case.")
                         .required("item_ids", "integer[]",
                                 "Item identifiers, local to this case. Capped by the server batch ceiling.")
+                        .optional("fields", "string[]",
+                                "Return only these fields, instead of the default essential properties. Names as "
+                                        + "iped_list_fields and iped_item_fields give them: plain, with no "
+                                        + "backslash before a colon, because this is a list of names and not a "
+                                        + "query expression. The keys this server publishes in an item are "
+                                        + "accepted too (content_type, parent_id, is_dir, bookmarks, selected). A "
+                                        + "name this case does not have is refused with the near names attached, "
+                                        + "never silently dropped.")
                         .returnsContent("metadata"));
 
         tools.add(new ToolDescriptor("iped_item_metadata",
@@ -121,6 +141,16 @@ public class ItemTools {
         List<Integer> itemIds = Args.requiredIntList(arguments, "item_ids",
                 "Pass the ids as an array of integers, taken from a result of iped_search on this same case.",
                 session.getConfig().getMaxBatchSize());
+        List<String> askedFields = Args.optionalStringList(arguments, "fields",
+                "Pass the field names as an array of strings, as iped_list_fields returns them. Omit the "
+                        + "parameter to get the essential properties.",
+                session.getConfig().getMaxBatchSize());
+        // Resolved once, against this case, before any document is read: a name this index does not
+        // have has to fail the call rather than come back as an absence in every item.
+        FieldSelection selection = askedFields == null ? null
+                : FieldSelection.resolve(openCase.getVocabulary(), askedFields);
+        Set<String> storedFields = selection == null ? ItemView.storedFields()
+                : selection.storedFields();
 
         List<Map<String, Object>> items = new ArrayList<>(itemIds.size());
         List<Integer> notFound = new ArrayList<>();
@@ -132,7 +162,11 @@ public class ItemTools {
                 continue;
             }
             try {
-                Document doc = openCase.getSource().getSearcher().doc(luceneId, ItemView.storedFields());
+                Document doc = openCase.getSource().getSearcher().doc(luceneId, storedFields);
+                if (selection != null) {
+                    items.add(selection.project(openCase.getSource(), openCase.getCaseId(), luceneId, doc));
+                    continue;
+                }
                 Map<String, Object> view = ItemView.of(openCase.getSource(), luceneId, doc, null);
                 view.put("case_id", openCase.getCaseId());
                 items.add(view);
@@ -147,6 +181,21 @@ public class ItemTools {
         result.put("case_id", openCase.getCaseId());
         result.put("items", items);
         result.put("requested", itemIds.size());
+        if (selection != null) {
+            // What was read has to be readable from the answer alone. Without this an agent can mistake
+            // a narrow projection for the whole of what the items carry, and report a field as absent
+            // when it was simply never asked for.
+            result.put("projection", selection.askedFields());
+            result.put("projection_note", "Only the fields in 'projection' were read. A field missing from an "
+                    + "item's 'fields' is declared in its 'unavailable' with the reason; a field missing from "
+                    + "'projection' was never asked for and says nothing about the items. Call iped_item_fields "
+                    + "for everything one item carries.");
+            if (!selection.renamedFields().isEmpty()) {
+                result.put("resolved_fields", selection.renamedFields());
+                result.put("resolved_fields_note", "These names were answered by the index field named beside "
+                        + "them. The keys of each item's 'fields' are the names you asked for.");
+            }
+        }
         if (!notFound.isEmpty()) {
             result.put("not_found", notFound);
             result.put("not_found_reason", "These ids are not in case " + openCase.getCaseId()
