@@ -142,10 +142,17 @@ Projeção **escolhida pelo chamador** sobre um lote de itens (FR-080). Alternat
 
 | Campo | Tipo | Regra |
 |---|---|---|
-| `totalMatches` | long | Contagem exata, **independente** de quantos itens são devolvidos (FR-012) |
+| `totalMatches` | long | Total do conjunto, **independente** de quantos itens são devolvidos (FR-012). Vem da própria coleta: a página custa **uma** avaliação da consulta (FR-082) |
+| `totalMatchesExact` | booleano | `false` quando o orçamento de tempo interrompeu a varredura — aí `totalMatches` é **piso**, não exato |
 | `items` | lista de `ItemView` | No máximo `pageSize` |
-| `nextCursor` | opaco \| ausente | Ausente na última página |
+| `nextCursor` | opaco \| ausente | Ausente na última página **e em página parcial** (FR-079) |
+| `nextCursorOmitted` | string \| ausente | O motivo, quando a página é parcial |
 | `partial` | booleano | `true` quando houve esgotamento de tempo (FR-018) |
+
+**Invariantes**
+- Uma página MUST custar uma avaliação da consulta. Contagem exata obtida por passada separada roda fora do orçamento de tempo e faz o `timeoutMs` pedido proteger metade do trabalho (FR-082).
+- Total interrompido MUST vir declarado como piso. Isso **não** se lê da relação de `TotalHits` do Lucene, que responde `EQUAL_TO` mesmo com a varredura cortada — ela descreve o teto de contagem, não a interrupção.
+- Página parcial MUST NOT produzir cursor: ele retomaria depois de posição que a varredura não alcançou, e acerto ordenado antes dela sumiria desta página e de todas as seguintes, em silêncio (FR-079).
 
 ---
 
