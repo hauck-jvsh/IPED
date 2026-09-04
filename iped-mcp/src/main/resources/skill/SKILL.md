@@ -18,8 +18,15 @@ Querying before you know the shape of the collection produces queries aimed at a
 **2. Narrow progressively.** Start broad enough to see the shape, then restrict. `iped_aggregate`
 counts by category, media type, period, evidence or bookmark without inspecting a single item — use
 it to decide where to look before you list anything. To inspect one curated set, pass its exact name
-as `bookmark` to `iped_search`; it is intersected with the query and keeps the same pagination. A
-`total_matches` in the hundreds of thousands is a signal to narrow, not to start paging.
+as `bookmark` to `iped_search`; it is intersected with the query, and **on its own, with no query at
+all, it lists the whole bookmark** — that is the cheap way to open a bookmark. A `total_matches` in
+the hundreds of thousands is a signal to narrow, not to start paging.
+
+When you do need every item, ask for it as `*:*`. A bare `*` means the same thing to you and
+something else to the parser — a wildcard over the name and text of every item, expanded term by
+term — and the server will answer it, tell you it rewrote it, and the rewrite is what saved the time.
+Never invent a query just to satisfy a parameter: if what you want is a bookmark, pass the bookmark
+alone.
 
 **3. Sample when the volume is high.** With a large result set, read the first page, aggregate to
 understand the distribution, and refine. Do not page through ten thousand items hoping to recognize
@@ -93,7 +100,11 @@ Report what the returned data supports and nothing beyond it.
 - A truncated text says `truncated: true`. Absence of a term in a truncated excerpt is not evidence
   of its absence from the item.
 - A partial result says `partial: true`. It means the time budget ran out, not that you saw
-  everything.
+  everything. Two things follow, and the answer states both: `total_matches` is a **floor** — at
+  least that many items match, possibly many more, and `total_matches_exact` is `false` — and no
+  cursor is issued, because paging on from a partial page skips hits silently. A partial page is a
+  sample the clock chose, not the top of the result set. Narrow the query and ask again rather than
+  reporting from it.
 - An absent field is absent, with a reason attached in `unavailable`. It is not an empty value, and
   it is not a fact about the world — an item with no GPS metadata is not an item that was nowhere.
 - A projection carries only what you asked for. When you pass `fields`, the answer lists what was

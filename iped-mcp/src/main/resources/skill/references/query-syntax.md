@@ -26,12 +26,25 @@ diacritic folding, mapping of content matches onto their parent item).
 | Numeric or date range | `size:[1000000 TO 5000000]` |
 | Open-ended range | `created:[2024-01-01 TO *]` |
 | Field has any value | `hash:*` |
+| Every item | `*:*` |
 
 Escape these with a backslash when you mean them literally:
 `+ - && || ! ( ) { } [ ] ^ " ~ * ? : \`
 
 A bare term with no field prefix searches **name** and **content**. Name matches are boosted, so a
 file called `contract.pdf` ranks above a file that merely mentions the word.
+
+### Every item is `*:*`, and a bare `*` is not the same thing
+
+`*:*` selects every item. A bare `*` is a **wildcard over name and content**, and the parser answers
+it by enumerating every term in the index and building one clause per term — the cost is the size of
+the term dictionary, not the size of the page you asked for. Nothing errors; it just takes as long as
+it takes. The server recognizes a lone `*` and runs `*:*` instead, saying so in `query_normalized`,
+but a `*` used anywhere else in an expression is yours to get right.
+
+The same trap in another shape: **do not invent a query in order to fill a parameter.** To list a
+bookmark, pass `bookmark` to `iped_search` with no `query` at all. To see the shape of the collection,
+`iped_case_overview` and `iped_aggregate` answer without listing items.
 
 ## Field names that contain a colon
 

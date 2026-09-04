@@ -109,7 +109,11 @@ Acrescentado na 006: **raízes de escrita** (`exportRoots`, separadas por `;` �
 | Recusa de destino não deixa rastro | A criação de pastas intermediárias em `ArtifactWriter` acontece depois do veredito `ALLOWED`, nunca antes |
 | Sucesso de exportação implica artefato existente | `ArtifactWriter.verifyArtifact` confere existência e tamanho depois de escrever. Contenção não é integridade: `<raiz>\NUL` fica dentro da raiz, aceita a escrita e não guarda nada |
 | Nenhum erro devolve uma grafia que não parseia | `PagedSearcher.plan` verifica a correção contra o caso antes de sugeri-la; `FieldNames.toQueryForm` em todo remedy que cita nome de campo |
-| Consulta reescrita é sempre declarada | `PagedSearcher.declareNormalization` → `query_normalized` no resultado de busca, agregação e exportação |
+| Consulta reescrita é sempre declarada | `PagedSearcher.declareNormalization` → `query_normalized` no resultado de busca, agregação e exportação. Duas causas hoje, com nota própria cada uma: escape de nome de campo e `*` reconhecido como match-all |
+| **Uma página custa uma avaliação da consulta** | O total vem de `TopDocs.totalHits`, não de um `searcher.count()` à parte. O `totalHitsThreshold = Integer.MAX_VALUE` proíbe término antecipado, então o coletor já conta todo o conjunto, em qualquer página e com qualquer cursor. `unit/CursorPaginationTest` fixa essa semântica do Lucene — se um upgrade mudar, `total_matches` passa a significar outra coisa em silêncio |
+| Total interrompido é **piso declarado**, nunca exato disfarçado | `total_matches_exact: false` + `partial_note` dizendo "floor". **Não se lê do `TotalHits.relation`**, que devolve `EQUAL_TO` mesmo com a varredura cortada: ele descreve o teto, não a interrupção. A autoridade é a `TimeExceededException` |
+| Página parcial não emite cursor | `PagedSearcher.search` só chama `nextCursor` quando `!partial`, e declara `next_cursor_omitted`. Cursor de página parcial retoma depois de posição que a varredura não alcançou; acerto ordenado antes dela sumiria desta página e de todas as seguintes. É o FR-079 aplicado a outra causa |
+| Pedir "tudo" tem caminho barato, e a superfície não obriga a inventar consulta | `PagedSearcher.isMatchAllExpression` reconhece `*` e `*:*` **antes do parser**; `iped_search` aceita `bookmark` sem `query`. O reconhecimento é estreito de propósito — só a expressão que é apenas a estrela |
 | **O motor nunca roda dentro do processo do servidor** | `iped-app` depende de `iped-mcp`, então chamar `Bootstrap` seria circular e o build recusa. `JobRunner` executa o `iped.jar` da instalação. Quem tentar `new Manager(...)` no pacote `processing/` descobre pelo erro de compilação — o `package-info.java` existe para que descubra antes |
 | Instalação padrão não cria caso | `processingEnabled = false`; com ele desligado as ferramentas **não aparecem** em `tools/list` e uma chamada forçada é recusada antes de ler argumento. `NoProcessingByDefaultTest` verifica as duas metades — só a ausência da listagem não prova nada sobre cliente que chame assim mesmo |
 | Cancelar destrói a **árvore**, não o filho | `Bootstrap` gera um neto e é o neto que lê evidência; o shutdown hook dele tem `process.destroy()` **comentado**. `JobRunner.destroyTree` mata descendentes antes do filho. `CancelJobTest` espera o neto existir antes de cancelar, senão não testa nada |
@@ -236,6 +240,32 @@ As suítes que precisam de caso **pulam** quando ele não está configurado, e *
 
 A linha que importa é a da paginação profunda: a página 10 é **mais rápida** que a primeira. O custo acompanha a página, não a profundidade — é isso que separa `PagedSearcher` de uma implementação que materializa o conjunto.
 
+### O custo de uma página, medido — 2026-09-04
+
+Um chamado de campo (`bookmark` + `query: "*"`) demorou minutos. Medido depois da correção, no **mesmo
+caso** (8.553.336 itens, marcador de 1.905 itens), 20 itens por página, sem snippet, descontando
+11,7 s de bootstrap + `iped_open_case`:
+
+| Forma da chamada | Busca | `total_matches` | Exato | Cursor |
+|---|---|---|---|---|
+| `bookmark`, sem `query` | **849 ms** | 1.905 | sim | sim |
+| `bookmark` + `*:*` | 1.214 ms | 1.905 | sim | sim |
+| `bookmark` + `*` (reconhecido) | 1.046 ms | 1.905 | sim | sim |
+| `bookmark` + `content:*` — o custo antigo | **48.905 ms** | ≥ 1.905 | **não** | **não** |
+
+E, sem marcador, sobre os 8,5 M: `*:*` em **296 ms** com total exato; `*` em 505 ms, reescrito e
+declarado.
+
+Duas leituras:
+
+- **~49 s → ~0,85 s** na chamada que veio de campo. E os 49 s **subestimam** o custo antigo: são
+  medidos no código novo, que avalia a consulta uma vez; o antigo rodava também um `searcher.count()`
+  sem orçamento sobre a mesma expressão, e o wildcard cobria `name` além de `content`.
+- A última linha mostra as duas declarações novas funcionando sob estresse real: a varredura estourou
+  o orçamento, então o total veio como **piso** (`total_matches_exact: false`) e **nenhum cursor** foi
+  emitido. Antes, essa mesma chamada devolvia total exato pago fora do orçamento e um cursor que
+  puliria acertos em silêncio.
+
 ## 8. Skill
 
 Fonte canônica única em `src/main/resources/skill/`. Os invólucros por harness são gerados no build (`generate-resources`) para `iped-app/resources/skills/{claude-code,codex,opencode}/iped-forensics/` e copiados para `skills/` no release. **Não edite os invólucros** — são regenerados a cada build e ignorados pelo git. `SkillParityTest` verifica que os três são byte a byte idênticos à fonte: orientação divergente entre harnesses produziria análises divergentes sobre a mesma evidência.
@@ -265,6 +295,8 @@ por fora da superfície de ferramentas.
 | Área | Cuidado |
 |---|---|
 | `PagedSearcher.forItems` | Replica a semântica de `IPEDSearcher` (rewrite com `mapChildToParentDocs`, exclusão de tree nodes). Divergir aqui muda silenciosamente o que uma consulta encontra. |
+| `timeout_ms` / `TimeLimitingCollector` | **Cobre a varredura, não o plano.** O relógio é consultado dentro de `collect()`; a expansão de multi-term acontece antes, na montagem da consulta, onde nada o interrompe. Foi por isso que `query: "*"` não voltava `partial` depois de 30 s — pendurava num lugar onde o cronômetro não existe. Nenhum texto do servidor pode apresentar `timeout_ms` como garantia de tempo de resposta |
+| Custo de wildcard no vocabulário do IPED | O parser roda com `SCORING_BOOLEAN_REWRITE` e campos padrão `{name, content}` ([`QueryBuilder`](../iped-engine/src/main/java/iped/engine/search/QueryBuilder.java)), e o `IPEDSource` levanta `IndexSearcher.setMaxClauseCount(Integer.MAX_VALUE)`. Consequência: wildcard amplo **não falha**, vira uma cláusula por termo do índice e custa o dicionário inteiro. Quem for acrescentar reconhecimento de expressão precisa saber que o teto não protege nada aqui |
 | `AuditTrail.digest` | A ordem dos campos em `AuditRecord.toNodeWithoutHash` faz parte do hash. Reordenar invalida a verificação de trilhas já emitidas. |
 | Portão de escrita no `McpDispatcher` | Precisa continuar antes de qualquer leitura de argumento, ou "sem tocar o caso" deixa de ser verdade. |
 | `ConcurrencyGuard` | A UI do IPED 4.3.1 não trava o caso. A detecção é cooperativa entre processos `iped-mcp` e best-effort para a UI — ausência de conflito **não** prova ausência de outro leitor. |

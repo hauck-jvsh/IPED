@@ -86,23 +86,31 @@ Todos os campos indexados de um item — descoberta de vocabulário por exemplo 
 | Parâmetro | Tipo | Obrigatório | Default |
 |---|---|---|---|
 | `case_id` | string | sim | |
-| `query` | string | sim | |
+| `query` | string | **não** | com `bookmark`, o marcador inteiro (FR-081) |
 | `bookmark` | string | não | sem filtro de marcador |
 | `page_size` | inteiro | não | limitado por teto do servidor |
 | `cursor` | string | não | primeira página |
-| `timeout_ms` | inteiro | não | |
+| `timeout_ms` | inteiro | não | `queryTimeoutMs` |
+
+`query` e `bookmark` não podem faltar os dois — sem nenhum dos dois não há o que procurar, e a recusa nomeia `*:*` como a forma barata de pedir tudo. **Para pedir todo item, escreva `*:*`, nunca `*` sozinho**: os dois significam o mesmo para quem escreve e não para o parser, e o servidor reconhece o segundo declarando o reparo em `query_normalized` (FR-082).
 
 Retorna:
 
 | Campo | Sempre presente | Observação |
 |---|---|---|
-| `total_matches` | **sim** | Contagem exata, independente do que foi devolvido (FR-012) |
+| `total_matches` | **sim** | Total do conjunto, independente do que foi devolvido (FR-012). Vem da própria coleta — a página custa **uma** avaliação da consulta (FR-082) |
+| `total_matches_exact` | **sim** | `false` quando o orçamento de tempo interrompeu a varredura: aí `total_matches` é **piso** |
 | `items` | sim | `ItemView` já enriquecida, com `snippet` quando aplicável (FR-014, FR-015) |
 | `bookmark` | não | Presente quando a busca foi restringida ao marcador informado |
-| `next_cursor` | não | Ausente na última página |
+| `query_note` | não | Presente quando a expressão foi suprida pelo servidor por vir só o marcador |
+| `query_normalized` | não | Presente quando a expressão executada não é a pedida (escape de campo ou `*`) |
+| `next_cursor` | não | Ausente na última página **e em página parcial** (FR-079) |
+| `next_cursor_omitted` | não | O motivo, quando a página é parcial |
 | `partial` | sim | `true` se houve esgotamento de tempo (FR-018) |
 
 **Nunca** devolve o conjunto completo de uma consulta ampla (FR-013). Ordenação determinística (FR-019).
+
+`timeout_ms` limita a **varredura**, não a montagem da consulta: expressão cuja expansão já é caríssima gasta tempo antes de o relógio ser consultado, então o parâmetro não é garantia de tempo de resposta.
 
 Quando `bookmark` é informado, a busca retorna a interseção entre a expressão e os itens atualmente
 associados ao marcador, sem materializar previamente sua lista de ids.

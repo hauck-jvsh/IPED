@@ -71,24 +71,44 @@ public class PagedSearcher {
         this.snippetBuilder = snippetBuilder;
     }
 
+    /** The canonical spelling of "every item", and the only cheap one. */
+    public static final String MATCH_ALL = "*:*";
+
     /**
      * A parsed query together with the expression that actually produced it.
      *
      * <p>
-     * The two differ only when the server repaired an unescaped field name and
-     * {@code autoEscapeFieldNames} is in force. Keeping both is what lets the result declare the
-     * repair instead of quietly answering a question nobody asked.
+     * The two differ when the server repaired an unescaped field name and
+     * {@code autoEscapeFieldNames} is in force, or when it recognized a bare {@code *} as meaning
+     * every item. Keeping both is what lets the result declare the rewrite instead of quietly
+     * answering a question nobody asked.
      */
     public static final class QueryPlan {
+
+        /** Why the expression run is not the expression asked for. */
+        public enum Normalization {
+            NONE, FIELD_ESCAPE, MATCH_ALL
+        }
 
         private final Query query;
         private final String expression;
         private final String requestedExpression;
+        private final Normalization normalization;
 
         QueryPlan(Query query, String expression, String requestedExpression) {
+            this(query, expression, requestedExpression,
+                    expression.equals(requestedExpression) ? Normalization.NONE : Normalization.FIELD_ESCAPE);
+        }
+
+        QueryPlan(Query query, String expression, String requestedExpression, Normalization normalization) {
             this.query = query;
             this.expression = expression;
             this.requestedExpression = requestedExpression;
+            this.normalization = normalization;
+        }
+
+        public Normalization getNormalization() {
+            return normalization;
         }
 
         public Query getQuery() {
@@ -106,8 +126,28 @@ public class PagedSearcher {
         }
 
         public boolean isNormalized() {
-            return !expression.equals(requestedExpression);
+            return normalization != Normalization.NONE;
         }
+    }
+
+    /**
+     * Whether this expression means "every item".
+     *
+     * <p>
+     * {@code *:*} is the canonical spelling and parses to a {@code MatchAllDocsQuery}. A bare
+     * {@code *} means the same thing to a reader and something else entirely to the parser: the
+     * default fields are {@code name} and {@code content}, and the multi-term rewrite in force is
+     * {@code SCORING_BOOLEAN_REWRITE}, so it enumerates <b>every term in the index</b> and builds one
+     * boolean clause per term. The engine raises the clause ceiling to {@code Integer.MAX_VALUE}, so
+     * nothing fails — it just takes as long as the term dictionary is large. That is not a spelling to
+     * punish an examiner for; it is one to recognize.
+     */
+    public static boolean isMatchAllExpression(String expression) {
+        if (expression == null) {
+            return false;
+        }
+        String trimmed = expression.trim();
+        return "*".equals(trimmed) || MATCH_ALL.equals(trimmed);
     }
 
     /**
@@ -133,6 +173,14 @@ public class PagedSearcher {
      */
     public QueryPlan plan(OpenCase openCase, String expression) {
         String requested = expression == null ? "" : expression;
+        if (isMatchAllExpression(requested)) {
+            // Built here rather than parsed, so the cheap path does not depend on the parser mapping
+            // '*:*' to a match-all: forItems turns a MatchAllDocsQuery into the engine's own
+            // match-all-items query, and neither spelling ever reaches the term dictionary.
+            return new QueryPlan(new MatchAllDocsQuery(), MATCH_ALL, requested,
+                    MATCH_ALL.equals(requested.trim()) ? QueryPlan.Normalization.NONE
+                            : QueryPlan.Normalization.MATCH_ALL);
+        }
         try {
             return new QueryPlan(build(openCase, requested), requested, requested);
         } catch (McpError failure) {
@@ -225,10 +273,6 @@ public class PagedSearcher {
         TopDocs top;
         boolean partial = false;
         try {
-            // Exact total, independent of how many items are returned (FR-012). count() never
-            // materializes the match set.
-            totalMatches = searcher.count(query);
-
             TopFieldCollector collector = TopFieldCollector.create(DETERMINISTIC_SORT, size, after,
                     Integer.MAX_VALUE);
             // The global counter ticks in milliseconds, so the budget passes through unchanged.
@@ -240,6 +284,17 @@ public class PagedSearcher {
                 partial = true;
             }
             top = collector.topDocs();
+            // The total comes from the collector, not from a second pass. The threshold above is
+            // Integer.MAX_VALUE, which forbids early termination, so the collector counts every match
+            // whatever the page size and whatever the cursor — a searcher.count() here re-ran the whole
+            // query for a number already in hand, and it ran outside the time budget, which is how an
+            // expensive query ignored the timeout it had been given.
+            //
+            // The price is that a scan cut short reports what it counted. That is a floor, and it is
+            // declared as one below. It cannot be read off TotalHits.relation, which says EQUAL_TO here
+            // regardless: the relation describes the threshold, not the interruption. Whether the scan
+            // finished is known only from the exception.
+            totalMatches = top.totalHits.value;
         } catch (IOException e) {
             throw new McpError(McpError.INTERNAL_ERROR, "The query could not be run: " + e.getMessage(),
                     "Report this with the server log attached.", e);
@@ -275,17 +330,30 @@ public class PagedSearcher {
         }
         declareNormalization(result, plan);
         result.put("total_matches", totalMatches);
+        result.put("total_matches_exact", !partial);
         result.put("page_size", size);
         result.put("items", items);
         result.put("partial", partial);
         if (partial) {
-            result.put("partial_note", "The time budget of " + budget
-                    + " ms ran out before the whole index was scanned. total_matches is exact but this page "
-                    + "may be missing hits. Narrow the query, or raise timeout_ms.");
-        }
-        String next = nextCursor(top, size);
-        if (next != null) {
-            result.put("next_cursor", next);
+            result.put("partial_note", "The time budget of " + budget + " ms ran out while scanning. Two "
+                    + "consequences, and both matter for what you can say from this answer: this page may be "
+                    + "missing hits that a complete scan would have ranked into it, and total_matches is a "
+                    + "floor — at least this many items match, possibly many more. Narrow the query, or raise "
+                    + "timeout_ms.");
+            // A cursor from a partial page is a cursor that skips in silence. It resumes after the last
+            // hit that was collected, and a hit the timeout never reached can rank ahead of that
+            // position — so it is missed here and on every page after. FR-079: a cursor that cannot be
+            // trusted to advance over the whole set is declared absent, never handed out.
+            result.put("next_cursor_omitted", "This page is partial, so no cursor is issued. One taken from "
+                    + "its last hit would resume after a position the scan never reached, and hits skipped by "
+                    + "the timeout can rank ahead of it — they would be missing from this page and from every "
+                    + "page after it, with nothing to say so. Narrow the query or raise timeout_ms, then page "
+                    + "from a complete first page.");
+        } else {
+            String next = nextCursor(top, size);
+            if (next != null) {
+                result.put("next_cursor", next);
+            }
         }
         return result;
     }
@@ -432,6 +500,14 @@ public class PagedSearcher {
             return;
         }
         result.put("query_normalized", plan.getExpression());
+        if (plan.getNormalization() == QueryPlan.Normalization.MATCH_ALL) {
+            result.put("query_normalized_note", "A bare * was read as meaning every item and run as *:*. The two "
+                    + "mean the same thing to you and not to the parser: * is a wildcard over the name and text "
+                    + "of every item, which expands term by term over the whole index and costs accordingly, "
+                    + "while *:* selects every item outright. The counts below are for every item. Write *:* "
+                    + "when you mean everything.");
+            return;
+        }
         result.put("query_normalized_note", "The expression asked for could not be parsed as written: a colon "
                 + "belonging to a field name was read as the separator between field and value. The server "
                 + "escaped the field names this case actually has and ran the result shown in "

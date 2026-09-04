@@ -28,6 +28,7 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.search.TermQuery;
 import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.search.TopFieldCollector;
+import org.apache.lucene.search.TotalHits;
 import org.apache.lucene.store.ByteBuffersDirectory;
 import org.apache.lucene.store.Directory;
 
@@ -128,6 +129,32 @@ public class CursorPaginationTest {
         } while (cursor != null);
 
         assertEquals("every matching document must be visited", DOCUMENTS, seen.size());
+    }
+
+    @Test
+    public void theCollectorAlreadyKnowsTheWholeTotalOnEveryPage() {
+        // The assumption that lets a page cost one query instead of two. totalHitsThreshold is
+        // Integer.MAX_VALUE, which forbids early termination, so totalHits is the size of the whole
+        // result set — not of the page, and not of what remains after the cursor. If a Lucene upgrade
+        // ever changed that, total_matches would silently start meaning something else, and this is
+        // where it has to fail.
+        TopDocs first = page(null);
+        assertEquals("page 1 must report the whole total", DOCUMENTS, first.totalHits.value);
+        assertEquals(TotalHits.Relation.EQUAL_TO, first.totalHits.relation);
+        assertEquals("and it must not be the page size", PAGE, first.scoreDocs.length);
+
+        String cursor = Cursor.encode(last(first));
+        int pages = 1;
+        while (cursor != null) {
+            TopDocs next = page(Cursor.decode(cursor));
+            if (next.scoreDocs.length == 0) {
+                break;
+            }
+            assertEquals("page " + (++pages) + " must report the same total, cursor or no cursor", DOCUMENTS,
+                    next.totalHits.value);
+            cursor = next.scoreDocs.length < PAGE ? null : Cursor.encode(last(next));
+        }
+        assertTrue("the walk must have covered more than one page", pages > 1);
     }
 
     @Test
