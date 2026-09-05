@@ -236,13 +236,17 @@ public class ContentAccess {
         Metadata metadata = new Metadata();
         ParsingTask.fillMetadata(item, metadata);
         if (!parser.hasSpecificParser(metadata)) {
-            // A media type a parser *assigned* — application/x-whatsapp-chat, message/x-whatsapp-message
-            // — has no parser of its own. Pinning it here selects nothing, and StandardParser falls back
-            // to its raw-string parser, which never fails: it returns the printable bytes. For a decoded
-            // chat those bytes are the preview markup, so the "extracted text" came back as HTML source,
-            // silently, with the ceiling spent on a base64 favicon. Clearing the pin lets the detector
-            // read the bytes and the right parser run. Measured: the same chat goes from RawStringParser
-            // over markup to HtmlParser over the conversation, with PDF, JPEG and text/plain unchanged.
+            // Second line of defence, and it should almost never fire. IPED's media types are declared
+            // in conf/CustomSignatures.xml, many as subtypes of something Tika parses
+            // (application/x-whatsapp-chat is a subtype of text/html), and McpServerMain registers them
+            // at startup so the type resolves through that hierarchy exactly as it does in the IPED UI.
+            //
+            // What remains for this branch is a type this installation does not know — a case processed
+            // by a newer IPED, with a decoder whose type the server's CustomSignatures.xml predates.
+            // There, pinning selects nothing and StandardParser falls through to the raw-string parser,
+            // which never fails: it returns the printable bytes, so the text of a decoded chat comes back
+            // as its own markup with nothing to say anything went wrong. Clearing the pin lets the
+            // detector read the bytes instead. The result declares that it did.
             metadata.remove(StandardParser.INDEXER_CONTENT_TYPE);
             metadata.remove(Metadata.CONTENT_TYPE);
             result.typeDetected = true;

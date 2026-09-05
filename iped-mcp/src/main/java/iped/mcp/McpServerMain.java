@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import iped.engine.Version;
 import iped.engine.config.Configuration;
 import iped.engine.config.ConfigurationManager;
+import iped.engine.task.SignatureTask;
 import iped.mcp.config.McpServerConfig;
 import iped.mcp.curation.BookmarkWriter;
 import iped.mcp.egress.EgressPolicy;
@@ -169,7 +170,36 @@ public class McpServerMain implements AutoCloseable {
     }
 
     /**
-     * Initializes the IPED configuration system from the installation root.
+     * Registers IPED's own media types, the way the UI does when it opens a case.
+     *
+     * <p>
+     * IPED declares its media types in {@code conf/CustomSignatures.xml}, and several of them are
+     * declared as subtypes of a type Tika can parse — {@code application/x-whatsapp-chat} is a
+     * subtype of {@code text/html}. Tika resolves a parser by walking that hierarchy, so without the
+     * registration a decoded chat has no parser, and {@code StandardParser} falls through to the
+     * raw-string parser that returns the printable bytes and never fails. The symptom is not an
+     * error: it is the markup of a chat preview handed back as the item's text.
+     *
+     * <p>
+     * <b>Order is the whole of it.</b> {@code installCustomSignatures} only sets a system property,
+     * and Tika reads it when it <i>builds</i> its media type registry. Called after anything has
+     * touched Tika, it registers nothing and fails silently — which is exactly how the first attempt
+     * at this fix appeared to disprove itself. It belongs here, before a parser exists.
+     */
+    private static void installCustomSignatures() {
+        try {
+            SignatureTask.installCustomSignatures();
+        } catch (Exception e) {
+            // Not fatal: the server still answers, but types IPED assigns will resolve to the raw
+            // fallback, so the text of a decoded chat would come back as its source.
+            LOGGER.error("IPED's custom media types could not be registered; text extraction of items whose "
+                    + "type IPED assigns (decoded chats, messages) will fall back to raw bytes", e);
+        }
+    }
+
+    /**
+     * Initializes the IPED configuration system from the installation root, and registers IPED's
+     * media types on top of it.
      *
      * <p>
      * This mirrors what the IPED UI does at startup. It matters that the server does it first:
@@ -190,6 +220,7 @@ public class McpServerMain implements AutoCloseable {
                     ipedRoot.getAbsolutePath(), e);
             return new McpServerConfig();
         }
+        installCustomSignatures();
         McpServerConfig config = new McpServerConfig();
         ConfigurationManager manager = ConfigurationManager.get();
         if (manager == null) {

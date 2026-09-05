@@ -58,23 +58,27 @@ public class ItemTextTest {
     }
 
     @Test
-    public void whenTheTypeThatParsedIsNotTheTypeOfTheItemBothAreDeclared() {
+    public void ipedsOwnMediaTypesResolveToAParserRatherThanToTheFallback() {
+        // The registration McpServerMain performs at startup, seen from the outside. IPED declares
+        // application/x-whatsapp-chat as a subtype of text/html in conf/CustomSignatures.xml; with that
+        // registered, Tika walks the hierarchy and the chat parses as HTML. Without it every one of
+        // these types lands on the raw-string parser, which succeeds on anything — so this asserts on
+        // the parser that ran, not on whether text came back.
         String caseId = session.openCase(McpTestSupport.requireReferenceCase());
-
         JsonNode chat = aChatContainer(caseId);
         Assume.assumeTrue("this case carries no chat containers", chat != null);
-        JsonNode found = session.call("iped_item_text", "case_id", caseId, "item_id", chat.path("item_id").asInt(),
-                "max_chars", 500);
-        String itemType = chat.path("content_type").asText();
-        Assume.assumeTrue("this container's own type has a parser, so nothing had to be detected",
-                found.has("parsed_as"));
 
-        // An examiner who read only the parsing type would record the wrong media type for the item.
-        assertFalse(found.path("parsed_as").asText().isEmpty());
-        assertTrue("the note must carry the item's own type, not only the one that parsed it",
-                found.path("parsed_as_note").asText().contains(itemType));
-        assertTrue("and it must say which type to cite",
-                found.path("parsed_as_note").asText().contains("Cite the item's type"));
+        JsonNode text = session.call("iped_item_text", "case_id", caseId, "item_id", chat.path("item_id").asInt(),
+                "max_chars", 500);
+        Assume.assumeTrue("the chat container selected has no text of its own", text.path("available").asBoolean());
+
+        assertFalse("a type IPED assigns must resolve through its declared hierarchy, not fall back",
+                "RawStringParser".equals(text.path("extracted_by").asText()));
+        // With the registration in force the item's own type is the one that parses, so there is
+        // nothing to declare about having parsed as another. If this ever starts appearing, the
+        // registration is not reaching the server and the fallback is carrying the feature.
+        assertFalse("the type should not have needed detecting: " + text.path("parsed_as_note").asText(),
+                text.has("parsed_as"));
     }
 
     @Test
