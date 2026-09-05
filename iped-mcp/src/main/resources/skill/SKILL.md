@@ -171,6 +171,18 @@ When the examiner wants the items themselves — a spreadsheet, a list, a delive
 the path. Do not page a result set into the conversation to build a table by hand: it is slower, it
 truncates, and it produces a document nobody can reproduce.
 
+When the deliverable is **one item rather than a list** — the photograph, the document, the
+transcription of a conversation — use `iped_export_item`. It writes the item into the server's
+export folder and gives you back the path. Two things about it are worth knowing:
+
+- **You do not choose the path or the name.** The name comes from the evidence, and the server
+  decides how to write it safely. Report the path it returns; do not try to steer it.
+- **`text_only` decides what the file holds.** Left alone, it exports the item's own bytes and
+  checks them against the hash the case recorded — read `hash_verified` and say so, because a file
+  that does not verify is not the item until someone explains why. With `text_only: true` it writes
+  the extracted text instead, and nothing is truncated: this is how to obtain the whole of a text
+  whose reading in this conversation stopped at the ceiling.
+
 **The destination has to be inside a folder the server is allowed to write to.** The permitted
 folders are declared in the server's configuration and cannot be changed from this conversation. If
 the destination is refused, the error names them — use one of those, do not go looking for another

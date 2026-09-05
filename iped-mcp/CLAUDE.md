@@ -15,6 +15,7 @@
 - **Curadoria**: marcadores e seleção, desabilitados por padrão.
 - **Trilha de auditoria** append-only encadeada por hash, gravada antes de cada operação.
 - **Artefatos de saída**: xlsx, CSV e JSON do conjunto completo, sem trafegar pela conversa.
+- **Exportação de item**: um item como arquivo na pasta configurada — os bytes dele, conferidos contra o hash do caso, ou o texto extraído. Sem teto: o teto de leitura protege a conversa, não o arquivo.
 - **Política de egresso** opcional, aplicada no servidor.
 - **Criação de caso**: processa evidência com o motor do IPED em processo externo, com acompanhamento, cancelamento e retomada. Desabilitada por padrão.
 
@@ -37,7 +38,7 @@ iped/mcp/
 ├── audit/                   # AuditRecord, AuditTrail, AuditSync, SessionManifest
 ├── processing/              # criação de caso: JobRunner, ProgressReader, JobStore, confinamentos
 ├── egress/EgressPolicy      # opcional, inativa por padrão
-├── export/ArtifactWriter    # xlsx (POI streaming), CSV, JSON
+├── export/                  # ArtifactWriter (xlsx/CSV/JSON), ItemFileWriter, EvidenceFileName, PathConfinement
 └── tools/                   # uma classe por grupo de ferramentas MCP
 ```
 
@@ -300,6 +301,7 @@ por fora da superfície de ferramentas.
 | `PagedSearcher.forItems` | Replica a semântica de `IPEDSearcher` (rewrite com `mapChildToParentDocs`, exclusão de tree nodes). Divergir aqui muda silenciosamente o que uma consulta encontra. |
 | `McpServerMain.installCustomSignatures` | **Registro de mime é inicialização, não configuração.** `SignatureTask.installCustomSignatures()` só define uma propriedade de sistema, que o Tika lê quando **constrói** o registro de tipos. Chamada depois de qualquer coisa ter tocado o Tika, ela não registra nada e **não avisa** — foi exatamente assim que o primeiro experimento pareceu refutar a hipótese certa. Precede o primeiro parser do processo, e é o que faz a extração de texto bater com a da UI por construção |
 | `ContentAccess.extractText` | **Media type produzido por parser não tem parser próprio.** `application/x-whatsapp-chat` e `message/x-whatsapp-message` são tipos que o IPED *atribui*; fixá-los em `Indexer-Content-Type` seleciona nada e o `StandardParser` cai no `RawStringParser`, que **nunca falha** — devolve os bytes imprimíveis. Para um chat isso era o HTML do preview entregue como "texto extraído", em silêncio, com o teto gasto num favicon base64. Por isso o `hasSpecificParser` antes de fixar. Ao mexer aqui, meça em três classes de item — chat decodificado, PDF e binário — porque o fallback disfarça o erro como sucesso |
+| `EvidenceFileName` | **Nome de item é entrada, não nome.** Ele foi escolhido por quem fez o arquivo, dentro de material apreendido. Sai daqui sem separador, sem o dois-pontos de fluxo alternativo (`laudo.txt:oculto` grava dentro de um arquivo que *está* na pasta permitida — confinamento sozinho não pega), sem caractere de controle e sem ponto ou espaço final, que o Windows descarta em silêncio fazendo o caminho do resultado apontar para arquivo inexistente. O prefixo com o id não é decoração: liga o arquivo ao item **e** neutraliza os nomes de dispositivo do Windows de uma vez |
 | `CasePool.configurePreviews` / `closePreviews` | **Abrir caso é abrir os repositórios de onde o conteúdo dele sai, e fechar é devolvê-los.** O `PreviewRepositoryManager` é global ao processo e indexado por pasta: quem equilibra o par é a contagem de referências do pool, que libera quando a **última** sessão solta. Somente-leitura não é detalhe — `configureWritable` trava o H2 com exclusividade e tomaria do perito o caso aberto na interface. Ao escrever teste para isto, saiba que `hasPreview:true` são 1,7 milhão de itens quase todos com bytes próprios: a classe afetada é a que **não tem tamanho**, e a primeira versão do teste passou com o conserto removido |
 | `timeout_ms` / `TimeLimitingCollector` | **Cobre a varredura, não o plano.** O relógio é consultado dentro de `collect()`; a expansão de multi-term acontece antes, na montagem da consulta, onde nada o interrompe. Foi por isso que `query: "*"` não voltava `partial` depois de 30 s — pendurava num lugar onde o cronômetro não existe. Nenhum texto do servidor pode apresentar `timeout_ms` como garantia de tempo de resposta |
 | Custo de wildcard no vocabulário do IPED | O parser roda com `SCORING_BOOLEAN_REWRITE` e campos padrão `{name, content}` ([`QueryBuilder`](../iped-engine/src/main/java/iped/engine/search/QueryBuilder.java)), e o `IPEDSource` levanta `IndexSearcher.setMaxClauseCount(Integer.MAX_VALUE)`. Consequência: wildcard amplo **não falha**, vira uma cláusula por termo do índice e custa o dicionário inteiro. Quem for acrescentar reconhecimento de expressão precisa saber que o teto não protege nada aqui |

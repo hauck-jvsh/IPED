@@ -160,6 +160,23 @@ O motivo da ausência é **derivado do item** — registro decodificado, diretó
 
 Falha do próprio servidor — recurso do caso que ele não abriu, inicialização que faltou — vem declarada como falha do servidor, não como ausência de texto no item, e não encaminha para `iped_item_content`, que alcança o item pela mesma tubulação (FR-086).
 
+### `iped_export_item`
+| Parâmetro | Tipo | Obrigatório | Default |
+|---|---|---|---|
+| `case_id` | string | sim | |
+| `item_id` | inteiro | sim | |
+| `text_only` | booleano | não | `false` |
+
+Escreve **um item** como arquivo na pasta de exportação configurada, e devolve o caminho com os digests do que foi escrito (FR-087). **Não há destino como parâmetro**: o nome vem da evidência, e nome de material apreendido é a entrada em que menos se confia — o servidor o sanea e decide onde põe. O arquivo vai para `<exportRoot>/<case_id>/<item_id>-<nome>`, com pasta por caso porque id de item é local ao caso.
+
+`text_only: false` (padrão) exporta os **bytes do próprio item** e confere o resultado contra o hash que o caso registrou (`hash_verified`, `hash_verified_against`, `hash_recorded_in_case`). `text_only: true` exporta o **texto extraído**, em UTF-8, pela mesma extração do `iped_item_text` — e diz que os digests não são comparáveis com o hash do caso, que é dos bytes.
+
+Nada é truncado: os tetos do `iped_item_content` e do `iped_item_text` protegem a conversa, e arquivo em disco não é a conversa.
+
+Item que não tem arquivo por trás — registro decodificado — exporta o preview que o IPED gerou, com `source_note` dizendo isso. Diretório e item de zero byte são declarados indisponíveis e **nada é escrito**: arquivo vazio com nome de item vira, depois, indistinguível de item realmente vazio.
+
+A política de egresso é aplicada por chamada, na classe que os argumentos pedem (`binary` ou `text`), e não na ferramenta inteira.
+
 ### `iped_item_thumbnail`
 Miniatura. Ausência declarada quando não existe.
 

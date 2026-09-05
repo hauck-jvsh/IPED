@@ -21,6 +21,7 @@ import iped.mcp.config.McpServerConfig;
 import iped.mcp.curation.BookmarkWriter;
 import iped.mcp.egress.EgressPolicy;
 import iped.mcp.export.ArtifactWriter;
+import iped.mcp.export.ItemFileWriter;
 import iped.mcp.item.ContentAccess;
 import iped.mcp.protocol.JsonRpcCodec;
 import iped.mcp.protocol.McpDispatcher;
@@ -102,6 +103,7 @@ public class McpServerMain implements AutoCloseable {
         Aggregator aggregator = new Aggregator(pagedSearcher);
         BookmarkWriter bookmarkWriter = new BookmarkWriter();
         ArtifactWriter artifactWriter = new ArtifactWriter(5);
+        ItemFileWriter itemFileWriter = new ItemFileWriter();
 
         List<ToolDescriptor> tools = new ArrayList<>();
         tools.addAll(new SessionTools(session, aggregator).descriptors());
@@ -110,7 +112,8 @@ public class McpServerMain implements AutoCloseable {
         tools.addAll(new ItemTools(session, contentAccess).descriptors());
         tools.addAll(new BookmarkTools(session, bookmarkWriter).descriptors());
         tools.addAll(new SelectionTools(session, bookmarkWriter).descriptors());
-        tools.addAll(new ExportTools(session, pagedSearcher, artifactWriter).descriptors());
+        tools.addAll(new ExportTools(session, pagedSearcher, artifactWriter, contentAccess, itemFileWriter)
+                .descriptors());
         tools.addAll(new AuditTools(session).descriptors());
         // Process-wide, like the case pool: one job at a time is a property of the machine, so two
         // sessions have to see the same running job rather than one counter each.

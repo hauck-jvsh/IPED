@@ -48,7 +48,7 @@ public class ToolSchemaTest {
             "iped_list_bookmarks", "iped_create_bookmark", "iped_rename_bookmark", "iped_delete_bookmark",
             "iped_add_to_bookmark", "iped_remove_from_bookmark", "iped_get_selection", "iped_set_selection",
             // Output artifacts
-            "iped_export_artifact",
+            "iped_export_artifact", "iped_export_item",
             // Audit
             "iped_export_audit");
 

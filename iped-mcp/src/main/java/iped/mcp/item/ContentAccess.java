@@ -223,11 +223,25 @@ public class ContentAccess {
     }
 
     /**
+     * Passed as the limit to extract everything the item has.
+     *
+     * <p>
+     * Tika's own convention for {@code BodyContentHandler}, kept rather than invented so the value
+     * means here what it means there. The ceilings elsewhere exist to protect the conversation; a
+     * caller writing to a file is not the conversation, and a text export cut at the ceiling of a
+     * chat window would be an exhibit missing its end.
+     */
+    public static final int NO_LIMIT = -1;
+
+    /**
      * Extracts an item's text by reparsing it, bounded by a character ceiling.
      *
      * <p>
      * The indexed {@code content} field is indexed but not stored, so text cannot be read back from
      * the index. Reparsing is the available path, which is why every caller passes a budget.
+     *
+     * @param limit
+     *            the ceiling in characters, or {@link #NO_LIMIT} for everything
      */
     public ExtractedText extractText(OpenCase openCase, IItem item, int limit) {
         ExtractedText result = new ExtractedText();
@@ -295,7 +309,7 @@ public class ContentAccess {
         // whether the item was understood.
         result.parsedBy = simpleName(metadata.get("X-TIKA:Parsed-By"));
         result.parsedAs = metadata.get(StandardParser.INDEXER_CONTENT_TYPE);
-        if (result.text.length() >= limit) {
+        if (limit > 0 && result.text.length() >= limit) {
             result.truncated = true;
         }
         return result;
