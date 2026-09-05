@@ -107,6 +107,12 @@ Report what the returned data supports and nothing beyond it.
   reporting from it.
 - An absent field is absent, with a reason attached in `unavailable`. It is not an empty value, and
   it is not a fact about the world — an item with no GPS metadata is not an item that was nowhere.
+- **A message with no text of its own is not an empty message.** A chat record is built by a decoder
+  from a database; it has no file behind it, so there is nothing to re-extract, and what it says is
+  carried in its metadata. `iped_item_text` says exactly that and names the fields — follow it to
+  `iped_item_metadata` rather than reporting the conversation as empty. To read a conversation as a
+  conversation, use `iped_item_tree` to get the container and take its text: it reads in order, with
+  who said what.
 - A projection carries only what you asked for. When you pass `fields`, the answer lists what was
   read in `projection`; a field outside that list was never looked at and says nothing about the
   items. A field inside it that an item does not have is declared in that item's `unavailable`, with

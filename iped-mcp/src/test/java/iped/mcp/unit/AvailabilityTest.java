@@ -52,6 +52,34 @@ public class AvailabilityTest {
     }
 
     @Test
+    public void theReasonSaysSomethingTrueAboutThisItemRatherThanListingHypotheses() {
+        // The message this replaces offered three at once — binary, unparsed, or encrypted — and for a
+        // decoded chat message all three were wrong while its text sat in Message-Body. A reason that
+        // covers every case by naming none of them cannot be acted on, and an agent that believes it
+        // reports the messages as empty.
+        String caseId = session.openCase(McpTestSupport.requireReferenceCase());
+
+        int checked = 0;
+        for (JsonNode item : page(caseId, "*:*", 60)) {
+            JsonNode text = session.call("iped_item_text", "case_id", caseId, "item_id",
+                    item.path("item_id").asInt());
+            if (text.path("available").asBoolean()) {
+                continue;
+            }
+            String reason = text.path("reason").asText();
+            String type = item.path("content_type").asText("");
+            boolean namesThisItem = reason.contains("decoded data") || reason.contains("directory")
+                    || reason.contains("timed out") || reason.contains("metadata")
+                    || (!type.isEmpty() && reason.contains(type));
+            assertTrue("the reason must name what is true of item " + item.path("item_id") + " (" + type
+                    + "), got: " + reason, namesThisItem);
+            checked++;
+        }
+        assertTrue("no item without text was found in 60; this case does not exercise the requirement",
+                checked > 0);
+    }
+
+    @Test
     public void itemsWithoutThumbnailsDeclareIt() {
         String caseId = session.openCase(McpTestSupport.requireReferenceCase());
 

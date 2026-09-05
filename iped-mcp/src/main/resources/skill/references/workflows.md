@@ -65,7 +65,12 @@ evidence.
    you who spoke to whom across the whole set, instead of one call per message.
 4. `iped_item_tree` on a conversation item to see its messages, or on a message to see its
    conversation.
-5. For the deliverable: `iped_export_artifact` with `group_by_conversation: true` — it writes the
+5. **To read a conversation, take the text of the container, not of each message.** A message record
+   is produced by a decoder from a database and has no file behind it, so `iped_item_text` on one
+   correctly reports that it has no text of its own and names the metadata fields that carry what it
+   says. The container reads as a whole — in order, with who said what — which is what you need to
+   report anyway. Use the message records for citation and for filtering by sender, date or content.
+6. For the deliverable: `iped_export_artifact` with `group_by_conversation: true` — it writes the
    messages grouped by conversation, chronological, with sender and recipient identified.
 
 Do not summarize a conversation from a handful of messages read out of order. Get the ordering

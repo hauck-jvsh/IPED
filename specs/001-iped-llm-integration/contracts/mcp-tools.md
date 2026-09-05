@@ -152,6 +152,10 @@ Metadados extraídos (EXIF, GPS, cabeçalhos, codec).
 ### `iped_item_text`
 Texto extraído. Trunca com aviso e informa tamanho real (FR-021). Se não houver texto, declara ausência e aponta alternativas (FR-022).
 
+Devolve `extracted_by` com o parser que efetivamente rodou — o fallback de strings cruas nunca falha, então "veio texto" sozinho não diz que o item foi compreendido. Quando o tipo do item não tem parser próprio (tipos que o processamento **atribui**, como os de chat decodificado), o tipo é detectado do conteúdo e a resposta traz `parsed_as` + `parsed_as_note` com os dois tipos: o do item é o que se cita (FR-083).
+
+O motivo da ausência é **derivado do item** — registro decodificado, diretório, parsing expirado, media type — e nomeia os campos de metadado daquele item que carregam conteúdo, quando há (FR-084). Não enuncia hipóteses alternativas: para item decodificado elas eram todas falsas enquanto o conteúdo estava em `Message-Body`.
+
 ### `iped_item_thumbnail`
 Miniatura. Ausência declarada quando não existe.
 
