@@ -113,6 +113,11 @@ Report what the returned data supports and nothing beyond it.
   `iped_item_metadata` rather than reporting the conversation as empty. To read a conversation as a
   conversation, use `iped_item_tree` to get the container and take its text: it reads in order, with
   who said what.
+- **A failure of the server is not a fact about the evidence.** When an answer says the server could
+  not read an item, that is the server's fault and not the item's: report it as a gap in what you
+  could examine, never as an item with nothing in it, and do not reach for another content tool to
+  work around it — they read through the same machinery. `iped_item_metadata` answers from the index
+  and is unaffected.
 - A projection carries only what you asked for. When you pass `fields`, the answer lists what was
   read in `projection`; a field outside that list was never looked at and says nothing about the
   items. A field inside it that an item does not have is declared in that item's `unavailable`, with

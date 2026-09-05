@@ -33,6 +33,8 @@ Valida integridade e faixa de versão antes de aceitar (FR-001, FR-002, FR-054).
 
 Retorna `case_id`, `total_items`, `iped_version`, `evidences`.
 
+Abre também, somente para leitura, o repositório de previews do caso (FR-085): item decodificado de dentro de um contêiner não tem trecho de evidência que seja ele, e seus únicos bytes estão ali. Falhar nisso **não** impede a abertura — um caso sem previews segue consultável.
+
 **Erros**: `NOT_A_CASE`, `CASE_INCOMPLETE`, `CASE_IN_PROCESSING`, `VERSION_UNSUPPORTED` — cada um com diagnóstico do que fazer.
 
 ### `iped_case_overview`
@@ -49,7 +51,7 @@ Alvo: < 30 s em caso de 10 M (SC-015).
 |---|---|---|
 | `case_id` | string | sim |
 
-Libera recursos sem deixar trava pendente (FR-005).
+Libera recursos sem deixar trava pendente (FR-005) — inclusive o repositório de previews do caso, aberto na abertura porque item decodificado tem ali os únicos bytes dele (FR-085).
 
 ---
 
@@ -155,6 +157,8 @@ Texto extraído. Trunca com aviso e informa tamanho real (FR-021). Se não houve
 Devolve `extracted_by` com o parser que efetivamente rodou — o fallback de strings cruas nunca falha, então "veio texto" sozinho não diz que o item foi compreendido. Quando o tipo do item não tem parser próprio (tipos que o processamento **atribui**, como os de chat decodificado), o tipo é detectado do conteúdo e a resposta traz `parsed_as` + `parsed_as_note` com os dois tipos: o do item é o que se cita (FR-083).
 
 O motivo da ausência é **derivado do item** — registro decodificado, diretório, parsing expirado, media type — e nomeia os campos de metadado daquele item que carregam conteúdo, quando há (FR-084). Não enuncia hipóteses alternativas: para item decodificado elas eram todas falsas enquanto o conteúdo estava em `Message-Body`.
+
+Falha do próprio servidor — recurso do caso que ele não abriu, inicialização que faltou — vem declarada como falha do servidor, não como ausência de texto no item, e não encaminha para `iped_item_content`, que alcança o item pela mesma tubulação (FR-086).
 
 ### `iped_item_thumbnail`
 Miniatura. Ausência declarada quando não existe.

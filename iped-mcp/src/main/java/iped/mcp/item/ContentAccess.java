@@ -271,6 +271,20 @@ public class ContentAccess {
                     + "; in a portable case this usually means the evidence file is not present";
             result.remedy = "Metadata stays available through iped_item_metadata. To read content, attach the "
                     + "original evidence to this case.";
+        } catch (McpError e) {
+            throw e;
+        } catch (RuntimeException e) {
+            // Not a failure to read this item: a failure of the plumbing that reads items — an
+            // initialization the server owes, a resource it never opened. "This item could not be
+            // parsed" would describe the evidence, and the evidence is not what failed; a server
+            // that never opened the case's preview database once told an agent that a message with
+            // content had none. Nor is the raw-bytes reader an alternative here: it reaches the item
+            // through the same plumbing and fails the same way.
+            LOGGER.error("Text extraction failed for item {} for a server-side reason", item.getId(), e);
+            result.failure = "the server could not read this item: " + e.getMessage()
+                    + "; this is a fault in the server, not a property of the item";
+            result.remedy = "Report this with the server log attached. iped_item_metadata answers from the index "
+                    + "and is unaffected by it.";
         } catch (Exception e) {
             LOGGER.debug("Text extraction failed for item {}", item.getId(), e);
             result.failure = "this item could not be parsed for text: " + e.getMessage();

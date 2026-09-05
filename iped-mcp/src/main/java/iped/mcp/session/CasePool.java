@@ -1,6 +1,7 @@
 package iped.mcp.session;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -10,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import iped.engine.data.IPEDSource;
+import iped.engine.preview.PreviewRepositoryManager;
 import iped.mcp.protocol.McpError;
 import iped.mcp.query.FieldVocabulary;
 
@@ -102,11 +104,69 @@ public class CasePool implements AutoCloseable {
                     e).with("path", caseDir.getAbsolutePath());
         }
 
+        configurePreviews(caseId, source);
         entry = new Entry(source, new FieldVocabulary(source));
         entry.refCount = 1;
         entries.put(caseId, entry);
         LOGGER.info("Case {} opened into the pool", caseId);
         return new Handle(entry.source, entry.vocabulary);
+    }
+
+    /**
+     * Opens the case's preview database for reading, as {@code UICaseDataLoader} does when the IPED
+     * UI opens a case.
+     *
+     * <p>
+     * An item that was decoded rather than carved out of a filesystem may have no bytes of its own:
+     * {@code IndexItem} gives such an item a {@code PreviewInputStreamFactory}, so its only readable
+     * content is the preview stored in the case's {@code previews.mv.db}. Reading it needs this
+     * configuration. Without it the engine throws "Repository not configured", and because the
+     * failure surfaces where content is read, the server reported it as a property of the evidence —
+     * telling the agent that an item with content had none.
+     *
+     * <p>
+     * Read-only is not a detail. {@code configureWritable} locks the database for exclusive access by
+     * this process, which would take the case away from the examiner who has it open in the UI;
+     * read-only opens H2 with {@code ACCESS_MODE_DATA=r}, which admits concurrent readers. The server
+     * never processes, so it has nothing to write here.
+     *
+     * <p>
+     * This cannot fail the case open: the call only records a connection configuration and opens
+     * nothing, so a case with no preview database, or one whose database cannot be read, still opens
+     * and stays queryable — the failure appears later, when content is actually asked for.
+     */
+    private void configurePreviews(String caseId, IPEDSource source) {
+        File moduleDir = source.getModuleDir();
+        try {
+            PreviewRepositoryManager.configureReadOnly(moduleDir);
+        } catch (IOException | RuntimeException e) {
+            LOGGER.warn("The preview database of case {} could not be configured; items whose only content is a "
+                    + "stored preview will not be readable in this session", caseId, e);
+        }
+    }
+
+    /**
+     * Releases the case's preview database, the other half of {@link #configurePreviews}.
+     *
+     * <p>
+     * Not optional, and not merely hygiene for the connection pool. {@code PreviewRepositoryManager}
+     * keys its configuration by folder and refuses a second one for a folder it already knows, so a
+     * case opened, closed and opened again in the same session would fail to configure the second
+     * time. A server that holds cases for the length of a session and lets go of them between
+     * questions does exactly that.
+     *
+     * <p>
+     * What makes the pair balanced is the pool's own reference counting: this runs when the last
+     * session lets go, not when any session does. The manager underneath is process-global while a
+     * pool is per-server, so this holds because a server process has one pool — which is true of the
+     * server and of the suites, where each rule builds and tears down its own.
+     */
+    private void closePreviews(String caseId, IPEDSource source) {
+        try {
+            PreviewRepositoryManager.close(source.getModuleDir());
+        } catch (IOException | RuntimeException e) {
+            LOGGER.warn("The preview database of case {} could not be closed", caseId, e);
+        }
     }
 
     /**
@@ -147,6 +207,7 @@ public class CasePool implements AutoCloseable {
         } catch (RuntimeException e) {
             LOGGER.warn("Failure while closing the pooled case {}", caseId, e);
         }
+        closePreviews(caseId, entry.source);
     }
 
     /** How many sessions hold this case. Zero when it is not open. Used by the concurrency suite. */
@@ -164,6 +225,7 @@ public class CasePool implements AutoCloseable {
             } catch (RuntimeException e) {
                 LOGGER.warn("Failure while closing the pooled case {}", caseId, e);
             }
+            closePreviews(caseId, entry.source);
         }
     }
 }
